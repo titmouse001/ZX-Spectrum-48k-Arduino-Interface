@@ -17,7 +17,7 @@
 #include <SPI.h>
 //#include <CircularBuffer.h>  ...  very nice but in the end had to write my own optimsed circular buffer.
 //#include <SD.h>   //  more than I need with UTF8 out the box, so using "SdFat.h"
-#include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1" 
+#include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 // 'SDFAT.H' : implementation allows 7-bit characters in the range
 // 0X20 to 0X7E except the following characters are not allowed.
 // USE_LONG_FILE_NAMES takes up less program storage space.
@@ -25,10 +25,10 @@
 // ********************************************************
 // Circular Buffer section - TODO MOVE TO SUPPORTING FILE
 // ********************************************************
-#define BUFFER_SIZE 256 // Use power of 2 value only here!
+#define BUFFER_SIZE 256  // Use power of 2 value only here!
 static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0, "BUFFER_SIZE is not a power of 2!");
 
-#if BUFFER_SIZE<=256
+#if BUFFER_SIZE <= 256
 typedef byte BufferIndexType;
 #else
 typedef uint16_t BufferIndexType;
@@ -41,7 +41,7 @@ static bool isBufferFull;
 byte circularBuffer[BUFFER_SIZE];
 
 inline bool isBufferEmpty() {
-    return ((bufferHead == bufferTail) && !isBufferFull);
+  return ((bufferHead == bufferTail) && !isBufferFull);
 }
 
 inline void resetBuffer() {
@@ -51,25 +51,25 @@ inline void resetBuffer() {
 }
 
 inline void writeToCircularBuffer(byte value) {
-    if (!isBufferFull) {
-        circularBuffer[bufferHead] = value;
-#if (BUFFER_SIZE <= 256) 
-        bufferHead++; // Special case. No need for masking as byte will wrap
-#else 
-        bufferHead = (bufferHead + 1) & BUFFER_MASK; // Wrap using the mask    
-#endif               
-        if (bufferHead == bufferTail) {
-            isBufferFull = true;
-        }
+  if (!isBufferFull) {
+    circularBuffer[bufferHead] = value;
+#if (BUFFER_SIZE <= 256)
+    bufferHead++;  // Special case. No need for masking as byte will wrap
+#else
+    bufferHead = (bufferHead + 1) & BUFFER_MASK;  // Wrap using the mask
+#endif
+    if (bufferHead == bufferTail) {
+      isBufferFull = true;
     }
+  }
 }
 
 inline byte readFromCircularBuffer() {
-    isBufferFull = false;
-#if (BUFFER_SIZE<=256)
-   return  circularBuffer[bufferTail++];
+  isBufferFull = false;
+#if (BUFFER_SIZE <= 256)
+  return circularBuffer[bufferTail++];
 #else
-   return  circularBuffer[bufferTail = ((bufferTail + 1) & BUFFER_MASK)];
+  return circularBuffer[bufferTail = ((bufferTail + 1) & BUFFER_MASK)];
 #endif
 }
 // ********************************************************
@@ -93,10 +93,10 @@ void setup() {
   resetBuffer();
 
   pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
-  pinMode(ledPin, OUTPUT);  // DEBUG
+  pinMode(ledPin, OUTPUT);        // DEBUG
 
-//  Serial.begin(9600);
-//  while (! Serial); 
+  //  Serial.begin(9600);
+  //  while (! Serial);
 
   digitalWrite(Z80_D0Pin, LOW);
   digitalWrite(Z80_D1Pin, LOW);
@@ -106,7 +106,7 @@ void setup() {
   digitalWrite(Z80_D5Pin, LOW);
   digitalWrite(Z80_D6Pin, LOW);
   digitalWrite(Z80_D7Pin, LOW);
- 
+
   pinMode(Z80_D0Pin, OUTPUT);
   pinMode(Z80_D1Pin, OUTPUT);
   pinMode(Z80_D2Pin, OUTPUT);
@@ -115,7 +115,7 @@ void setup() {
   pinMode(Z80_D5Pin, OUTPUT);
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
- 
+
   //tri-state
   pinMode(Z80_D0Pin, INPUT);
   pinMode(Z80_D1Pin, INPUT);
@@ -125,7 +125,7 @@ void setup() {
   pinMode(Z80_D5Pin, INPUT);
   pinMode(Z80_D6Pin, INPUT);
   pinMode(Z80_D7Pin, INPUT);
-  
+
   // These pins are connected to the address lines on the Z80
   pinMode(Z80_D0Pin, OUTPUT);
   pinMode(Z80_D1Pin, OUTPUT);
@@ -156,24 +156,22 @@ void setup() {
 
 
   if (!SD.begin(9)) {
-    while (1)
-    {
-        digitalWrite(ledPin, LOW);  // slow flash error - sd card
-        delay(1000);  
-        digitalWrite(ledPin, HIGH);  
-        delay(1000);  
+    while (1) {
+      digitalWrite(ledPin, LOW);  // slow flash error - sd card
+      delay(1000);
+      digitalWrite(ledPin, HIGH);
+      delay(1000);
     }
   }
 
-    if (!myFile.open("1.scr")) {
-      while (1)
-      {
-          digitalWrite(ledPin, LOW);  // fast flash error - file
-          delay(500);  
-          digitalWrite(ledPin, HIGH);  
-          delay(500);  
-      }
+  if (!myFile.open("1.scr")) {
+    while (1) {
+      digitalWrite(ledPin, LOW);  // fast flash error - file
+      delay(500);
+      digitalWrite(ledPin, HIGH);
+      delay(500);
     }
+  }
 
 
   // *************************
@@ -190,8 +188,6 @@ void setup() {
 
   // Aruidno (nano or pro mini) interrupts need to use pins 2 or 3
   pinMode(interruptPin, INPUT);
-
- 
 }
 
 void loop() {
@@ -205,13 +201,13 @@ void loop() {
 }
 
 ISR(INT0_vect) {
-   if (!isBufferEmpty)
-   //if (bufferHead != bufferTail || isBufferFull) {   // has data to Process
+  if (!isBufferEmpty)
+    //if (bufferHead != bufferTail || isBufferFull) {   // has data to Process
     byte b = readFromCircularBuffer();
-    // TAKE CARE HERE: DO NOT USE PORTB DIRECTLY WITHOUT FIRST PRESERVING THE BITS USED FOR THE CLOCK/CRYSTAL
-    PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
-    PORTD = b;
-  }
+  // TAKE CARE HERE: DO NOT USE PORTB DIRECTLY WITHOUT FIRST PRESERVING THE BITS USED FOR THE CLOCK/CRYSTAL
+  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
+  PORTD = b;
+}
 }
 
 
