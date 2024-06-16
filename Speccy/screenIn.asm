@@ -44,8 +44,8 @@ mainloop:
 
 screenloop:
 
-ld BC,14
-loop14:
+;ld BC,14
+;loop14:
 	; ($1f) place on address buss bottom half (a0 to a7)
 	; Accumulator top half (a8 to a15)  - currently I don't care and acc is left with whatever value
 	in a,($1f) 
@@ -53,12 +53,14 @@ loop14:
     inc hl
     dec de
 	
-   ld a,B
-   or C
-   jp nz,loop14
+;   ld a,B
+;   or C
+;  jp nz,loop14
 
-	LD BC,$1fff
-    CALL DELAY	
+  LD BC,$1
+  CALL DELAY	
+
+
 	
 	ld a,d
     or e

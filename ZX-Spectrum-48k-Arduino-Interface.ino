@@ -11,6 +11,7 @@
 // SPEC OF SPECCY H/W PORTS HERE: -  https://mdfs.net/Docs/Comp/Spectrum/SpecIO
 // ASM CODE FOR REF AT EOF (may be old if I forget to update)
 //
+// good link foir aruino info here: https://devboards.info/boards/arduino-nano
 // -------------------------------------------------------------------------------------
 
 #include <avr/pgmspace.h>
@@ -19,8 +20,6 @@
 //#include <SD.h>   //  more than I need with UTF8 out the box, so using "SdFat.h"
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 // 'SDFAT.H' : implementation allows 7-bit characters in the range
-// 0X20 to 0X7E except the following characters are not allowed.
-// USE_LONG_FILE_NAMES takes up less program storage space.
 
 // ********************************************************
 // Circular Buffer section - TODO MOVE TO SUPPORTING FILE
@@ -174,24 +173,23 @@ void setup() {
   }
 
 
-  // *************************
-  // *** interrupt on INT0 ***
-  // *************************
+  /* 
+   * Configure interrupt on INT0 (pin 2) 
+   * External Interrupt Control Register A (EICRA).
+   * External Interrupt Mask Register (EIMSK).
+   */
   cli();
-  // External Interrupt Control Register A (EICRA).
   bitSet(EICRA, ISC01);  // Rising Edge of INT0 generates interrupt
   bitSet(EICRA, ISC00);
-  // External Interrupt Mask Register (EIMSK).
-  bitSet(EIMSK, INT0);  // enable INT0 interrupt
+  bitSet(EIMSK, INT0);   // enable INT0 interrupt
   sei();
-  // *************************
 
-  // Aruidno (nano or pro mini) interrupts need to use pins 2 or 3
+  // Arduino (nano or pro mini) interrupts need to use pins 2 or 3
   pinMode(interruptPin, INPUT);
 }
 
 void loop() {
-  // do we need to cache 'circularBuffer' from SD card
+  // Check if the buffer needs more data from the SD card
   if (!isBufferFull) {
     byte b;
     if (myFile.read(&b, 1) == 1) {
@@ -200,17 +198,85 @@ void loop() {
   }
 }
 
+/*
+ * IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
+ *
+ * PORTB maps to Arduino digital pins 8 to 13. 
+ * The two high bits (6 & 7) map to the crystal pins and should not be used.
+ *
+ * Port Registers:
+ * PORTB (digital pins 8 to 13) - Pin 8 is used here to replace pin 2 on PORTD, which is needed for interrupts.
+ * PORTC (analog input pins)
+ * PORTD (digital pins 0 to 7) - Pins 0, 1, 3, 4, 5, 6, 7 are used; pin 2 is reserved for interrupts.
+ *
+ * Note: Ideally, we could use a single byte, but constraints force us to use two bytes.
+ */
+
 ISR(INT0_vect) {
-  if (!isBufferEmpty)
-    //if (bufferHead != bufferTail || isBufferFull) {   // has data to Process
+  // Check if buffer has data to process
+  if (bufferHead != bufferTail || isBufferFull) {
     byte b = readFromCircularBuffer();
-  // TAKE CARE HERE: DO NOT USE PORTB DIRECTLY WITHOUT FIRST PRESERVING THE BITS USED FOR THE CLOCK/CRYSTAL
-  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
-  PORTD = b;
+    // Write data to Z80 data pins
+    PORTB = (PORTB & 0b11111110) | ((b & B00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
+    PORTD = b; // Directly set PORTB as it's safe inside the interrupt
+  }
 }
+
+//OLD WORKED .. BUT MAYBE BEST TO PRESERVE ALL BITS AS ABOVE
+//  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
+
+//AI    PORTD = (PORTD & 0b11111110) | ((b & 0b00000100) >> 2); // Set bit 0 from bit 2 of 'b'
+
+/*
+
+//------------------------------------------------------------------------------
+int FatFile::readByte(void* buf) {
+  uint8_t* dst = reinterpret_cast<uint8_t*>(buf);
+  uint32_t sector;  // Raw device sector number
+  uint16_t offset;  // Offset within the sector
+  uint8_t* pc;  // Pointer to cached sector data
+
+  // Check if the file is readable
+  if (!isReadable()) {
+    DBG_FAIL_MACRO;
+    goto fail;
+  }
+
+  // Limit the read to the remaining file size for root directory
+  uint16_t remainingSize = FS_DIR_SIZE * m_vol->m_rootDirEntryCount - (uint16_t)m_curPosition;
+  if (remainingSize == 0) {
+    return 0;
+  }
+
+  // Calculate offset within the sector
+  offset = m_curPosition & m_vol->sectorMask();
+
+  // Calculate the sector directly for root directory
+  sector = m_vol->rootDirStart() + (m_curPosition >> m_vol->bytesPerSectorShift());
+
+  // Prepare cache for reading the sector
+  pc = m_vol->dataCachePrepare(sector, FsCache::CACHE_FOR_READ);
+  if (!pc) {
+    DBG_FAIL_MACRO;
+    goto fail;
+  }
+
+  // Copy the single byte to the destination buffer
+  *dst = pc[offset];
+
+  // Update current position in the file
+  m_curPosition += 1;
+
+  return 1;
+
+fail:
+  // Handle read error
+  m_error |= READ_ERROR;
+  return -1;
 }
 
 
+*/
 
 /* OLD TEST DATA...WILL KEEP FOR NOW .....  ALL THIS HAS BEEN REPLACED USING FILES ON SD CARD FOR LOADING ....
 const unsigned char rawData[6912+2] = {  // Judge-Dredd
