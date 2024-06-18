@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------
-//  "Arduino Hardware Interface for ZX Spectrum" - 2013 P.Overy
+//  "Arduino Hardware Interface for ZX Spectrum" - 2023 P.Overy
 // -------------------------------------------------------------------------------------
 //
 // This software uses the Arduino's ATmega328P range (Nano, Pro mini ... )
@@ -11,7 +11,7 @@
 // SPEC OF SPECCY H/W PORTS HERE: -  https://mdfs.net/Docs/Comp/Spectrum/SpecIO
 // ASM CODE FOR REF AT EOF (may be old if I forget to update)
 //
-// good link foir aruino info here: https://devboards.info/boards/arduino-nano
+// good link for Arduino info here: https://devboards.info/boards/arduino-nano
 // -------------------------------------------------------------------------------------
 
 #include <avr/pgmspace.h>
@@ -35,15 +35,15 @@ typedef uint16_t BufferIndexType;
 #endif
 
 static BufferIndexType bufferHead;
-static BufferIndexType bufferTail;
-static bool isBufferFull;
+static volatile BufferIndexType bufferTail;
+static volatile bool isBufferFull;
 byte circularBuffer[BUFFER_SIZE];
 
 inline bool isBufferEmpty() {
   return ((bufferHead == bufferTail) && !isBufferFull);
 }
 
-inline void resetBuffer() {
+inline void resetCircularBuffer() {
   bufferHead = 0;
   bufferTail = 0;
   isBufferFull = false;
@@ -88,15 +88,15 @@ const byte Z80_D7Pin = 7;
 SdFat32 SD;
 FatFile myFile;
 
+
 void setup() {
-  resetBuffer();
+
+//   Serial.begin(9600);
+//    while (! Serial);
 
   pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
   pinMode(ledPin, OUTPUT);        // DEBUG
-
-  //  Serial.begin(9600);
-  //  while (! Serial);
-
+ 
   digitalWrite(Z80_D0Pin, LOW);
   digitalWrite(Z80_D1Pin, LOW);
   digitalWrite(Z80_D2Pin, LOW);
@@ -163,16 +163,6 @@ void setup() {
     }
   }
 
-  if (!myFile.open("1.scr")) {
-    while (1) {
-      digitalWrite(ledPin, LOW);  // fast flash error - file
-      delay(500);
-      digitalWrite(ledPin, HIGH);
-      delay(500);
-    }
-  }
-
-
   /* 
    * Configure interrupt on INT0 (pin 2) 
    * External Interrupt Control Register A (EICRA).
@@ -186,17 +176,75 @@ void setup() {
 
   // Arduino (nano or pro mini) interrupts need to use pins 2 or 3
   pinMode(interruptPin, INPUT);
+
+  resetCircularBuffer();
+ 
 }
 
+static byte fileIndex = 0;
+static volatile bool loadGame = true;
+static volatile int fileSize = 0;
+static byte amountReadTemp=0;
+
+static byte sdCardCache[2];
+static byte workingCache[2];
+static volatile byte amountRead=0;
+static volatile byte blockInterrupt=0;
+
 void loop() {
-  // Check if the buffer needs more data from the SD card
-  if (!isBufferFull) {
-    byte b;
-    if (myFile.read(&b, 1) == 1) {
-      writeToCircularBuffer(b);
+
+  if (loadGame) {
+
+    if (myFile.isOpen()) {
+      myFile.close();
+      resetCircularBuffer();
+    }
+    bool result = false;
+    switch (fileIndex) {
+      case 0:
+        result = myFile.open("1.scr");
+        break;
+      case 1:
+        result = myFile.open("2.scr");
+        break;
+    }
+    while (result == false) {
+      digitalWrite(ledPin, LOW);  // fast flash error - file
+      delay(500);
+      digitalWrite(ledPin, HIGH);
+      delay(500);
+    }
+
+    fileIndex++;
+    if (fileIndex == 2) {
+      fileIndex = 0;
+    }
+
+    if (!isBufferFull) {
+      byte b;
+      if (myFile.read(&b, 1) == 1) {
+        writeToCircularBuffer(b);
+      }
+    }
+
+    fileSize = myFile.fileSize();  //myFile.seekSet(0);
+
+    loadGame = false;
+    /*
+    Serial.println("-----");
+    Serial.println(fileSize);
+    */
+
+  } else {
+    if (!isBufferFull) {
+      byte b;
+      if (myFile.read(&b, 1) == 1) {
+        writeToCircularBuffer(b);
+      }
     }
   }
 }
+
 
 /*
  * IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
@@ -213,70 +261,28 @@ void loop() {
  */
 
 ISR(INT0_vect) {
-  // Check if buffer has data to process
-  if (bufferHead != bufferTail || isBufferFull) {
-    byte b = readFromCircularBuffer();
-    // Write data to Z80 data pins
-    PORTB = (PORTB & 0b11111110) | ((b & B00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
-    PORTD = b; // Directly set PORTB as it's safe inside the interrupt
+  if (fileSize > 0) {
+    // Check if buffer has data to process
+    if (bufferHead != bufferTail || isBufferFull) {
+      byte b = readFromCircularBuffer();
+      // Write data to Z80 data pins
+      PORTB = (PORTB & 0b11111110) | ((b & B00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
+      PORTD = b;                                              // Directly set PORTB
+      fileSize--;
+      amountRead--;
+    }else {
+       // NOTHING IN BUFFER
+    }
+  } else {
+    loadGame = true;
   }
+  
 }
 
-//OLD WORKED .. BUT MAYBE BEST TO PRESERVE ALL BITS AS ABOVE
+//THIS IS THE OLD WAY, IT WORKED .. BUT MAYBE BEST TO PRESERVE ALL BITS AS ABOVE
 //  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
 
-//AI    PORTD = (PORTD & 0b11111110) | ((b & 0b00000100) >> 2); // Set bit 0 from bit 2 of 'b'
 
-/*
-
-//------------------------------------------------------------------------------
-int FatFile::readByte(void* buf) {
-  uint8_t* dst = reinterpret_cast<uint8_t*>(buf);
-  uint32_t sector;  // Raw device sector number
-  uint16_t offset;  // Offset within the sector
-  uint8_t* pc;  // Pointer to cached sector data
-
-  // Check if the file is readable
-  if (!isReadable()) {
-    DBG_FAIL_MACRO;
-    goto fail;
-  }
-
-  // Limit the read to the remaining file size for root directory
-  uint16_t remainingSize = FS_DIR_SIZE * m_vol->m_rootDirEntryCount - (uint16_t)m_curPosition;
-  if (remainingSize == 0) {
-    return 0;
-  }
-
-  // Calculate offset within the sector
-  offset = m_curPosition & m_vol->sectorMask();
-
-  // Calculate the sector directly for root directory
-  sector = m_vol->rootDirStart() + (m_curPosition >> m_vol->bytesPerSectorShift());
-
-  // Prepare cache for reading the sector
-  pc = m_vol->dataCachePrepare(sector, FsCache::CACHE_FOR_READ);
-  if (!pc) {
-    DBG_FAIL_MACRO;
-    goto fail;
-  }
-
-  // Copy the single byte to the destination buffer
-  *dst = pc[offset];
-
-  // Update current position in the file
-  m_curPosition += 1;
-
-  return 1;
-
-fail:
-  // Handle read error
-  m_error |= READ_ERROR;
-  return -1;
-}
-
-
-*/
 
 /* OLD TEST DATA...WILL KEEP FOR NOW .....  ALL THIS HAS BEEN REPLACED USING FILES ON SD CARD FOR LOADING ....
 const unsigned char rawData[6912+2] = {  // Judge-Dredd
@@ -1323,27 +1329,17 @@ END start
 
 
 
-/* OLD TEST CODE - READS ARRAY FROM PROG MEMORY 
-// USE THIS TO TEST FROM MEMORY WITHOUT SD CARD
-volatile const byte* screenDataPtr = &rawData[0];  // Pointer for the raw picture data
-#define BUFFER_SIZE (256)  // note first pass will be "N-1"
-byte playBuf[BUFFER_SIZE];  
-byte circularBufferLoadIndex;   // (note: using byte wrap around)
-byte circularBufferReadIndex; 
-//#define ADVANCE_PLAY_BUFFER  circularBufferReadIndex++; if (circularBufferReadIndex>=BUFFER_SIZE) {circularBufferReadIndex=0;}
-//#define ADVANCE_LOAD_BUFFER  circularBufferLoadIndex++; if (circularBufferLoadIndex>=BUFFER_SIZE) {circularBufferLoadIndex=0;}
-#define ADVANCE_PLAY_BUFFER  circularBufferReadIndex++;
-#define ADVANCE_LOAD_BUFFER  circularBufferLoadIndex++;
-// Starting ReadIndex at one is bit of a fudge for the initial stating point.
-// However this will allow the buffer to completly fill before any read usage and so letting the load index wrap back to zero without a collision.
-#define RESET_BUFFERS circularBufferLoadIndex = circularBufferReadIndex = 1; 
-... the doing code 
-byte b = pgm_read_byte_near(screenDataPtr);  //  USE THIS TO TEST FROM MEMORY WITHOUT SD CARD
-PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);
-PORTD = (PORTD & 0b00000100) | (b & B11111011);
-screenDataPtr++;
-if (screenDataPtr == (&rawData[6912+2]) ) {    // adding 2 as the speccy reading side now looks for a "GO" begin sequence 
-  screenDataPtr = &rawData[0];
-}
+/* 
+ * OLD TEST CODE - READS ARRAY FROM PROG MEMORY 
+ * USE THIS TO TEST FROM MEMORY WITHOUT SD CARD
+  
+  volatile const byte* screenDataPtr = &rawData[0];  // Pointer for the raw picture data
+  byte b = pgm_read_byte_near(screenDataPtr);  //  USE THIS TO TEST FROM MEMORY WITHOUT SD CARD
+  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);
+  PORTD = (PORTD & 0b00000100) | (b & B11111011);
+  screenDataPtr++;
+  if (screenDataPtr == (&rawData[6912+2]) ) {    // adding 2 as the speccy reading side now looks for a "GO" begin sequence 
+    screenDataPtr = &rawData[0];
+  }
 
 */
