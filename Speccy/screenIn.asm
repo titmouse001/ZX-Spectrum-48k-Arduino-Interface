@@ -18,48 +18,59 @@
 ; Kempston  : ---- ---- 0001 1111  = 0x1F
 ;
 
+WAIT EQU $8
+
 org 0x8000
 start:      
 	DI
 
+	;;ld hl,0x4000
+	;;ld de,6912  ; data remaining is 6144 (bitmap) + 768 (Colour attributes) 
+
 mainloop: 
-	LD BC,$fff    ; give nano time to cache 
-    CALL DELAY
 
 	check_loop:  ; x2 bytes, header "GO"
 	in a,($1f) 
 	CP 'G'
 	JR NZ, check_loop
+	LD BC,WAIT
+    CALL DELAY
+	
 	in a,($1f) 
 	CP 'O'  
 	JR NZ, check_loop
 	; if we get here then we have found "GO" header 
-
-	LD BC,$ff    ; give nano time after header, not really needed
+	LD BC,WAIT
     CALL DELAY
 
-	ld hl,0x4000
-	ld de,6912  ; data remaining is 6144 (bitmap) + 768 (Colour attributes) 
+	; amount to transfer (small transfers, only 1 byte used)
+ 	in a,($1f)    ; 1 byte for amount    
+    ld d, a            
+	LD BC,WAIT
+    CALL DELAY
+
+	; dest (read 2 bytes) - Read the high byte
+    in a,($1f)        
+    ld H, a       ; 1st for high
+	LD BC,WAIT
+    CALL DELAY
+    in a,($1f)    ; 2nd for low byte
+    ld L, a           
+	LD BC,WAIT
+    CALL DELAY
 
 screenloop:
 
 	; ($1f) place on address buss bottom half (a0 to a7)
 	; Accumulator top half (a8 to a15) - currently I don't care
-	in a,($1f) 
-	ld (hl),a
+	in a,($1f)   ; Read a byte from the I/O port
+	ld (hl),a	 ; write to screen
     inc hl
-    dec de
 
-
-	LD BC,$ff  
+	LD BC,WAIT
     CALL DELAY
 
-;	REPT 64  ; delay
-;	NOP
-;	ENDM 
-
-	ld a,d
-    or e
+    dec d 		 
     jp nz,screenloop
 
     jr mainloop
@@ -74,6 +85,7 @@ screenloop:
 		
 END start
 
+
 ;ld BC,14
 ;loop14:
 ;
@@ -81,3 +93,7 @@ END start
 ;   ld a,B
 ;   or C
 ;  jp nz,loop14
+
+;	REPT 64  ; delay
+;	NOP
+;	ENDM 

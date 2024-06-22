@@ -12,7 +12,30 @@
 // ASM CODE FOR REF AT EOF (may be old if I forget to update)
 //
 // good link for Arduino info here: https://devboards.info/boards/arduino-nano
+
 // -------------------------------------------------------------------------------------
+
+// ATmega328P type Arduino (i.e Nano), only pins 2 and 3 are capable of generating interrupts.
+// interrupt vector_0 activated on INT0/digital pin 2 and
+// interrupt vector_1 activated on INT1/digital pin 3.
+// Interrupt trigger modes are:
+//  - LOW to trigger the interrupt whenever the pin is low,
+//  - CHANGE to trigger the interrupt whenever the pin changes value
+//  - RISING to trigger when the pin goes from low to high,
+//  - FALLING for when the pin goes from high to low.
+//
+// ISC01	  ISC00	  DESCRIPTION
+//   0	     0	    Low Level of INT0 generates interrupt
+//   0	     1	    Logical change of INT0 generates interrupt
+//   1	     0	    Falling Edge of INT0 generates interrupt
+//   1	     1	    Rising Edge of INT0 generates interrupt
+// For Example:-
+//   bitClear(EICRA, ISC01);  // bit position "ISC01"
+//   bitSet  (EICRA, ISC00);  // bit position "ISC00", both result in a Logical change on INT0
+
+//https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
+
+
 
 #include <avr/pgmspace.h>
 #include <SPI.h>
@@ -21,61 +44,11 @@
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 // 'SDFAT.H' : implementation allows 7-bit characters in the range
 
-// ********************************************************
-// Circular Buffer section - TODO MOVE TO SUPPORTING FILE
-// ********************************************************
-#define BUFFER_SIZE 256  // Use power of 2 value only here!
-static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0, "BUFFER_SIZE is not a power of 2!");
-
-#if BUFFER_SIZE <= 256
-typedef byte BufferIndexType;
-#else
-typedef uint16_t BufferIndexType;
-#define BUFFER_MASK (BUFFER_SIZE - 1)  // mask for wrapping around the buffer
-#endif
-
-static BufferIndexType bufferHead;
-static volatile BufferIndexType bufferTail;
-static volatile bool isBufferFull;
-byte circularBuffer[BUFFER_SIZE];
-
-inline bool isBufferEmpty() {
-  return ((bufferHead == bufferTail) && !isBufferFull);
-}
-
-inline void resetCircularBuffer() {
-  bufferHead = 0;
-  bufferTail = 0;
-  isBufferFull = false;
-}
-
-inline void writeToCircularBuffer(byte value) {
-  if (!isBufferFull) {
-    circularBuffer[bufferHead] = value;
-#if (BUFFER_SIZE <= 256)
-    bufferHead++;  // Special case. No need for masking as byte will wrap
-#else
-    bufferHead = (bufferHead + 1) & BUFFER_MASK;  // Wrap using the mask
-#endif
-    if (bufferHead == bufferTail) {
-      isBufferFull = true;
-    }
-  }
-}
-
-inline byte readFromCircularBuffer() {
-  isBufferFull = false;
-#if (BUFFER_SIZE <= 256)
-  return circularBuffer[bufferTail++];
-#else
-  return circularBuffer[bufferTail = ((bufferTail + 1) & BUFFER_MASK)];
-#endif
-}
-// ********************************************************
-
 // Arduino pin assignment
 const byte ledPin = 13;
 const byte interruptPin = 2;  // only pins 2 or 3 for the ATmega328P Microcontroller
+const int sdPin = 9;         // SD card pin
+
 const byte Z80_D0Pin = 0;
 const byte Z80_D1Pin = 1;
 const byte Z80_D2Pin = 8;  // Pin 2 taken by interrupt
@@ -85,45 +58,23 @@ const byte Z80_D5Pin = 5;
 const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
 
-SdFat32 SD;
-FatFile myFile;
+SdFat32 sd;
+FatFile dataFile;
 
+#define HEADER_SIZE (5) 
+#define BUFFER_SIZE (255-HEADER_SIZE) 
+byte buffer[BUFFER_SIZE + HEADER_SIZE];  // Adjusted for extra header bytes
+volatile int bufferIndex = 0;
+volatile int bufferSize = 0;  // Added to keep track of the actual buffer size
+//volatile bool bufferReady = false;
 
 void setup() {
 
-//   Serial.begin(9600);
-//    while (! Serial);
+   //  Serial.begin(9600);
+   //   while (! Serial);
 
   pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
   pinMode(ledPin, OUTPUT);        // DEBUG
- 
-  digitalWrite(Z80_D0Pin, LOW);
-  digitalWrite(Z80_D1Pin, LOW);
-  digitalWrite(Z80_D2Pin, LOW);
-  digitalWrite(Z80_D3Pin, LOW);
-  digitalWrite(Z80_D4Pin, LOW);
-  digitalWrite(Z80_D5Pin, LOW);
-  digitalWrite(Z80_D6Pin, LOW);
-  digitalWrite(Z80_D7Pin, LOW);
-
-  pinMode(Z80_D0Pin, OUTPUT);
-  pinMode(Z80_D1Pin, OUTPUT);
-  pinMode(Z80_D2Pin, OUTPUT);
-  pinMode(Z80_D3Pin, OUTPUT);
-  pinMode(Z80_D4Pin, OUTPUT);
-  pinMode(Z80_D5Pin, OUTPUT);
-  pinMode(Z80_D6Pin, OUTPUT);
-  pinMode(Z80_D7Pin, OUTPUT);
-
-  //tri-state
-  pinMode(Z80_D0Pin, INPUT);
-  pinMode(Z80_D1Pin, INPUT);
-  pinMode(Z80_D2Pin, INPUT);
-  pinMode(Z80_D3Pin, INPUT);
-  pinMode(Z80_D4Pin, INPUT);
-  pinMode(Z80_D5Pin, INPUT);
-  pinMode(Z80_D6Pin, INPUT);
-  pinMode(Z80_D7Pin, INPUT);
 
   // These pins are connected to the address lines on the Z80
   pinMode(Z80_D0Pin, OUTPUT);
@@ -135,32 +86,11 @@ void setup() {
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
 
-  // ATmega328P type Arduino (i.e Nano), only pins 2 and 3 are capable of generating interrupts.
-  // interrupt vector_0 activated on INT0/digital pin 2 and
-  // interrupt vector_1 activated on INT1/digital pin 3.
-  // Interrupt trigger modes are:
-  //  - LOW to trigger the interrupt whenever the pin is low,
-  //  - CHANGE to trigger the interrupt whenever the pin changes value
-  //  - RISING to trigger when the pin goes from low to high,
-  //  - FALLING for when the pin goes from high to low.
-  //
-  // ISC01	  ISC00	  DESCRIPTION
-  //   0	     0	    Low Level of INT0 generates interrupt
-  //   0	     1	    Logical change of INT0 generates interrupt
-  //   1	     0	    Falling Edge of INT0 generates interrupt
-  //   1	     1	    Rising Edge of INT0 generates interrupt
-  // For Example:-
-  //   bitClear(EICRA, ISC01);  // bit position "ISC01"
-  //   bitSet  (EICRA, ISC00);  // bit position "ISC00", both result in a Logical change on INT0
+    pinMode(16, OUTPUT);
 
-
-  if (!SD.begin(9)) {
-    while (1) {
-      digitalWrite(ledPin, LOW);  // slow flash error - sd card
-      delay(1000);
-      digitalWrite(ledPin, HIGH);
-      delay(1000);
-    }
+   // Initialize SD card
+  if (!sd.begin(sdPin)) {
+    while (1);  // Halt execution
   }
 
   /* 
@@ -171,117 +101,133 @@ void setup() {
   cli();
   bitSet(EICRA, ISC01);  // Rising Edge of INT0 generates interrupt
   bitSet(EICRA, ISC00);
-  bitSet(EIMSK, INT0);   // enable INT0 interrupt
+  bitSet(EIMSK, INT0);  // enable INT0 interrupt
   sei();
 
   // Arduino (nano or pro mini) interrupts need to use pins 2 or 3
   pinMode(interruptPin, INPUT);
 
-  resetCircularBuffer();
- 
-}
+ }
 
-static byte fileIndex = 0;
-static volatile bool loadGame = true;
-static volatile int fileSize = 0;
-static byte amountReadTemp=0;
-
-static byte sdCardCache[2];
-static byte workingCache[2];
-static volatile byte amountRead=0;
-static volatile byte blockInterrupt=0;
+const char *fileNames[] = {"1.scr","2.scr","3.scr","4.scr"};
+const byte items = sizeof(fileNames)/sizeof(fileNames[0]);
+byte fileIndex=0;
 
 void loop() {
 
-  if (loadGame) {
-
-    if (myFile.isOpen()) {
-      myFile.close();
-      resetCircularBuffer();
-    }
-    bool result = false;
-    switch (fileIndex) {
-      case 0:
-        result = myFile.open("1.scr");
-        break;
-      case 1:
-        result = myFile.open("2.scr");
-        break;
-    }
-    while (result == false) {
-      digitalWrite(ledPin, LOW);  // fast flash error - file
-      delay(500);
-      digitalWrite(ledPin, HIGH);
-      delay(500);
-    }
-
-    fileIndex++;
-    if (fileIndex == 2) {
-      fileIndex = 0;
-    }
-
-    if (!isBufferFull) {
-      byte b;
-      if (myFile.read(&b, 1) == 1) {
-        writeToCircularBuffer(b);
-      }
-    }
-
-    fileSize = myFile.fileSize();  //myFile.seekSet(0);
-
-    loadGame = false;
-    /*
-    Serial.println("-----");
-    Serial.println(fileSize);
-    */
-
-  } else {
-    if (!isBufferFull) {
-      byte b;
-      if (myFile.read(&b, 1) == 1) {
-        writeToCircularBuffer(b);
-      }
-    }
+  if (!dataFile.open(fileNames[fileIndex])) {
+    while (1);  // Halt execution
   }
+   
+  uint16_t value = 0x4000;  //screen address for testing
+
+  while (dataFile.available()) {
+    buffer[0] = 'G';  // Header
+    buffer[1] = 'O';  // Header
+ 
+    const uint8_t high_byte = (value >> 8) & 0xFF;  
+    const uint8_t low_byte = value & 0xFF;         
+    buffer[3] = high_byte; 
+    buffer[4] = low_byte;  
+
+    int i;
+    for (i = 0; i < BUFFER_SIZE; i++) {
+      if (dataFile.available()) {
+        buffer[i + HEADER_SIZE] = dataFile.read();  // Adjusted for the 4 extra bytes
+      } else {
+        break;
+      }
+    }
+    buffer[2] = i;       // Size is now the actual number of bytes read
+    bufferSize = i + HEADER_SIZE;  // Total size of the buffer including the extra bytes
+    bufferIndex = 0;
+ 
+    while (bufferIndex < bufferSize) {}
+    bufferSize = 0; // playing it safe - bar interrupt from reading
+    
+    value+=buffer[2];
+  }
+  dataFile.close();
+  if (++fileIndex>=items) fileIndex=0;
+  delay(1500);
+}
+
+/* 
+ * Interrupt Service Routine for INT0
+ * Outputs data to pins connected to Z80 data bus via a line driver (7ALS244)
+ * Manipulates PORTC & PORTD directly within ISR
+ *
+ * Historically, the code transitioned from setting PORTB to using PORTC for efficiency reasons.
+ * The old slow way: PORTB = (PORTB & 0b11111110) | ((b & 0b00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
+ * 
+ * Direct manipulation of PORTD within ISR is technically safe as we are inside the interrupt context.
+ */ 
+ 
+ISR(INT0_vect) {
+    
+  if (bufferIndex < bufferSize) {
+    byte b = buffer[bufferIndex++];
+    //now using portC old way...  PORTB = (PORTB & 0b11111110) | ((b & 0b00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
+    PORTC = b&0b00000100;  // Set prot to reflect bit A2 from 'b'
+    PORTD = b;             // Directly set PORTD with data 'b'
+  }
+  // else {
+    // The Speccy is requesting data but it's not ready!!!
+    // Using old random data can lead to unpredictable behavior.
+    // While acceptable for initial stages(first 2 bytes of header), it's critical for stable operation elsewhere.
+  //}
 }
 
 
-/*
- * IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
- *
- * PORTB maps to Arduino digital pins 8 to 13. 
- * The two high bits (6 & 7) map to the crystal pins and should not be used.
- *
- * Port Registers:
+
+/* IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits.
  * PORTB (digital pins 8 to 13) - Pin 8 is used here to replace pin 2 on PORTD, which is needed for interrupts.
+ *                                The two high bits map to the crystal pins and should not be used.
  * PORTC (analog input pins)
  * PORTD (digital pins 0 to 7) - Pins 0, 1, 3, 4, 5, 6, 7 are used; pin 2 is reserved for interrupts.
  *
  * Note: Ideally, we could use a single byte, but constraints force us to use two bytes.
  */
 
-ISR(INT0_vect) {
-  if (fileSize > 0) {
-    // Check if buffer has data to process
-    if (bufferHead != bufferTail || isBufferFull) {
-      byte b = readFromCircularBuffer();
-      // Write data to Z80 data pins
-      PORTB = (PORTB & 0b11111110) | ((b & B00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
-      PORTD = b;                                              // Directly set PORTB
-      fileSize--;
-      amountRead--;
-    }else {
-       // NOTHING IN BUFFER
-    }
-  } else {
-    loadGame = true;
-  }
-  
-}
-
 //THIS IS THE OLD WAY, IT WORKED .. BUT MAYBE BEST TO PRESERVE ALL BITS AS ABOVE
 //  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
 
+ // PORTD = PORTD; //(PORTD & 0b00000100) | (b & 0b11111011);
+
+
+/*TEST CODE
+
+static byte x = 0;
+static int iii = 0;
+iii++;
+if (iii == 10) {
+  if (bufferIndex < (buffer[2]+4) ) {
+
+    byte b = buffer[bufferIndex];
+    if ((b > 32) && (b < 127)) {
+      Serial.print((char)b);
+    
+    } else {
+      Serial.print(".");
+    }
+
+    x++;
+    if (x > 31) {
+      x = 0;
+      Serial.println("|");
+    }
+
+    // Write data to Z80 data pins
+    PORTB = (PORTB & 0b11111110) | ((b & B00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
+    PORTD = b;                                              // Directly set PORTB
+    bufferIndex++;
+  } else {
+    triggerCacheRead = true;  // DISABLE INTERRUPTS HERE ????
+  }
+  iii = 0;
+}
+
+*/
 
 
 /* OLD TEST DATA...WILL KEEP FOR NOW .....  ALL THIS HAS BEEN REPLACED USING FILES ON SD CARD FOR LOADING ....
