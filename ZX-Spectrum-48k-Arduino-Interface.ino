@@ -35,6 +35,14 @@
 
 //https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
 
+/* IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits.
+ * NO LONGER WORKS THIS WAY... PORTB (digital pins 8 to 13) - Pin 8 is used here to replace pin 2 on PORTD, which is needed for interrupts.
+ *                                The two high bits map to the crystal pins and should not be used.
+ * NOW REPLACING PORTB with... PORTC PIN 16
+ * PORTD (digital pins 0 to 7) - Pins 0, 1, 3, 4, 5, 6, 7 are used; pin 2 is reserved for interrupts.
+ *
+ * Note: Ideally, we could use a single byte, but constraints force us to use two bytes.
+ */
 
 
 #include <avr/pgmspace.h>
@@ -45,28 +53,35 @@
 // 'SDFAT.H' : implementation allows 7-bit characters in the range
 
 // Arduino pin assignment
-const byte ledPin = 13;
 const byte interruptPin = 2;  // only pins 2 or 3 for the ATmega328P Microcontroller
-const int sdPin = 9;         // SD card pin
+const byte sdPin = 9;         // SD card pin
+const byte ledPin = 13;
 
 const byte Z80_D0Pin = 0;
 const byte Z80_D1Pin = 1;
-const byte Z80_D2Pin = 8;  // Pin 2 taken by interrupt
+const byte Z80_D2Pin = 16; //was 8;  // note:interrupt takes Pin2
 const byte Z80_D3Pin = 3;
 const byte Z80_D4Pin = 4;
 const byte Z80_D5Pin = 5;
 const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
 
-SdFat32 sd;
-FatFile dataFile;
+// Message structure
+const byte HEADER_START_G=0;     // Index for first byte of header
+const byte HEADER_START_O=1;     // Index for second byte of header
+const byte HEADER_AMOUNT=2;      // Index for header size byte
+const byte HEADER_HIGH_BYTE=3;   // Index for high byte of address
+const byte HEADER_LOW_BYTE=4;    // Index for low byte of address
 
-#define HEADER_SIZE (5) 
-#define BUFFER_SIZE (255-HEADER_SIZE) 
-byte buffer[BUFFER_SIZE + HEADER_SIZE];  // Adjusted for extra header bytes
+const byte SIZE_OF_HEADER=HEADER_LOW_BYTE+1; 
+const byte BUFFER_SIZE=(256-SIZE_OF_HEADER);
+//const byte BUFFER_SIZE=(255-SIZE_OF_HEADER);
+byte buffer[BUFFER_SIZE + SIZE_OF_HEADER];  // Adjusted for extra header bytes
 volatile int bufferIndex = 0;
 volatile int bufferSize = 0;  // Added to keep track of the actual buffer size
-//volatile bool bufferReady = false;
+
+SdFat32 sd;
+FatFile dataFile;
 
 void setup() {
 
@@ -85,8 +100,7 @@ void setup() {
   pinMode(Z80_D5Pin, OUTPUT);
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
-
-    pinMode(16, OUTPUT);
+//  pinMode(16, OUTPUT);
 
    // Initialize SD card
   if (!sd.begin(sdPin)) {
@@ -119,33 +133,34 @@ void loop() {
     while (1);  // Halt execution
   }
    
-  uint16_t value = 0x4000;  //screen address for testing
+  uint16_t destinationAddress = 0x4000;  //screen address for testing
 
   while (dataFile.available()) {
-    buffer[0] = 'G';  // Header
-    buffer[1] = 'O';  // Header
+    buffer[HEADER_START_G] = 'G';  // Header
+    buffer[HEADER_START_O] = 'O';  // Header
  
-    const uint8_t high_byte = (value >> 8) & 0xFF;  
-    const uint8_t low_byte = value & 0xFF;         
-    buffer[3] = high_byte; 
-    buffer[4] = low_byte;  
+    const uint8_t high_byte = (destinationAddress >> 8) & 0xFF;  
+    const uint8_t low_byte = destinationAddress & 0xFF;         
+    buffer[HEADER_HIGH_BYTE] = high_byte; 
+    buffer[HEADER_LOW_BYTE] = low_byte;  
 
     int i;
     for (i = 0; i < BUFFER_SIZE; i++) {
       if (dataFile.available()) {
-        buffer[i + HEADER_SIZE] = dataFile.read();  // Adjusted for the 4 extra bytes
+        buffer[i + SIZE_OF_HEADER] = dataFile.read();  // Adjusted for the 4 extra bytes
       } else {
         break;
       }
     }
     buffer[2] = i;       // Size is now the actual number of bytes read
-    bufferSize = i + HEADER_SIZE;  // Total size of the buffer including the extra bytes
+    bufferSize = i + SIZE_OF_HEADER;  // Total size of the buffer including the extra bytes
     bufferIndex = 0;
  
-    while (bufferIndex < bufferSize) {}
+    while (bufferIndex < bufferSize) { __asm__ __volatile__("nop"); }
+    //while (bufferIndex < bufferSize) {}
     bufferSize = 0; // playing it safe - bar interrupt from reading
     
-    value+=buffer[2];
+    destinationAddress+=buffer[2];
   }
   dataFile.close();
   if (++fileIndex>=items) fileIndex=0;
@@ -178,16 +193,6 @@ ISR(INT0_vect) {
   //}
 }
 
-
-
-/* IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits.
- * PORTB (digital pins 8 to 13) - Pin 8 is used here to replace pin 2 on PORTD, which is needed for interrupts.
- *                                The two high bits map to the crystal pins and should not be used.
- * PORTC (analog input pins)
- * PORTD (digital pins 0 to 7) - Pins 0, 1, 3, 4, 5, 6, 7 are used; pin 2 is reserved for interrupts.
- *
- * Note: Ideally, we could use a single byte, but constraints force us to use two bytes.
- */
 
 //THIS IS THE OLD WAY, IT WORKED .. BUT MAYBE BEST TO PRESERVE ALL BITS AS ABOVE
 //  PORTB = (PORTB & 0b11000000) | ((b & B00000100) >> 2);  // inludes preserving PORTB
