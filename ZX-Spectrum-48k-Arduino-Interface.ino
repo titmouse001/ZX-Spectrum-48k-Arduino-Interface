@@ -69,16 +69,19 @@ const byte Z80_D7Pin = 7;
 // Message structure
 const byte HEADER_START_G=0;     // Index for first byte of header
 const byte HEADER_START_O=1;     // Index for second byte of header
-const byte HEADER_AMOUNT=2;      // Index for header size byte
+const byte HEADER_PAYLOADSIZE=2; // Index for payload as bytes
 const byte HEADER_HIGH_BYTE=3;   // Index for high byte of address
 const byte HEADER_LOW_BYTE=4;    // Index for low byte of address
 
-const byte SIZE_OF_HEADER=HEADER_LOW_BYTE+1; 
-const byte BUFFER_SIZE=(256-SIZE_OF_HEADER);
-//const byte BUFFER_SIZE=(255-SIZE_OF_HEADER);
-byte buffer[BUFFER_SIZE + SIZE_OF_HEADER];  // Adjusted for extra header bytes
-volatile int bufferIndex = 0;
-volatile int bufferSize = 0;  // Added to keep track of the actual buffer size
+const byte SIZE_OF_HEADER = 5; 
+const byte PAYLOAD_BUFFER_SIZE = 250;
+const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
+
+byte buffer[BUFFER_SIZE];  // stores header + payload
+// NOTE: bufferIndex and bufferSize must be in bytes for fast unpacking in interrupt handling,
+// as response time to Z80:IN is critical.
+volatile byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
+volatile byte bufferSize = 0;   // Current size of valid data in the buffer
 
 SdFat32 sd;
 FatFile dataFile;
@@ -100,7 +103,11 @@ void setup() {
   pinMode(Z80_D5Pin, OUTPUT);
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
-//  pinMode(16, OUTPUT);
+
+  //pinMode(8, INPUT);
+  //pinMode(9, OUTPUT);
+  //bitClear(PORTB,1);    
+  //pinMode(9, INPUT);
 
    // Initialize SD card
   if (!sd.begin(sdPin)) {
@@ -144,23 +151,31 @@ void loop() {
     buffer[HEADER_HIGH_BYTE] = high_byte; 
     buffer[HEADER_LOW_BYTE] = low_byte;  
 
-    int i;
-    for (i = 0; i < BUFFER_SIZE; i++) {
-      if (dataFile.available()) {
-        buffer[i + SIZE_OF_HEADER] = dataFile.read();  // Adjusted for the 4 extra bytes
-      } else {
-        break;
-      }
+    int bytesRead = 0;
+    for (bytesRead = 0; bytesRead < PAYLOAD_BUFFER_SIZE; bytesRead++) {
+        if (dataFile.available()) {
+            buffer[SIZE_OF_HEADER + bytesRead] = dataFile.read();
+        } else {
+            break;
+        }
     }
-    buffer[2] = i;       // Size is now the actual number of bytes read
-    bufferSize = i + SIZE_OF_HEADER;  // Total size of the buffer including the extra bytes
+    buffer[HEADER_PAYLOADSIZE] = bytesRead;
+    bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
- 
-    while (bufferIndex < bufferSize) { __asm__ __volatile__("nop"); }
-    //while (bufferIndex < bufferSize) {}
+
+    while (bufferIndex < bufferSize) {
+/*
+      // PORTB - pin8, pin9 free (10,11,12,13 used for sd card)
+      if (bitRead(PINB, PINB0) == 0) {  // pin8, Z80 /halt line active
+        pinMode(9, OUTPUT);             // line pre-set as low
+        //// removed     bitClear(PORTB,1);    // pin9 low, trigger /NMI to release halted z80
+        pinMode(9, INPUT);              // done here, go high-impedance
+      }
+*/
+       __asm__ __volatile__("nop");
+    }   
     bufferSize = 0; // playing it safe - bar interrupt from reading
-    
-    destinationAddress+=buffer[2];
+    destinationAddress+=buffer[HEADER_PAYLOADSIZE];
   }
   dataFile.close();
   if (++fileIndex>=items) fileIndex=0;
@@ -178,13 +193,14 @@ void loop() {
  * Direct manipulation of PORTD within ISR is technically safe as we are inside the interrupt context.
  */ 
  
-ISR(INT0_vect) {
+ISR(INT0_vect) { // triggered by z80:IN
     
   if (bufferIndex < bufferSize) {
-    byte b = buffer[bufferIndex++];
-    //now using portC old way...  PORTB = (PORTB & 0b11111110) | ((b & 0b00000100) >> 2);  // Set bit 0 from bit 2 of 'b'
-    PORTC = b&0b00000100;  // Set prot to reflect bit A2 from 'b'
-    PORTD = b;             // Directly set PORTD with data 'b'
+    byte b = buffer[bufferIndex];
+    PORTD = b;                  // PortD bit2 is taken, setting that bit via PortC 
+    PORTC = b; //b&0b00000100;  // final missing bit2 sent via pin A2 
+    bufferIndex++;    
+  //  halt=true;  // flag to wakeup the halting z80
   }
   // else {
     // The Speccy is requesting data but it's not ready!!!
