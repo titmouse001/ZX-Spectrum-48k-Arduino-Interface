@@ -133,7 +133,7 @@ void setup() {
   // should be possible to keep logic out of the ISR, the z80 and arduino should work in sync
 }
 
-const char *fileNames[] = { "1.scr", "2.scr", "3.scr", "4.scr" };
+const char *fileNames[] = { "h.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
 const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
 byte fileIndex = 0;
 
@@ -143,7 +143,8 @@ void loop() {
     while (1);  // Halt execution
   }
 
-  uint16_t destinationAddress = 0x4000;  //screen address for testing
+  uint16_t destinationAddress = 0x4000;  //screen address
+  dataFile.seekSet(27);  // skip over header as we will read that later
 
   while (dataFile.available()) {
     buffer[HEADER_START_G] = 'G';  // Header
@@ -154,23 +155,11 @@ void loop() {
     buffer[HEADER_HIGH_BYTE] = high_byte;
     buffer[HEADER_LOW_BYTE] = low_byte;
 
-/*
-    int bytesRead = 0;
-    for (bytesRead = 0; bytesRead < PAYLOAD_BUFFER_SIZE; bytesRead++) {
-      if (dataFile.available()) {
-        buffer[SIZE_OF_HEADER + bytesRead] = dataFile.read();
-      } else {
-        break;
-      }
-    }
-*/
-
-    int bytesRead = 0;
+    byte bytesRead = 0;
     if (dataFile.available()) {
       // Read up to PAYLOAD_BUFFER_SIZE bytes or until end of file
-      bytesRead = dataFile.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+      bytesRead = (byte)dataFile.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     }
-
 
     buffer[HEADER_PAYLOADSIZE] = bytesRead;
 
@@ -181,9 +170,14 @@ void loop() {
     byte b = buffer[0]; // Pre-load the first byte (see INT0 for advancing the buffer index)
     PORTD = (PORTD & B00000100) | (b & B11111011);
     PORTC = (PORTC & B11111011) | (b & B00000100); 
+    // Above is only needed for the very first time around... infact it could just set 'G'
+    // Technically the last Z80:IN stalls and has to wait for the next new chunk.
+    // Which means this [0] is never needed after the initial chuck.
 
     bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
+
+//uint16_t addr = destinationAddress;
 
     while ((bufferIndex < bufferSize)) {
       if ((bitRead(PINB, PINB0) == LOW) ) {
@@ -191,8 +185,13 @@ void loop() {
         // Pre-load data onto ports while the Z80 processor is halted,
         // using ports that are best suited for data alignment.
         byte b = buffer[bufferIndex];  
+ //       if (addr == (0x5CB0 - 0x4000)) {
+  //        b = 9;
+   //     }
         PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
         PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC
+
+//        addr++;
 
         // Arduino's pin A2 signals the Z80 /NMI line, this will un-halt the Z80.
         // Here we are changing direction only (timing optimisation - as pin already put LOW at setup time)
@@ -204,10 +203,120 @@ void loop() {
     bufferSize = 0;  // playing it safe - bar interrupt from reading
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
+
+  dataFile.seekSet(0); // Rewind - now read the header, so Z80 can restore states
+
+  byte bytesRead = 0;
+  if (dataFile.available()) {
+    bytesRead = (byte)dataFile.read(&buffer[0+2], 27);
+  }
+
+  buffer[0] = 'E';   // Execute command "EX"
+  buffer[1] = 'X';  
+  bufferSize = 27 + 2;
+  bufferIndex = 0;
+
+//REG_I	  00
+//REG_HL1	01	;HL'
+//REG_DE1	03	;DE'
+//REG_BC1	05	;BC'
+//REG_AF1	07	;AF'
+//REG_HL	09
+//REG_DE	11
+//REG_BC	13
+//REG_IY	15
+//REG_IX	17
+//REG_IFF 19 
+//REG_R	  20 
+//REG_AF	21
+//REG_SP	23
+//REG_IM	25 
+//REG_BDR	26	 
+/*
+static byte at[] = {
+         1, 2,//  hl'  LIST IS THE Z80 RESTORE ORDER
+         3, 4,//  de'
+         7, 8,//  af'
+         5, 6,//  bc'
+         9,10,//  hl
+        11,12,//  de
+        15,16,//  iy
+        17,18,//  ix
+        25   ,//  IM  
+         0   ,//  i
+        19   ,//  iff
+        20   ,//  r
+        21,22,//  AF
+        23,24,//  SP
+        13,14 //  BC
+};
+*/
+
+static byte at[] = {
+         2,1,//  hl'  LIST IS THE Z80 RESTORE ORDER
+         3,3,//  de'
+         8,7,//  af'
+         6,5,//  bc'
+         10,9,//  hl
+        12,11,//  de
+        16,15,//  iy
+        18,17,//  ix
+        25   ,//  IM  
+         0   ,//  i
+        19   ,//  iff
+        20   ,//  r
+        22,21,//  AF
+        24,23,//  SP
+        14,13, //  BC
+        26
+};
+  bufferSize-=1;  // forget the last byte for now (BorderColor)
+
+  while ((bufferIndex < bufferSize)) {
+    if ((bitRead(PINB, PINB0) == LOW) ) {
+
+      byte b;
+      if (bufferIndex>=2) {
+        b = buffer[ 2+ at[bufferIndex-2] ];
+      }else {
+        if (bufferIndex==0) {b='E';}
+        if (bufferIndex==1) {b='X';}
+      }
+
+      PORTD = (PORTD & B00000100) | (b & B11111011); 
+      PORTC = (PORTC & B11111011) | (b & B00000100);  
+      bitSet(DDRC, DDC0);    
+      bitClear(DDRC, DDC0);  
+    }
+  }
+
   dataFile.close();
   if (++fileIndex >= items) fileIndex = 0;
   delay(2500);
+
+  delay(1000000);
 }
+
+
+
+/*
+;00  I      [17]
+;01  HL'    [ 0, 1]
+;03  DE'    [ 2, 3]
+;05  BC'    [ 4, 5]
+;07  AF'    [ 6, 7]
+;09  HL     [ 8, 9]
+;11  DE     [10,11]
+;13  BC     [24,25]
+;15  IY     [12,13] 
+;17  IX     [14,15]
+;19  IFF2   [18]
+;20  R      [19]
+;21  AF     [20,21]
+;23  SP     [22,23]
+;25  IM     [16]
+;26  col    [  ]
+*/
 
 /* 
  * Interrupt Service Routine for INT0

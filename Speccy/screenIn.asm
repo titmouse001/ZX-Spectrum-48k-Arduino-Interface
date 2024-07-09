@@ -1,60 +1,164 @@
-;https://www.retronator.com/png-to-scr
+org 0x8040
 
-; OPTIMISED CODE TIPS HERE:-
-; https://www.smspower.org/Development/Z80ProgrammingTechniques
-
-;https://github.com/konkotgit/ZX-external-ROM/blob/master/docs/zx_ext_eprom_512.pdf
-
-; Contended Screen Ram
-; On 48K Spectrums, the block of RAM between &4000 and &7FFF is contented, 
-; that is access to the RAM is shared between the processor and the ULA. 
-
-; ====================
-; PORTS USED BY SYSTEM
-; ====================
-; ULA 		: ---- ---- ---- ---0  
-;			  All even I/O  uses the ULA, officialy 0xFE is used.
-; Keyboard 	: 0x7FFE to 0xFEFE
-; Kempston  : ---- ---- 0001 1111  = 0x1F
-;
-
-WAIT EQU $8
-
-org 0x8000
 start:      
 	DI
-	
-	im 1 ; Set interrupt mode 1
-
+;;;;;;	im 1 ; Set interrupt mode 1
+;;;;	ld a,9
+;;;;    LD ($5CB0),a   ; NMI will just return - changing 1byte is enough
+  
+  
 	LD HL,$5CB0 
     LD (HL),9
     INC HL      
     LD (HL),9
 
-	;;ld hl,0x4000
-	;;ld de,6912  ; data remaining is 6144 (bitmap) + 768 (Colour attributes) 
-
 mainloop: 
 
+; First loop to check for either 'G' or 'E'
+check_initial:  
+    in a, ($1f)       ; Read input from port $1f
+    halt              ; Halt to simulate waiting for the next input
+    cp 'G'            ; Compare input with 'G'
+    jr z, check_GO     ; If 'G', jump to check_G
+    cp 'E'            ; Compare input with 'E'
+    jr z, check_EX     ; If 'E', jump to check_E
+    jr check_initial  ; Otherwise, keep checking
 
-	check_loop:  ; x2 bytes, header "GO"
+; Subroutine to handle 'GO' command
+check_GO:
+    in a, ($1f)       ; Read input from port $1f
+    halt              ; Halt to simulate waiting for the next input
+    cp 'O'            ; Compare input with 'O'
+    jr nz, check_initial ; If not 'O', go back to initial check
+    jp command_GO     ; If 'O', jump to command_GO
+
+; Subroutine to handle 'EX' command
+check_EX:
+    in a, ($1f)       ; Read input from port $1f
+    halt              ; Halt to simulate waiting for the next input
+    cp 'X'            ; Compare input with 'X'
+    jr nz, check_initial ; If not 'X', go back to initial check
+
+command_EX:  
+	ld SP,TINY_STACK  ; ONLY 1 PUSH!
+	ld c,$1f
+
+	ld a,2
+	out ($fe), a
+
+	in h,(c)   ;0
+	halt
+	in l,(c)   ;1
+	halt
+	in d,(c)   ;2
+	halt
+	in e,(c)   ;3
+	halt
 	
-	in a,($1f) 
+	in b,(c)   ;4 
+	halt
+	in c,(c)   ;5 
+	halt
+	push BC
+	pop AF	
+
+	ld c,$1f
+	in b,(c)   ;6
+	halt
+	in c,(c)   ;7	
+	halt
+	ex	af,af'
+	exx		; Alternates restored
+
+	ld c,$1f
+	in h,(c)  ;8
+	halt
+	in l,(c)  ;9
+	halt
+	in d,(c)  ;10
+	halt
+	in e,(c)  ;11
 	halt
 
-	CP 'G'
-	JR NZ, check_loop
-	;;;LD BC,WAIT
-    ;;;CALL DELAY 
+	in b,(c)  ;12 - temp
+	halt
+	in c,(c)  ;13 - temp
+	halt
+	push bc
+	pop IY
+	
+	ld c,$1f
+	in b,(c)  ;14 - temp
+	halt
+	in c,(c)  ;15 - temp
+	halt
+	push bc
+	pop IX
 
-	in a,($1f) 
+;;;	in b,(c)   dont restore BC yet, keep as working spare
+;;;	in c,(c)
+	
+	; Restore interrupt mode
+	in a,($1f)  ;16
+	halt
+	or	a
+	jr	nz,notim0
+	im	0
+	jr	setIM
+notim0:	dec	a
+	jr	nz,notim1
+	im	1
+	jr	setIM
+notim1:	im	2
+
+ 	; Restore 'I'
+setIM: in a,($1f)   ;17  
+	halt
+	ld	i,a
+
+	; Restore interrupt enable flip-flop (IFF) 
+	in a,($1f)  	;18 - REG_IFF
+	halt
+	AND	%00000100
+	jr	z,skipEI
+	EI	 ; restore Interrupt (this code uses DI - so if needed we only need to enable)
+skipEI:
+
+; R REG ... TODO  
+	in A,($1f)   ;19 - read but ignore for now
 	halt
 
-	CP 'O'  
-	JR NZ, check_loop
-	; if we get here then we have found "GO" header 
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
+	; Restore AF
+	ld c,$1f
+	in b,(c) ;20
+	halt
+	in c,(c) ;21
+	halt
+	push BC
+	pop AF
+
+	; Restore SP
+	ld c,$1f
+	in B,(c)	;22 - SP - high byte
+	halt
+	in C,(c)	;23 - SP - low byte
+	halt
+	push BC
+	pop BC
+	ld SP,(TINY_STACK-2)
+
+	; Restore BC register pair
+	ld c,$1f
+	in b,(c)   ;24 
+	halt
+	in c,(c)   ;25
+	halt
+
+	;26 col ignore for now - don't even read
+
+	RETN  ; PC ready on stack! return to start snapshot code
+
+command_GO:
 
 	; amount to transfer (small transfers, only 1 byte used)
  	in a,($1f)    ; 1 byte for amount    
@@ -62,109 +166,35 @@ mainloop:
 
     ld d, a   
 	ld e, a       ; keep copy      
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
 
 	; dest (read 2 bytes) - Read the high byte
-    in a,($1f)        
+    in a,($1f)    ; 1st for high  
 	halt
-
-    ld H, a       ; 1st for high
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
+    ld H, a      
     in a,($1f)    ; 2nd for low byte
 	halt
-
     ld L, a           
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
 
 screenloop:
-
-	; ($1f) place on address buss bottom half (a0 to a7)
-	; Accumulator top half (a8 to a15) - currently I don't care
 	in a,($1f)   ; Read a byte from the I/O port
-	halt
-
 	ld (hl),a	 ; write to screen
     inc hl
-
-	;;;LD BC,WAIT
-   ;;; CALL DELAY
+	halt 		 ; DO THIS LAST CRITICAL HALT AFTER MEMORY WRITE
 
     dec d 	
     jp nz,screenloop
+
+    jp mainloop
+
+db 0,0
+TINY_STACK:  ; push decrements stack
 	
-	; CRC CHECK AGIANT LAST DATA TRANSFER
-;	ld d,0  ; not needed
-;	or a
-;	sbc hl,de ; rewind by amount copied
-;	call _crc8b  ; a returns CRC-8
-;
-;	out ($1f),a  ; Send CRC-8 to arduino
-
-; If the code fails, then nothing special needs to happen, as the data is just re-sent 
-; using the same destination again. It will overwrite the failed transmission and get CRC checked again.
-; *** This would be a good time to 'tune' and dial in the transmission speeds dynamically. 
-; *** Could even start up with tuning first.
-
-;;;;	LD BC,WAIT
-;;;;    CALL DELAY
-
-    jr mainloop
-		
- DELAY:
-    NOP
-	DEC BC
-	LD A,B
-	OR C
-	RET Z
-	JR DELAY
 
 
-
-;; =====================================================================
-;; input - hl=start of memory to check, de=length of memory to check
-;; returns - a=result crc
-;; 20b
-;; =====================================================================
-_crc8b:
-	xor a ; 4t - initial value of crc=0 so first byte can be XORed in (CCITT)
-	ld c,$07 ; 7t - c=polyonimal used in loop (small speed up)
-	_byteloop8b:
-	xor (hl) ; 7t - xor in next byte, for first pass a=(hl)
-	inc hl ; 6t - next mem
-	ld b,8 ; 7t - loop over 8 bits
-	_rotate8b:
-	add a,a ; 4t - shift crc left one
-	jr nc,_nextbit8b ; 12/7t - only xor polyonimal if msb set (carry=1)
-	xor c ; 4t - CRC8_CCITT = 0x07
-	_nextbit8b:
-	djnz _rotate8b ; 13/8t
-	ld b,a ; 4t - preserve a in b
-	dec de ; 6t - counter-1
-	ld a,d ; 4t - check if de=0
-	or e ; 4t
-	ld a,b ; 4t - restore a
-	jr nz,_byteloop8b; 12/7t
-	et ; 10t
-
-Divide:                          ; this routine performs the operation BC=HL/E
-  ld a,e                         ; checking the divisor; returning if it is zero
-  or a                           ; from this time on the carry is cleared
-  ret z
-  ld bc,-1                       ; BC is used to accumulate the result
-  ld d,0                         ; clearing D, so DE holds the divisor
-DivLoop:                         ; subtracting DE from HL until the first overflow
-  sbc hl,de                      ; since the carry is zero, SBC works as if it was a SUB
-  inc bc                         ; note that this instruction does not alter the flags
-  jr nc,DivLoop                  ; no carry means that there was no overflow
-  ret
-		
 END start
 
 
-; SAMPLE OF SPECCY ROM - LOCATION 0x0066
+; SAMPLE OF SPECCY ROM - LOCATION 0x0066 - "NMI"
 ;;; RESET
 ;L0066:  PUSH    AF              ; save the
 ;        PUSH    HL              ; registers.
@@ -199,6 +229,6 @@ END start
 
 
 
-
-;//use end connectors to fudge/repair speccy keyboard
-;//4x3/4x5/1x6/1x4 Keys Matrix Keyboard Array Membrane Switch Keypad Keyboard UK
+; Use end connectors to fudge/repair speccy keyboard
+; GOOGLE THIS:
+; 4x3/4x5/1x6/1x4 Keys Matrix Keyboard Array Membrane Switch Keypad Keyboard UK
