@@ -1,234 +1,182 @@
 org 0x8040
 
-start:      
-	DI
-;;;;;;	im 1 ; Set interrupt mode 1
-;;;;	ld a,9
-;;;;    LD ($5CB0),a   ; NMI will just return - changing 1byte is enough
-  
-  
-	LD HL,$5CB0 
-    LD (HL),9
-    INC HL      
-    LD (HL),9
+SCREEN_END			EQU $5AFF
+FUTURE_STACK_BASE  	EQU $5AFF-2
+NMI_SETTING			EQU $5CB0
 
+MACRO READ_ACC_WITH_HALT 
+    in a, ($1f)  
+    halt     
+ENDM
+
+MACRO READ_PAIR_WITH_HALT  ,reg1,reg2
+    in reg1,(c)
+    halt
+    in reg2,(c)
+    halt
+ENDM
+
+MACRO SET_BORDER ,colour  ; DEBUG
+	;0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
+	ld a,colour
+	AND %00000111
+	out ($fe), a
+ENDM
+
+;**************************************************************************************************
+
+start: 
+	DI
+   	ld a,$ff     
+    LD (NMI_SETTING),a
 mainloop: 
 
-; First loop to check for either 'G' or 'E'
-check_initial:  
-    in a, ($1f)       ; Read input from port $1f
-    halt              ; Halt to simulate waiting for the next input
-    cp 'G'            ; Compare input with 'G'
-    jr z, check_GO     ; If 'G', jump to check_G
-    cp 'E'            ; Compare input with 'E'
-    jr z, check_EX     ; If 'E', jump to check_E
-    jr check_initial  ; Otherwise, keep checking
-
-; Subroutine to handle 'GO' command
-check_GO:
-    in a, ($1f)       ; Read input from port $1f
-    halt              ; Halt to simulate waiting for the next input
-    cp 'O'            ; Compare input with 'O'
+;**************************************************************************************************
+; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
+; ACTIONS ARE:-
+;  - Transfer data = "GO"
+;  - Execute code = "EX"
+;
+check_initial:   		; First loop to check for either 'G' or 'E'
+	READ_ACC_WITH_HALT
+    cp 'G'            
+    jr z, check_GO     	; If 'G', jump to check_G
+    cp 'E'            
+    jr z, check_EX     	; If 'E', jump to check_E
+    jr check_initial   	; Otherwise, keep checking
+check_GO:  				; Subroutine to handle 'GO' command
+	READ_ACC_WITH_HALT
+    cp 'O'            	; Compare input with 'O'
     jr nz, check_initial ; If not 'O', go back to initial check
-    jp command_GO     ; If 'O', jump to command_GO
-
-; Subroutine to handle 'EX' command
-check_EX:
-    in a, ($1f)       ; Read input from port $1f
-    halt              ; Halt to simulate waiting for the next input
-    cp 'X'            ; Compare input with 'X'
+    jp command_GO     	; If 'O', jump to command_GO
+check_EX:  				; Subroutine to handle 'EX' command
+	READ_ACC_WITH_HALT
+    cp 'X'            
     jr nz, check_initial ; If not 'X', go back to initial check
 
-command_EX:  
-	ld SP,TINY_STACK  ; ONLY 1 PUSH!
-	ld c,$1f
+;**************************************************************************************************
 
-	ld a,2
-	out ($fe), a
+command_EX:  ; "Execute snapshot Stage"
+	; Stack goes down from SCREEN-END. The code only needs 2 bytes or one stack depth.
+	; However, the NMI call in the stock ROM will also add 2 more pushes, so 6 bytes in total are needed.
+	ld SP,SCREEN_END 	; using screen attribute area works are a bonus debugging tool!
 
-	in h,(c)   ;0
-	halt
-	in l,(c)   ;1
-	halt
-	in d,(c)   ;2
-	halt
-	in e,(c)   ;3
-	halt
-	
-	in b,(c)   ;4 
-	halt
-	in c,(c)   ;5 
-	halt
+SET_BORDER 2 ; DEBUG
+
+	; Restore HL',DE',AF',BC'
+	ld c,$1f  			; setup for use with the IN command, i.e. "IN <REG>,(c)"
+	READ_PAIR_WITH_HALT h,l
+	READ_PAIR_WITH_HALT d,e
+	READ_PAIR_WITH_HALT b,c
 	push BC
 	pop AF	
-
 	ld c,$1f
-	in b,(c)   ;6
-	halt
-	in c,(c)   ;7	
-	halt
-	ex	af,af'
-	exx		; Alternates restored
+	READ_PAIR_WITH_HALT b,c
+	ex	af,af'	; Alternate AF' restored
+	exx			; Alternates registers restored
 
+	; Restore HL,DE,IY,IX
 	ld c,$1f
-	in h,(c)  ;8
-	halt
-	in l,(c)  ;9
-	halt
-	in d,(c)  ;10
-	halt
-	in e,(c)  ;11
-	halt
-
-	in b,(c)  ;12 - temp
-	halt
-	in c,(c)  ;13 - temp
-	halt
+	READ_PAIR_WITH_HALT h,l
+	READ_PAIR_WITH_HALT d,e
+	READ_PAIR_WITH_HALT b,c
 	push bc
 	pop IY
-	
 	ld c,$1f
-	in b,(c)  ;14 - temp
-	halt
-	in c,(c)  ;15 - temp
-	halt
+	READ_PAIR_WITH_HALT b,c
 	push bc
 	pop IX
 
-;;;	in b,(c)   dont restore BC yet, keep as working spare
-;;;	in c,(c)
-	
-	; Restore interrupt mode
-	in a,($1f)  ;16
-	halt
+	; Restore interrupt mode; IM0, IM1 or IM2
+	READ_ACC_WITH_HALT
 	or	a
-	jr	nz,notim0
+	jr	nz,not_IM0
 	im	0
-	jr	setIM
-notim0:	dec	a
-	jr	nz,notim1
+	jr	IM_done
+not_IM0:	
+	dec	a
+	jr	nz,not_IM1
 	im	1
-	jr	setIM
-notim1:	im	2
+	jr	IM_done
+not_IM1: 
+	im	2
+IM_done: 
 
  	; Restore 'I'
-setIM: in a,($1f)   ;17  
-	halt
+	READ_ACC_WITH_HALT
 	ld	i,a
 
 	; Restore interrupt enable flip-flop (IFF) 
-	in a,($1f)  	;18 - REG_IFF
-	halt
+	READ_ACC_WITH_HALT
 	AND	%00000100
 	jr	z,skipEI
 	EI	 ; restore Interrupt (this code uses DI - so if needed we only need to enable)
 skipEI:
 
-; R REG ... TODO  
-	in A,($1f)   ;19 - read but ignore for now
-	halt
+	; R REG ... TODO  
+	READ_ACC_WITH_HALT ; currently goes to the void
 
 	; Restore AF
 	ld c,$1f
-	in b,(c) ;20
-	halt
-	in c,(c) ;21
-	halt
+	READ_PAIR_WITH_HALT b,c
 	push BC
 	pop AF
 
 	; Restore SP
 	ld c,$1f
-	in B,(c)	;22 - SP - high byte
-	halt
-	in C,(c)	;23 - SP - low byte
-	halt
+	READ_PAIR_WITH_HALT b,c
 	push BC
 	pop BC
-	ld SP,(TINY_STACK-2)
+	ld SP,(FUTURE_STACK_BASE)
 
 	; Restore BC register pair
 	ld c,$1f
-	in b,(c)   ;24 
-	halt
-	in c,(c)   ;25
-	halt
+	READ_PAIR_WITH_HALT b,c
 
-	;26 col ignore for now - don't even read
+	; NOTE: Reading the border colour is ignored for now - header byte 26 is not sent by the Arduino
 
 	RETN  ; PC ready on stack! return to start snapshot code
 
+;**************************************************************************************************
+
 command_GO:
 
-	; amount to transfer (small transfers, only 1 byte used)
- 	in a,($1f)    ; 1 byte for amount    
-	halt
-
-    ld d, a   
-	ld e, a       ; keep copy      
+	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
+	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
+	; Transfers here are sequential, but any destination location can be targeted.
+	READ_ACC_WITH_HALT ; amount to transfer, 1byte
+    ld d, a       
 
 	; dest (read 2 bytes) - Read the high byte
-    in a,($1f)    ; 1st for high  
-	halt
+	READ_ACC_WITH_HALT
     ld H, a      
-    in a,($1f)    ; 2nd for low byte
-	halt
+	READ_ACC_WITH_HALT
     ld L, a           
 
 screenloop:
 	in a,($1f)   ; Read a byte from the I/O port
 	ld (hl),a	 ; write to screen
     inc hl
-	halt 		 ; DO THIS LAST CRITICAL HALT AFTER MEMORY WRITE
+SET_BORDER a ; DEBUG
+	halt 		 ; do this one after write!
 
     dec d 	
     jp nz,screenloop
 
     jp mainloop
 
-db 0,0
-TINY_STACK:  ; push decrements stack
-	
-
+;**************************************************************************************************	
 
 END start
-
-
-; SAMPLE OF SPECCY ROM - LOCATION 0x0066 - "NMI"
-;;; RESET
-;L0066:  PUSH    AF              ; save the
-;        PUSH    HL              ; registers.
-;        LD      HL,($5CB0)      ; fetch the system variable NMIADD.
-;        LD      A,H             ; test address
-;        OR      L               ; for zero.
-;
-;        JR      NZ,L0070        ; skip to NO-RESET if NOT ZERO
-;
-;        JP      (HL)            ; jump to routine ( i.e. L0000 )
-;
-;; NO-RESET
-;L0070:  POP     HL              ; restore the
-;        POP     AF              ; registers.
-;        RETN   
 
 
 
 
 ; http://www.robeesworld.com/blog/33/loading_zx_spectrum_snapshots_off_microdrives_part_one
-
 ; https://www.seasip.info/ZX/spectrum.html
-
-;----
-
-;https://worldofspectrum.org/faq/reference/formats.htm
-
+; https://worldofspectrum.org/faq/reference/formats.htm
 ; https://github.com/oxidaan/zqloader/blob/master/z80snapshot_loader.cpp
-
 ; http://cd.textfiles.com/230/EMULATOR/SINCLAIR/JPP/JPP.TXT
 
-
-
-
 ; Use end connectors to fudge/repair speccy keyboard
-; GOOGLE THIS:
-; 4x3/4x5/1x6/1x4 Keys Matrix Keyboard Array Membrane Switch Keypad Keyboard UK
+; GOOGLE THIS: "4x3/4x5/1x6/1x4 Keys Matrix Keyboard Array Membrane Switch Keypad Keyboard UK"
