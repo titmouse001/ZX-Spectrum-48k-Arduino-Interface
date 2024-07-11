@@ -1,4 +1,5 @@
 org 0x8040
+;org 0x0000
 
 SCREEN_END			EQU $5AFF
 FUTURE_STACK_BASE  	EQU $5AFF-2
@@ -25,11 +26,12 @@ ENDM
 
 ;**************************************************************************************************
 
-start: 
+start:   ; MAIN STARTING POINT
 	DI
    	ld a,$ff     
-    LD (NMI_SETTING),a
+    LD (NMI_SETTING),a   ; /NMI will now just return, we can now use NMI to un-halt z80
 mainloop: 
+	ld c,$1f  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
 
 ;**************************************************************************************************
 ; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
@@ -56,7 +58,8 @@ check_EX:  				; Subroutine to handle 'EX' command
 
 ;**************************************************************************************************
 
-command_EX:  ; "Execute snapshot Stage"
+command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
+
 	; Stack goes down from SCREEN-END. The code only needs 2 bytes or one stack depth.
 	; However, the NMI call in the stock ROM will also add 2 more pushes, so 6 bytes in total are needed.
 	ld SP,SCREEN_END 	; using screen attribute area works are a bonus debugging tool!
@@ -64,19 +67,18 @@ command_EX:  ; "Execute snapshot Stage"
 SET_BORDER 2 ; DEBUG
 
 	; Restore HL',DE',AF',BC'
-	ld c,$1f  			; setup for use with the IN command, i.e. "IN <REG>,(c)"
 	READ_PAIR_WITH_HALT h,l
-	READ_PAIR_WITH_HALT d,e
+	READ_PAIR_WITH_HALT d,e  ; USED DE NOT BC FOR SCRATCH, SAVES RENEWING c
 	READ_PAIR_WITH_HALT b,c
 	push BC
 	pop AF	
-	ld c,$1f
+	ld c,$1f  ; just trashed BC - reload C as needed for more READ_PAIR IN's
 	READ_PAIR_WITH_HALT b,c
 	ex	af,af'	; Alternate AF' restored
 	exx			; Alternates registers restored
 
 	; Restore HL,DE,IY,IX
-	ld c,$1f
+	ld c,$1f  ; EXX used - renew c
 	READ_PAIR_WITH_HALT h,l
 	READ_PAIR_WITH_HALT d,e
 	READ_PAIR_WITH_HALT b,c
@@ -89,18 +91,16 @@ SET_BORDER 2 ; DEBUG
 
 	; Restore interrupt mode; IM0, IM1 or IM2
 	READ_ACC_WITH_HALT
-	or	a
-	jr	nz,not_IM0
-	im	0
-	jr	IM_done
-not_IM0:	
-	dec	a
-	jr	nz,not_IM1
-	im	1
-	jr	IM_done
-not_IM1: 
-	im	2
-IM_done: 
+	im  2
+	or  a
+	jr  nz, not_IM0      ; If A is not 0, continue to check for IM 1
+	im  0
+	jr  IM_done_inline
+not_IM0:
+	dec a
+	jr  nz, IM_done_inline     ; If A is not 1, IM 2 is already set
+	im  1
+IM_done_inline:
 
  	; Restore 'I'
 	READ_ACC_WITH_HALT
@@ -109,9 +109,9 @@ IM_done:
 	; Restore interrupt enable flip-flop (IFF) 
 	READ_ACC_WITH_HALT
 	AND	%00000100
-	jr	z,skipEI
+	jr	z,skip_EI
 	EI	 ; restore Interrupt (this code uses DI - so if needed we only need to enable)
-skipEI:
+skip_EI:
 
 	; R REG ... TODO  
 	READ_ACC_WITH_HALT ; currently goes to the void
@@ -135,33 +135,40 @@ skipEI:
 
 	; NOTE: Reading the border colour is ignored for now - header byte 26 is not sent by the Arduino
 
-	RETN  ; PC ready on stack! return to start snapshot code
+	RETN  ; PC is now ready on stack! Returning via 'RETN' will now start the snapshot code.
 
 ;**************************************************************************************************
 
-command_GO:
-
+command_GO:  ; FIRST STAGE - TRANSFER DATA
+	
 	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
 	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
 	; Transfers here are sequential, but any destination location can be targeted.
-	READ_ACC_WITH_HALT ; amount to transfer, 1byte
-    ld d, a       
+;	READ_ACC_WITH_HALT ; amount to transfer (1 byte)
+;    ld b, a       
 
-	; dest (read 2 bytes) - Read the high byte
-	READ_ACC_WITH_HALT
-    ld H, a      
-	READ_ACC_WITH_HALT
-    ld L, a           
+	in b,(c)  ; C was set earler on, infact it will remain ok until the second stage
+	HALT
+
+	; Read destination address in HL (2 bytes)
+
+	READ_PAIR_WITH_HALT h,l
+
+;	READ_ACC_WITH_HALT
+ ;  ld H, a      
+;	READ_ACC_WITH_HALT
+ ;  ld L, a           
 
 screenloop:
+	; liking the boarder effect, so going with 'in' not 'ini' as need value in Acc
 	in a,($1f)   ; Read a byte from the I/O port
 	ld (hl),a	 ; write to screen
     inc hl
 SET_BORDER a ; DEBUG
 	halt 		 ; do this one after write!
+    djnz screenloop
 
-    dec d 	
-    jp nz,screenloop
+
 
     jp mainloop
 
