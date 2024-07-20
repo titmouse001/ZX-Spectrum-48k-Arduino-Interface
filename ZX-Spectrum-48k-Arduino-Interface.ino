@@ -60,12 +60,14 @@ const byte ledPin = 13;
  // Arduino Pins that connect up to the z80 data pins
 const byte Z80_D0Pin = 0;
 const byte Z80_D1Pin = 1;
-const byte Z80_D2Pin = 16;  //was 8;  // note:interrupt takes Pin2
+const byte Z80_D2Pin = 16;  // A2 (pin2 not available)
 const byte Z80_D3Pin = 3;
 const byte Z80_D4Pin = 4;
 const byte Z80_D5Pin = 5;
 const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
+// Z80 'Halt' Status 
+const byte Z80_HALT = 8;   // PINB0 (PORT B)
 
 // Message structure
 const byte HEADER_START_G = 0;      // Index for first byte of header
@@ -106,15 +108,29 @@ void setup() {
   pinMode(Z80_D5Pin, OUTPUT);
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
+  pinMode(Z80_HALT, INPUT);  
+  
+  pinMode(15, OUTPUT);   // "/ROMCS"
 
-  pinMode(8, INPUT);
-  bitSet(DDRC, DDC0);  // output
-  PORTC = PORTC & B11111110;
-  bitClear(DDRC, DDC0);  // input
+  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
+/////  bitSet(DDRC, DDC0);  // output (Port C)
+/////  PORTC = PORTC & B11111110;  // Data Register (Port C)
+/////  bitClear(DDRC, DDC0);  // input (Port C)
+  bitSet(DDRC, DDC0);
+  bitClear(PORTC,DDC0);
+
+
+  bitClear(PORTC,DDC1);  // pin15, A1 , swap out stock rom
 
   // Initialize SD card
   if (!sd.begin(sdPin)) {
-    while (1) ;  // Halt execution
+     while (1) {
+      pinMode(ledPin, OUTPUT);  
+       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
+        delay(250);            // waits for a second
+        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
+        delay(250);            // waits for a second
+    }  
   }
 
   /* 
@@ -133,15 +149,22 @@ void setup() {
   // should be possible to keep logic out of the ISR, the z80 and arduino should work in sync
 }
 
-const char *fileNames[] = { "h.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
+const char *fileNames[] = { "zynaps.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
 const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
 byte fileIndex = 0;
 
 void loop() {
 
   if (!dataFile.open(fileNames[fileIndex])) {
-    while (1);  // Halt execution
+    while (1) {
+      pinMode(ledPin, OUTPUT);  
+       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
+        delay(500);            // waits for a second
+        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
+        delay(500);            // waits for a second
+    }  
   }
+
 
   uint16_t destinationAddress = 0x4000;  //screen address
   dataFile.seekSet(27);  // skip over header as we will read that later
@@ -177,26 +200,22 @@ void loop() {
     bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
 
-//uint16_t addr = destinationAddress;
-
     while ((bufferIndex < bufferSize)) {
       if ((bitRead(PINB, PINB0) == LOW) ) {
  
         // Pre-load data onto ports while the Z80 processor is halted,
         // using ports that are best suited for data alignment.
         byte b = buffer[bufferIndex];  
- //       if (addr == (0x5CB0 - 0x4000)) {
-  //        b = 9;
-   //     }
         PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
         PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC
 
-//        addr++;
-
-        // Arduino's pin A2 signals the Z80 /NMI line, this will un-halt the Z80.
+        // Arduino's pin A0 signals the Z80 /NMI line, this will un-halt the Z80.
         // Here we are changing direction only (timing optimisation - as pin already put LOW at setup time)
-        bitSet(DDRC, DDC0);    // PortC bit0 as OUTPUT
-        bitClear(DDRC, DDC0);  // INPUT - will leave the A2 line as high-impedance
+   //     bitSet(DDRC, DDC0);    // PortC bit0 as OUTPUT
+    //    bitClear(DDRC, DDC0);  // INPUT - will leave the A0 line as high-impedance
+
+         bitSet(PORTC,DDC0);
+         bitClear(PORTC,DDC0);
       }
       __asm__ __volatile__("nop");
     }
@@ -211,10 +230,6 @@ void loop() {
     bytesRead = (byte)dataFile.read(&buffer[0+2], 27);
   }
 
-  buffer[0] = 'E';   // Execute command "EX"
-  buffer[1] = 'X';  
-  bufferSize = 27 + 2;
-  bufferIndex = 0;
 
 //REG_I	  00
 //REG_HL1	01	;HL'
@@ -232,25 +247,6 @@ void loop() {
 //REG_SP	23
 //REG_IM	25 
 //REG_BDR	26	 
-/*
-static byte at[] = {
-         1, 2,//  hl'  LIST IS THE Z80 RESTORE ORDER
-         3, 4,//  de'
-         7, 8,//  af'
-         5, 6,//  bc'
-         9,10,//  hl
-        11,12,//  de
-        15,16,//  iy
-        17,18,//  ix
-        25   ,//  IM  
-         0   ,//  i
-        19   ,//  iff
-        20   ,//  r
-        21,22,//  AF
-        23,24,//  SP
-        13,14 //  BC
-};
-*/
 
 static byte at[] = {
          2,1,//  hl'  LIST IS THE Z80 RESTORE ORDER
@@ -270,12 +266,21 @@ static byte at[] = {
         14,13, //  BC
         26
 };
+
+  buffer[0] = 'E';   // Execute command "EX"
+  buffer[1] = 'X';  
+  bufferSize = 27 + 2;
+  bufferIndex = 0;
   bufferSize-=1;  // forget the last byte for now (BorderColor)
+
+  byte b = buffer[ 0 ];
+  PORTD = (PORTD & B00000100) | (b & B11111011); 
+  PORTC = (PORTC & B11111011) | (b & B00000100); 
 
   while ((bufferIndex < bufferSize)) {
     if ((bitRead(PINB, PINB0) == LOW) ) {
 
-      byte b;
+   //   byte b=0;
       if (bufferIndex>=2) {
         b = buffer[ 2+ at[bufferIndex-2] ];
       }else {
@@ -285,12 +290,45 @@ static byte at[] = {
 
       PORTD = (PORTD & B00000100) | (b & B11111011); 
       PORTC = (PORTC & B11111011) | (b & B00000100);  
-      bitSet(DDRC, DDC0);    
-      bitClear(DDRC, DDC0);  
+//      bitSet(DDRC, DDC0);      //  Un-HALT z80 with "/NMI" - pin14, A0 
+//      bitClear(DDRC, DDC0);  
+      
+         bitSet(PORTC,DDC0);
+         bitClear(PORTC,DDC0);
     }
   }
 
+ while ( bitRead(PINB, PINB0) == LOW) {
+
+  } 
+
+/*
+  // At this point speecy is now running code relocated to screen memory
+  while ( 1) {
+      if ((bitRead(PINB, PINB0) == LOW) ) {
+
+
+         bitSet(PORTC,DDC0);
+         bitClear(PORTC,DDC0);
+//        bitSet(DDRC, DDC0);    // Un-HALT z80 with "/NMI" - pin14, A0 
+//        bitClear(DDRC, DDC0);
+        // MUST BE LAST - NMI ON STOCK ROM ROUTINE WILL RESET
+        bitSet(PORTC,DDC1);  // pin15, A1 - enable speccys stock rom
+        break;
+      }
+  }
+*/
+
   dataFile.close();
+  sd.end();
+   while (1) {
+      pinMode(ledPin, OUTPUT);  
+       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
+        delay(250);            // waits for a second
+        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
+        delay(250);            // waits for a second
+    }  
+    
   if (++fileIndex >= items) fileIndex = 0;
   delay(2500);
 
