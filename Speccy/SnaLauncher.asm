@@ -33,15 +33,13 @@ ENDM
 ORG $0000
 L0000:  
 		DI                     
-        LD      A,2           ;  border
-        OUT     ($FE),A       
-
        	; Stack goes down from SCREEN_END. 
     	ld SP,SCREEN_END 	; using screen attribute area works are a bonus debugging tool!
-     
+		SET_BORDER 4
+	
 mainloop: 
 		ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
-
+		HALT     ; Let the Arduino signal when ready to start sending
 ;**************************************************************************************************
 ; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
 ; ACTIONS ARE:-
@@ -142,17 +140,14 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	or	a
 	jr	nz,notim0
 	im	0
-	SET_BORDER 1 
 	jr	IMset
 notim0:	
 	dec	a
 	jr	nz,notim1
 	im	1
-	SET_BORDER 2 
 	jr	IMset
 notim1:	
 	im	2
-	SET_BORDER 3 
 IMset:
 
  	; Restore 'I'
@@ -165,7 +160,6 @@ IMset:
 	AND	%00000100
 	jr	z,skip_EI
 	EI	 ; restore Interrupt
-	SET_BORDER 4
 skip_EI:
 	halt     
 
@@ -210,6 +204,37 @@ relocate:
 
 relocateEnd:
 
+;	ld d,0
+;	OR A  
+;	SBC HL, DE
+;	call _crc8b
+
+
+;; =====================================================================
+;; input - hl=start of memory to check, de=length of memory to check
+;; returns - a=result crc
+;; 20b
+;; =====================================================================
+_crc8b:
+xor a ; 4t - initial value of crc=0 so first byte can be XORed in (CCITT)
+ld c,$07 ; 7t - c=polyonimal used in loop (small speed up)
+_byteloop8b:
+xor (hl) ; 7t - xor in next byte, for first pass a=(hl)
+inc hl ; 6t - next mem
+ld b,8 ; 7t - loop over 8 bits
+_rotate8b:
+add a,a ; 4t - shift crc left one
+jr nc,_nextbit8b ; 12/7t - only xor polyonimal if msb set (carry=1)
+xor c ; 4t - CRC8_CCITT = 0x07
+_nextbit8b:
+djnz _rotate8b ; 13/8t
+ld b,a ; 4t - preserve a in b
+dec de ; 6t - counter-1
+ld a,d ; 4t - check if de=0
+or e ; 4t
+ld a,b ; 4t - restore a
+jr nz,_byteloop8b; 12/7t
+ret ; 10
 
 
 org $3ff0

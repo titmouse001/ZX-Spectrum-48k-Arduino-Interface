@@ -52,6 +52,13 @@
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 // 'SDFAT.H' : implementation allows 7-bit characters in the range
 
+//#include <FastCRC.h>
+//FastCRC8 CRC8;
+//uint8_t buf[5] = {'h', 'e', 'l', 'l', 'o'};
+//  Serial.println( CRC8.smbus(buf, sizeof(buf)), HEX );
+
+
+
 // Arduino pin assignment
 const byte interruptPin = 2;  // only pins 2 or 3 for the ATmega328P Microcontroller
 const byte sdPin = 9;         // SD card pin
@@ -87,6 +94,8 @@ volatile byte bufferIndex = 0;  // Index of the next byte to be written to the b
 volatile byte bufferSize = 0;   // Current size of valid data in the buffer
 
 //volatile bool used = false;
+
+boolean readyToSend = false;
 
 SdFat32 sd;
 FatFile dataFile;
@@ -200,6 +209,19 @@ void loop() {
     bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
 
+    if (readyToSend==false) {
+//      delay(3000);
+      while ( 1) {  //We now have one in the barrel and are ready to send data
+        if (bitRead(PINB, PINB0) == LOW) {
+          bitSet(PORTC,DDC0);
+          bitClear(PORTC,DDC0);
+          break;
+        }
+      }
+      readyToSend = true;
+    }
+
+
     while ((bufferIndex < bufferSize)) {
       if ((bitRead(PINB, PINB0) == LOW) ) {
  
@@ -277,6 +299,17 @@ static byte at[] = {
   PORTD = (PORTD & B00000100) | (b & B11111011); 
   PORTC = (PORTC & B11111011) | (b & B00000100); 
 
+
+//    delay(3000);
+    while ( 1) {  //We now have one in the barrel and are ready to send data
+      if (bitRead(PINB, PINB0) == LOW) {
+        bitSet(PORTC,DDC0);
+        bitClear(PORTC,DDC0);
+        break;
+      }
+    }
+
+
   while ((bufferIndex < bufferSize)) {
     if ((bitRead(PINB, PINB0) == LOW) ) {
 
@@ -298,8 +331,7 @@ static byte at[] = {
     }
   }
 
- while ( bitRead(PINB, PINB0) == LOW) {
-
+ while ( bitRead(PINB, PINB0) == LOW) {  // lock if we missed something
   } 
 
 /*
