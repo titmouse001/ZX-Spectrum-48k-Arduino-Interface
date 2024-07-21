@@ -269,7 +269,7 @@ void loop() {
 //REG_SP	23
 //REG_IM	25 
 //REG_BDR	26	 
-
+/*
 static byte at[] = {
          2,1,//  hl'  LIST IS THE Z80 RESTORE ORDER
          3,3,//  de'
@@ -288,51 +288,44 @@ static byte at[] = {
         14,13, //  BC
         26
 };
-
-  buffer[0] = 'E';   // Execute command "EX"
-  buffer[1] = 'X';  
+*/
+  buffer[0] = 'E';  // Execute command "EX"
+  buffer[1] = 'X';
   bufferSize = 27 + 2;
   bufferIndex = 0;
-  bufferSize-=1;  // forget the last byte for now (BorderColor)
+/////  bufferSize -= 1;  // forget the last byte for now (BorderColor)
 
-  byte b = buffer[ 0 ];
-  PORTD = (PORTD & B00000100) | (b & B11111011); 
-  PORTC = (PORTC & B11111011) | (b & B00000100); 
+  byte b = buffer[0];
+  PORTD = (PORTD & B00000100) | (b & B11111011);
+  PORTC = (PORTC & B11111011) | (b & B00000100);
 
-
-//    delay(3000);
-    while ( 1) {  //We now have one in the barrel and are ready to send data
-      if (bitRead(PINB, PINB0) == LOW) {
-        bitSet(PORTC,DDC0);
-        bitClear(PORTC,DDC0);
-        break;
-      }
-    }
-
-
-  while ((bufferIndex < bufferSize)) {
-    if ((bitRead(PINB, PINB0) == LOW) ) {
-
-   //   byte b=0;
-      if (bufferIndex>=2) {
-        b = buffer[ 2+ at[bufferIndex-2] ];
-      }else {
-        if (bufferIndex==0) {b='E';}
-        if (bufferIndex==1) {b='X';}
-      }
-
-      PORTD = (PORTD & B00000100) | (b & B11111011); 
-      PORTC = (PORTC & B11111011) | (b & B00000100);  
-//      bitSet(DDRC, DDC0);      //  Un-HALT z80 with "/NMI" - pin14, A0 
-//      bitClear(DDRC, DDC0);  
-      
-         bitSet(PORTC,DDC0);
-         bitClear(PORTC,DDC0);
+  while (1) {  //We now have one in the barrel and are ready to send data
+    if (bitRead(PINB, PINB0) == LOW) {
+      bitSet(PORTC, DDC0);
+      bitClear(PORTC, DDC0);
+      break;
     }
   }
 
- while ( bitRead(PINB, PINB0) == LOW) {  // lock if we missed something
-  } 
+  while ((bufferIndex < bufferSize)) {
+    if ((bitRead(PINB, PINB0) == LOW)) {
+/*
+      if (bufferIndex >= 2) {
+        b = buffer[2 + at[bufferIndex - 2]];
+      } else {
+        if (bufferIndex == 0) { b = 'E'; }
+        if (bufferIndex == 1) { b = 'X'; }
+      }
+*/
+      b = buffer[bufferIndex];
+      PORTD = (PORTD & B00000100) | (b & B11111011);
+      PORTC = (PORTC & B11111011) | (b & B00000100);
+      bitSet(PORTC, DDC0);
+      bitClear(PORTC, DDC0);
+    }
+  }
+
+  while (bitRead(PINB, PINB0) == LOW) {}  // lock if we missed something
 
 /*
   // At this point speecy is now running code relocated to screen memory

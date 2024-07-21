@@ -1,9 +1,8 @@
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
-
-SCREEN_ATTRIBUTES   EQU $5800+2  ; DEBUG LOCATION
 ;SCREEN_START		EQU $4000	 ; USE ME FOR FINAL BUILD LOCATION	
+SCREEN_ATTRIBUTES   EQU $5800+8  ; DEBUG LOCATION
 SCREEN_END			EQU $5AFF
 
 ;******************************************************************************
@@ -38,8 +37,8 @@ L0000:
 		SET_BORDER 4
 	
 mainloop: 
-		ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
 		HALT     ; Let the Arduino signal when ready to start sending
+
 ;**************************************************************************************************
 ; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
 ; ACTIONS ARE:-
@@ -80,6 +79,8 @@ L0066:
 
 command_GO:  ; FIRST STAGE - TRANSFER DATA
 	
+	ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
+
 	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
 	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
 	; Transfers here are sequential, but any destination location can be targeted.
@@ -103,41 +104,70 @@ readDataLoop:
 ;**************************************************************************************************
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
-
+	
 	; Relocate code to run in screen memory
 	LD HL,relocate
-	;;;;;;LD DE,SCREEN_START
 	LD DE,SCREEN_ATTRIBUTES  ; DEBUG
 	LD BC, relocateEnd - relocate
 	LDIR
-
-
-	; Restore HL',DE',AF',BC'
-	READ_PAIR_WITH_HALT h,l
-	READ_PAIR_WITH_HALT d,e ; use this one for scratch, not BC ?????
-	READ_PAIR_WITH_HALT b,c
-	push BC
-	pop AF	
-	ld c,$1f  ; just trashed BC - reload C as needed for more READ_PAIR IN's
-	READ_PAIR_WITH_HALT b,c
-	ex	af,af'	; Alternate AF' restored
-	exx			; Alternates registers restored
-
-	; Restore HL,DE,IY,IX
-	ld c,$1f  ; EXX used - renew c
-	READ_PAIR_WITH_HALT h,l
-	READ_PAIR_WITH_HALT d,e
-	READ_PAIR_WITH_HALT b,c
-	push bc
-	pop IY
-	ld c,$1f
-	READ_PAIR_WITH_HALT b,c
-	push bc
-	pop IX
-
-
-	; Restore interrupt mode; IM0, IM1 or IM2
+	
+ 	; Restore 'I'
 	READ_ACC_WITH_HALT
+	ld	i,a
+
+	ld c,$1f  
+	; Restore HL',DE',BC',AF'
+	READ_PAIR_WITH_HALT L,H ;h,l
+	READ_PAIR_WITH_HALT E,D ;d,e
+	push de
+	READ_PAIR_WITH_HALT c,b  ;b,c
+	READ_PAIR_WITH_HALT e,d  ;d,e	; spare to read AF
+	push de
+	pop af
+	pop de		
+	ex	af,af'				; Alternate AF' restored
+	exx						; Alternates registers restored
+
+	ld c,$1f  
+	; Restore HL,DE,BC,IY,IX	
+	READ_PAIR_WITH_HALT l,h   ;h,l	 ; restore HL
+	READ_PAIR_WITH_HALT e,d;  ;d,e  ; read DE
+	ld ($5800+2),de			 ; store DE				 
+	READ_PAIR_WITH_HALT e,d;  d,e  ; read BC
+	ld ($5800+4),de			 ; store BC
+	READ_PAIR_WITH_HALT e,d;   d,e	 ; read IY
+	push de
+	pop IY					 ; restore IY
+	READ_PAIR_WITH_HALT e,d;   d,e	 ; read IX
+	push de
+	pop IX					 ; restore IX
+
+	; Restore interrupt enable flip-flop (IFF) 
+	READ_ACC_WITH_HALT		 ; read IFF
+	AND	%00000100   		 ; get bit 2
+	jr	z,skip_EI
+	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
+	ld a,$FB
+	ld (SCREEN_ATTRIBUTES),a  ; IM Opcode = $FB
+skip_EI:
+
+	; R REG ... TODO  
+	READ_ACC_WITH_HALT ; currently goes to the void
+
+	; restore AF
+	READ_PAIR_WITH_HALT e,d;   d,e  ; using spare to restore AF
+	ld ($5800+6),de					; store AF
+;;;	push de
+;;;	pop AF
+
+	; Store Stack Pointer
+	READ_PAIR_WITH_HALT e,d;   d,e  ; get Stack
+	ld ($5800),de 			 ; store sack
+
+;;;	push AF
+
+	READ_ACC_WITH_HALT		 ; read IM (interrupt mode)
+	; Restore IM0, IM1 or IM2  
 	or	a
 	jr	nz,notim0
 	im	0
@@ -151,53 +181,34 @@ notim1:
 	im	2
 IMset:
 
- 	; Restore 'I'
-	READ_ACC_WITH_HALT
-	ld	i,a
+	READ_ACC_WITH_HALT   ; Border Colour
+	AND %00000111		 
+	out ($fe),a			 ; set border
 
-	; Restore interrupt enable flip-flop (IFF) 
-	;;;;;;;;;;;;;;;;;;;;;READ_ACC_WITH_HALT
-	in a, ($1f)     
-	AND	%00000100
-	jr	z,skip_EI
-	EI	 ; restore Interrupt
-skip_EI:
-	halt     
+;;;	pop AF
 
-	; R REG ... TODO  
-	READ_ACC_WITH_HALT ; currently goes to the void
+	ld de,($5800+6)	    ; Restore AF register pair
+	PUSH de
+	POP AF 
 
-	ld c,$1f
-	READ_PAIR_WITH_HALT b,c  ;using spare to restore AF
-	push BC
-	pop AF
+	ld bc,($5800+4)	 	; Restore BC register pair
+	ld de,($5800+2)		; Restore DE register pair
 
-	; NOTE: Reading the border colour is ignored for now - header byte 26 is not sent by the Arduino
 	JP SCREEN_ATTRIBUTES
 
 relocate:
-
-	ld c,$1f
-	READ_PAIR_WITH_HALT b,c  ; using spare to restore Stack
-	ld ($5800),bc 			 ; don't restore stack yet
-
-	; Restore BC register pair
-	ld c,$1f
-	READ_PAIR_WITH_HALT b,c
-	
-	ld SP,($5800)		;just before returning we restored program's stack
-	RETN
-
-;	ld SP,$fff0  ; ZYNAPS TEST .. OK
-;	JP $674C	 ; ZYNAPS TEST .. OK
-
+	NOP 				 ; This will be modified to EI if needed
+	ld SP,($5800)		 ; Restore the program's stack pointer
+	RETN				 ; Start program
 relocateEnd:
+
+
+;**************************************************************************************************
 
 ;	ld d,0
 ;	OR A  
 ;	SBC HL, DE
 ;	call _crc8b
-
 
 ;; =====================================================================
 ;; input - hl=start of memory to check, de=length of memory to check
@@ -234,8 +245,6 @@ debug:
 
 last:
 DS  16384 - last
-
-
 
 
 ; todo
