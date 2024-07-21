@@ -1,10 +1,10 @@
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
+
+SCREEN_ATTRIBUTES   EQU $5800+2  ; DEBUG LOCATION
+;SCREEN_START		EQU $4000	 ; USE ME FOR FINAL BUILD LOCATION	
 SCREEN_END			EQU $5AFF
-FUTURE_STACK_BASE  	EQU $5AFF-4 ; one push later
-SCREEN_ATRIBUTES    EQU $5800
-;SCREEN_START		EQU $4000
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -107,9 +107,10 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	; Relocate code to run in screen memory
 	LD HL,relocate
 	;;;;;;LD DE,SCREEN_START
-	LD DE,SCREEN_ATRIBUTES  ; DEBUG
+	LD DE,SCREEN_ATTRIBUTES  ; DEBUG
 	LD BC, relocateEnd - relocate
 	LDIR
+
 
 	; Restore HL',DE',AF',BC'
 	READ_PAIR_WITH_HALT h,l
@@ -166,41 +167,29 @@ skip_EI:
 	; R REG ... TODO  
 	READ_ACC_WITH_HALT ; currently goes to the void
 
-	; Restore AF
 	ld c,$1f
-	READ_PAIR_WITH_HALT b,c
+	READ_PAIR_WITH_HALT b,c  ;using spare to restore AF
 	push BC
 	pop AF
 
-	; Restore SP
-	ld c,$1f
-	READ_PAIR_WITH_HALT b,c
-	push BC
-	push BC
-	push BC
-	pop BC
-	pop BC
-	pop BC
-;;;;;;;;;	ld SP,(FUTURE_STACK_BASE)  
-
-	; Restore BC register pair
-;;;;	ld c,$1f
-;;;;	READ_PAIR_WITH_HALT b,c
-
 	; NOTE: Reading the border colour is ignored for now - header byte 26 is not sent by the Arduino
-
-	JP SCREEN_ATRIBUTES
+	JP SCREEN_ATTRIBUTES
 
 relocate:
 
 	ld c,$1f
+	READ_PAIR_WITH_HALT b,c  ; using spare to restore Stack
+	ld ($5800),bc 			 ; don't restore stack yet
+
+	; Restore BC register pair
+	ld c,$1f
 	READ_PAIR_WITH_HALT b,c
-
-;;;;	HALT	; LAST HALT NOTED ARDUINO SIDE - /ROMCS will be set LOW (use stock rom)	NOP
-
-	ld SP,(FUTURE_STACK_BASE)  
 	
+	ld SP,($5800)		;just before returning we restored program's stack
 	RETN
+
+;	ld SP,$fff0  ; ZYNAPS TEST .. OK
+;	JP $674C	 ; ZYNAPS TEST .. OK
 
 relocateEnd:
 
