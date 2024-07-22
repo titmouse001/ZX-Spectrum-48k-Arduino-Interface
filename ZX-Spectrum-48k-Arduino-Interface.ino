@@ -87,6 +87,9 @@ const byte SIZE_OF_HEADER = 5;
 const byte PAYLOAD_BUFFER_SIZE = 250;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
+byte head27[27+2]; 
+//byte bytesReadHeader=0;
+
 byte buffer[BUFFER_SIZE];  // stores header + payload
 // NOTE: bufferIndex and bufferSize must be in bytes for fast unpacking in interrupt handling,
 // as response time to Z80:IN is critical.
@@ -159,7 +162,7 @@ void setup() {
 }
 
 const char *fileNames[] = { "zynaps.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
-const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
+//const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
 byte fileIndex = 0;
 
 void loop() {
@@ -167,16 +170,30 @@ void loop() {
   if (!dataFile.open(fileNames[fileIndex])) {
     while (1) {
       pinMode(ledPin, OUTPUT);  
-       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
-        delay(500);            // waits for a second
-        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
-        delay(500);            // waits for a second
+       digitalWrite(ledPin, HIGH); 
+        delay(1000);          
+        digitalWrite(ledPin, LOW);
+        delay(1000);          
     }  
   }
 
 
+  if (dataFile.available()) {
+    byte bytesReadHeader = (byte)dataFile.read(&head27[0+2], 27);
+    if (bytesReadHeader<27) {
+      while (1) {
+        pinMode(ledPin, OUTPUT);  
+        digitalWrite(ledPin, HIGH); 
+        delay(1500);        
+        digitalWrite(ledPin, LOW); 
+        delay(1500);          
+      }  
+    }
+  }
+
+
   uint16_t destinationAddress = 0x4000;  //screen address
-  dataFile.seekSet(27);  // skip over header as we will read that later
+/////  dataFile.seekSet(27);  // skip over header as we will read that later
 
   while (dataFile.available()) {
     buffer[HEADER_START_G] = 'G';  // Header
@@ -209,177 +226,80 @@ void loop() {
     bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
 
-    if (readyToSend==false) {
-//      delay(3000);
-      while ( 1) {  //We now have one in the barrel and are ready to send data
-        if (bitRead(PINB, PINB0) == LOW) {
-          bitSet(PORTC,DDC0);
-          bitClear(PORTC,DDC0);
-          break;
-        }
-      }
-      readyToSend = true;
+    if (destinationAddress == 0x4000) {
+      releaseHalt();
     }
-
 
     while ((bufferIndex < bufferSize)) {
       if ((bitRead(PINB, PINB0) == LOW) ) {
- 
-        // Pre-load data onto ports while the Z80 processor is halted,
-        // using ports that are best suited for data alignment.
+        // Z80 processor just read and is now halted, we can now  output future data
+        // for next go around. These ports are picked for data alignment
         byte b = buffer[bufferIndex];  
         PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
         PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC
+//        bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
+//        bitClear(PORTC,DDC0); // this will un-halt the Z80.
+          bitClear(PORTC,DDC0); // this will un-halt the Z80.
+          bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
 
-        // Arduino's pin A0 signals the Z80 /NMI line, this will un-halt the Z80.
-        // Here we are changing direction only (timing optimisation - as pin already put LOW at setup time)
-   //     bitSet(DDRC, DDC0);    // PortC bit0 as OUTPUT
-    //    bitClear(DDRC, DDC0);  // INPUT - will leave the A0 line as high-impedance
-
-         bitSet(PORTC,DDC0);
-         bitClear(PORTC,DDC0);
       }
-      __asm__ __volatile__("nop");
     }
     bufferSize = 0;  // playing it safe - bar interrupt from reading
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
-  dataFile.seekSet(0); // Rewind - now read the header, so Z80 can restore states
+  //REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
+  //REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
+  //REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20 
+  //REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26	 
 
-  byte bytesRead = 0;
-  if (dataFile.available()) {
-    bytesRead = (byte)dataFile.read(&buffer[0+2], 27);
-  }
-
-
-//REG_I	  00
-//REG_HL1	01	;HL'
-//REG_DE1	03	;DE'
-//REG_BC1	05	;BC'
-//REG_AF1	07	;AF'
-//REG_HL	09
-//REG_DE	11
-//REG_BC	13
-//REG_IY	15
-//REG_IX	17
-//REG_IFF 19 
-//REG_R	  20 
-//REG_AF	21
-//REG_SP	23
-//REG_IM	25 
-//REG_BDR	26	 
-/*
-static byte at[] = {
-         2,1,//  hl'  LIST IS THE Z80 RESTORE ORDER
-         3,3,//  de'
-         8,7,//  af'
-         6,5,//  bc'
-         10,9,//  hl
-        12,11,//  de
-        16,15,//  iy
-        18,17,//  ix
-        25   ,//  IM  
-         0   ,//  i
-        19   ,//  iff
-        20   ,//  r
-        22,21,//  AF
-        24,23,//  SP
-        14,13, //  BC
-        26
-};
-*/
-  buffer[0] = 'E';  // Execute command "EX"
-  buffer[1] = 'X';
+  head27[0] = 'E';  // Execute command "EX"
+  head27[1] = 'X';
   bufferSize = 27 + 2;
   bufferIndex = 0;
-/////  bufferSize -= 1;  // forget the last byte for now (BorderColor)
-
-  byte b = buffer[0];
+  byte b = head27[0];
   PORTD = (PORTD & B00000100) | (b & B11111011);
   PORTC = (PORTC & B11111011) | (b & B00000100);
 
-  while (1) {  //We now have one in the barrel and are ready to send data
-    if (bitRead(PINB, PINB0) == LOW) {
-      bitSet(PORTC, DDC0);
-      bitClear(PORTC, DDC0);
-      break;
-    }
-  }
+  releaseHalt();
 
   while ((bufferIndex < bufferSize)) {
     if ((bitRead(PINB, PINB0) == LOW)) {
-/*
-      if (bufferIndex >= 2) {
-        b = buffer[2 + at[bufferIndex - 2]];
-      } else {
-        if (bufferIndex == 0) { b = 'E'; }
-        if (bufferIndex == 1) { b = 'X'; }
-      }
-*/
-      b = buffer[bufferIndex];
+      b = head27[bufferIndex];
       PORTD = (PORTD & B00000100) | (b & B11111011);
       PORTC = (PORTC & B11111011) | (b & B00000100);
-      bitSet(PORTC, DDC0);
       bitClear(PORTC, DDC0);
+      bitSet(PORTC, DDC0);
     }
+ // delay(5) here will break it bad... will not load 
+ //  WHY??!?!?
+
   }
 
   while (bitRead(PINB, PINB0) == LOW) {}  // lock if we missed something
-
-/*
-  // At this point speecy is now running code relocated to screen memory
-  while ( 1) {
-      if ((bitRead(PINB, PINB0) == LOW) ) {
-
-
-         bitSet(PORTC,DDC0);
-         bitClear(PORTC,DDC0);
-//        bitSet(DDRC, DDC0);    // Un-HALT z80 with "/NMI" - pin14, A0 
-//        bitClear(DDRC, DDC0);
-        // MUST BE LAST - NMI ON STOCK ROM ROUTINE WILL RESET
-        bitSet(PORTC,DDC1);  // pin15, A1 - enable speccys stock rom
-        break;
-      }
-  }
-*/
 
   dataFile.close();
   sd.end();
    while (1) {
       pinMode(ledPin, OUTPUT);  
-       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
-        delay(250);            // waits for a second
-        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
-        delay(250);            // waits for a second
+       digitalWrite(ledPin, HIGH);
+        delay(250);         
+        digitalWrite(ledPin, LOW);  
+        delay(250);          
     }  
     
-  if (++fileIndex >= items) fileIndex = 0;
-  delay(2500);
+  //if (++fileIndex >= items) fileIndex = 0;
 
   delay(1000000);
 }
 
+void releaseHalt() {
+  while ((bitRead(PINB, PINB0) != LOW)) {};
+  // Once the input pin is LOW, toggle the output pin
+  bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
+  bitClear(PORTC,DDC0); // this will un-halt the Z80.
+}
 
-
-/*
-;00  I      [17]
-;01  HL'    [ 0, 1]
-;03  DE'    [ 2, 3]
-;05  BC'    [ 4, 5]
-;07  AF'    [ 6, 7]
-;09  HL     [ 8, 9]
-;11  DE     [10,11]
-;13  BC     [24,25]
-;15  IY     [12,13] 
-;17  IX     [14,15]
-;19  IFF2   [18]
-;20  R      [19]
-;21  AF     [20,21]
-;23  SP     [22,23]
-;25  IM     [16]
-;26  col    [  ]
-*/
 
 /* 
  * Interrupt Service Routine for INT0
@@ -394,7 +314,6 @@ static byte at[] = {
 ISR(INT0_vect) {  // triggered by z80:IN
     bufferIndex++;
 }
-
 
 
 
