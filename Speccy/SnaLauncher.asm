@@ -15,6 +15,16 @@ ENDM
 MACRO READ_PAIR_WITH_HALT  ,reg1,reg2
     in reg1,(c)
     halt
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
     in reg2,(c)
     halt
 ENDM
@@ -35,7 +45,7 @@ L0000:
        	; Stack goes down from SCREEN_END. 
     	ld SP,SCREEN_END 	; using screen attribute area works are a bonus debugging tool!
 		SET_BORDER 4
-	
+		
 mainloop: 
 		HALT     ; Let the Arduino signal when ready to start sending
 
@@ -67,7 +77,7 @@ check_EX:  				; Subroutine to handle 'EX' command
 ; MASKABLE INTERRUPT
 ORG $0038
 L0038:   
-		SET_BORDER 2
+		;;;SET_BORDER 2
         EI 
 		RET
 ;******************************************************************************
@@ -95,13 +105,33 @@ readDataLoop:
 	in a,($1f)   ; Read a byte from the I/O port
 	ld (hl),a	 ; write to screen
     inc hl
-    SET_BORDER a ; DEBUG for now... may keep it!
+    
+	AND %00000111  ; set border 0 to 7
+	out ($fe), a   ; 
+
 	halt 		 ; do this one after memory write (so final write does not miss out)
     djnz readDataLoop
 
     jr mainloop
 
 ;**************************************************************************************************
+;  SNA Header (27 bytes)
+;  REG_I	00
+;  REG_HL1	01	;HL'
+;  REG_DE1	03	;DE'
+;  REG_BC1	05	;BC'
+;  REG_AF1	07	;AF'
+;  REG_HL	09
+;  REG_DE	11
+;  REG_BC	13
+;  REG_IY	15
+;  REG_IX	17
+;  REG_IFF  19 
+;  REG_R	20 
+;  REG_AF	21
+;  REG_SP	23
+;  REG_IM	25 
+;  REG_BDR	26	 
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
@@ -117,11 +147,11 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 
 	ld c,$1f  
 	; Restore HL',DE',BC',AF'
-	READ_PAIR_WITH_HALT L,H ;h,l
-	READ_PAIR_WITH_HALT E,D ;d,e
+	READ_PAIR_WITH_HALT L,H 
+	READ_PAIR_WITH_HALT E,D 
 	push de
-	READ_PAIR_WITH_HALT c,b  ;b,c
-	READ_PAIR_WITH_HALT e,d  ;d,e	; spare to read AF
+	READ_PAIR_WITH_HALT c,b  
+	READ_PAIR_WITH_HALT e,d  ; spare to read AF
 	push de
 	pop af
 	pop de		
@@ -130,17 +160,17 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 
 	ld c,$1f  
 	; Restore HL,DE,BC,IY,IX	
-	READ_PAIR_WITH_HALT l,h   ;h,l	 ; restore HL
-	READ_PAIR_WITH_HALT e,d;  ;d,e  ; read DE
-	ld ($5800+2),de			 ; store DE				 
-	READ_PAIR_WITH_HALT e,d;  d,e  ; read BC
-	ld ($5800+4),de			 ; store BC
-	READ_PAIR_WITH_HALT e,d;   d,e	 ; read IY
+	READ_PAIR_WITH_HALT l,h   ; restore HL
+	READ_PAIR_WITH_HALT e,d;  ; read DE
+	ld ($5800+2),de			  ; store DE				 
+	READ_PAIR_WITH_HALT e,d;  ; read BC
+	ld ($5800+4),de			  ; store BC
+	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
-	pop IY					 ; restore IY
-	READ_PAIR_WITH_HALT e,d;   d,e	 ; read IX
+	pop IY					  ; restore IY
+	READ_PAIR_WITH_HALT e,d;  ; read IX
 	push de
-	pop IX					 ; restore IX
+	pop IX					  ; restore IX
 
 	; Restore interrupt enable flip-flop (IFF) 
 	READ_ACC_WITH_HALT		 ; read IFF
@@ -155,19 +185,15 @@ skip_EI:
 	READ_ACC_WITH_HALT ; currently goes to the void
 
 	; restore AF
-	READ_PAIR_WITH_HALT e,d;   d,e  ; using spare to restore AF
-	ld ($5800+6),de					; store AF
-;;;	push de
-;;;	pop AF
+	READ_PAIR_WITH_HALT e,d;  ; using spare to restore AF
+	ld ($5800+6),de			  ; store AF
 
 	; Store Stack Pointer
-	READ_PAIR_WITH_HALT e,d;   d,e  ; get Stack
-	ld ($5800),de 			 ; store sack
+	READ_PAIR_WITH_HALT e,d;  ; get Stack
+	ld ($5800),de 			  ; store sack
 
-;;;	push AF
-
-	READ_ACC_WITH_HALT		 ; read IM (interrupt mode)
 	; Restore IM0, IM1 or IM2  
+	READ_ACC_WITH_HALT		  ; read IM (interrupt mode)
 	or	a
 	jr	nz,notim0
 	im	0
@@ -185,14 +211,12 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-;;;	pop AF
-
-	ld de,($5800+6)	    ; Restore AF register pair
+	ld de,($5800+6)	     ; Restore AF register pair
 	PUSH de
 	POP AF 
 
-	ld bc,($5800+4)	 	; Restore BC register pair
-	ld de,($5800+2)		; Restore DE register pair
+	ld bc,($5800+4)	 	 ; Restore BC register pair
+	ld de,($5800+2)		 ; Restore DE register pair
 
 	JP SCREEN_ATTRIBUTES
 
