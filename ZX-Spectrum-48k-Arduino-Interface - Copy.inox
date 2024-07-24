@@ -96,10 +96,13 @@ byte buffer[BUFFER_SIZE];  // stores header + payload
 volatile byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
 volatile byte bufferSize = 0;   // Current size of valid data in the buffer
 
+//volatile bool used = false;
+
 boolean readyToSend = false;
 
 SdFat32 sd;
-FatFile dataFile;
+FatFile root;
+FatFile file;
 
 void setup() {
 
@@ -120,14 +123,16 @@ void setup() {
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);  
   
-  pinMode(15, OUTPUT);   // "/ROMCS"
+  pinMode(15, OUTPUT);   //pin15 (A1,DDC1) for "/ROMCS" 
 
   // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-  bitSet(DDRC, DDC0);     
-  bitClear(PORTC,DDC0);  // pin14 (A0), signals the Z80 /NMI line,
+/////  bitSet(DDRC, DDC0);  // output (Port C)
+/////  PORTC = PORTC & B11111110;  // Data Register (Port C)
+/////  bitClear(DDRC, DDC0);  // input (Port C)
+  bitSet(DDRC, DDC0);       // output (Port C)
+  bitClear(PORTC,DDC0);     // Data Register (Port C)
 
-  // SELECT ROM (MOVE THIS, BUT NEED TO KEEP HERE FOR NOW ... NO MORE LOGICAL CHANGES YET)
-  bitClear(PORTC,DDC1);  // pin15, A1 , swap out stock rom
+  bitClear(PORTC,DDC1);     // pin15, A1 , "/ROMCS" LOW swap out stock rom
 
   // Initialize SD card
   if (!sd.begin(sdPin)) {
@@ -140,54 +145,73 @@ void setup() {
     }  
   }
 
-  // Interrupt (INT0) on pin 2 - External Interrupt Control Register A (EICRA) / Mask Register (EIMSK).
+  /* 
+   * Configure interrupt on INT0 (pin 2) 
+   * External Interrupt Control Register A (EICRA).
+   * External Interrupt Mask Register (EIMSK).
+   */
   cli();
   bitSet(EICRA, ISC01);  // Rising Edge of INT0 generates interrupt
   bitSet(EICRA, ISC00);
-  bitSet(EIMSK, INT0);   // enable INT0 interrupt
+  bitSet(EIMSK, INT0);  // enable INT0 interrupt
   sei();
 
-  // Interrupts need to use pins 2 or 3 (I'm using a Nano/Pro Mini ).
+  // Arduino (nano or pro mini) interrupts need to use pins 2 or 3
   pinMode(interruptPin, INPUT);  // TODO  ... move somewhere better, maybe once buffer is full.. ISR will INC INDEX 
+
+    // Open root directory
+  if (!root.open("/")) {}
+
+  root.rewind();
+  while (file.openNext(&root,O_RDONLY)) { 
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        break;
+      }
+    }
+    file.close();
+  }
+
+
 }
 
-const char *fileNames[] = { "zynaps.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
+//const char *fileNames[] = { "exolon.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
 //const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
-byte fileIndex = 0;
+//byte fileIndex = 0;
 
 void loop() {
-
-  if (!dataFile.open(fileNames[fileIndex])) {
-    dataFile.close();
-    sd.end();
+/*
+  if (!file.open(fileNames[fileIndex])) {
     while (1) {
       pinMode(ledPin, OUTPUT);  
        digitalWrite(ledPin, HIGH); 
-        delay(5000);          
+        delay(1000);          
         digitalWrite(ledPin, LOW);
-        delay(5000);          
+        delay(1000);          
     }  
   }
+*/
 
-  if (dataFile.available()) {
-    byte bytesReadHeader = (byte)dataFile.read(&head27[0+2], 27);
+  if (file.available()) {
+    byte bytesReadHeader = (byte)file.read(&head27[0+2], 27);
     if (bytesReadHeader!=27) {
-      dataFile.close();
+      file.close();
       sd.end();
       while (1) {
         pinMode(ledPin, OUTPUT);  
         digitalWrite(ledPin, HIGH); 
-        delay(3000);        
+        delay(4000);        
         digitalWrite(ledPin, LOW); 
-        delay(3000);          
+        delay(4000);          
       }  
     }
   }
 
 
   uint16_t destinationAddress = 0x4000;  //screen address
+/////  dataFile.seekSet(27);  // skip over header as we will read that later
 
-  while (dataFile.available()) {
+  while (file.available()) {
     buffer[HEADER_START_G] = 'G';  // Header
     buffer[HEADER_START_O] = 'O';  // Header
 
@@ -197,9 +221,9 @@ void loop() {
     buffer[HEADER_LOW_BYTE] = low_byte;
 
     byte bytesRead = 0;
-    if (dataFile.available()) {
+    if (file.available()) {
       // Read up to PAYLOAD_BUFFER_SIZE bytes or until end of file
-      bytesRead = (byte)dataFile.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+      bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     }
 
     buffer[HEADER_PAYLOADSIZE] = bytesRead;
@@ -218,25 +242,32 @@ void loop() {
     bufferSize = SIZE_OF_HEADER + bytesRead;
     bufferIndex = 0;
 
-    if (destinationAddress == 0x4000) {
-      releaseHalt();
-    }
+if (destinationAddress == 0x4000) {
+  releaseHalt();  // we are now ready, allow z80 to grab data.
+}
 
-    bufferSize-=1;  // reading from index is always one ahead, stop early
-    while ((bufferIndex-1) < bufferSize) { // -1 allow index to reach real end
+bufferSize-=1;
+    while ((bufferIndex-1) < bufferSize) {
       if ((bitRead(PINB, PINB0) == LOW) ) {
+
+  if ((bufferIndex-1) < bufferSize) {
         // Z80 processor just read and is now halted, we can now  output future data
         // for next go around. These ports are picked for data alignment
-        byte b = buffer[bufferIndex];  // bufferIndex no adjustment needed, reading ahead
+        byte b = buffer[bufferIndex];  
         PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
-        PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC.
-        bitClear(PORTC,DDC0); // this will un-halt the Z80.
+        PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC
+       bitClear(PORTC,DDC0); // this will un-halt the Z80.
         bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
       }
+  }
     }
-    bufferSize = 0;
+    bufferSize = 0;  // playing it safe - bar interrupt from reading
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
+ ////////////// releaseHalt();   // ABOVE IS READING AHEAD - NOW Z80 HAS REACHED $FFFF
+
+
+// z80 is in a HALT state at this point (above code is one ahead)
 
   //REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
   //REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
@@ -250,25 +281,44 @@ void loop() {
   byte b = head27[0];
   PORTD = (PORTD & B00000100) | (b & B11111011);
   PORTC = (PORTC & B11111011) | (b & B00000100);
+  
+releaseHalt();   // $FFFF
 
-  releaseHalt();
 
-  bufferSize-=1; // again, one ahead (see above)
+  bufferSize-=1;
   while ((bufferIndex-1) < bufferSize) {
+    
+    // INTERRUPTS: COULD BE HERE WHEN WHEN THE Z80 HALTS
+    // and so z80:IN (ISR:bufferIndex++) HAST NOT BEEN SEEN BY TOP OF THE LOOP
+    // DONT FORGOT DATA INDEXED HERE NEEDS TO BE ONE AHEAD 
+
     if ((bitRead(PINB, PINB0) == LOW)) {
-      b = head27[bufferIndex];
-      PORTD = (PORTD & B00000100) | (b & B11111011);
-      PORTC = (PORTC & B11111011) | (b & B00000100);
-      bitClear(PORTC, DDC0);
-      bitSet(PORTC, DDC0);
+        b = head27[bufferIndex];
+        PORTD = (PORTD & B00000100) | (b & B11111011);
+        PORTC = (PORTC & B11111011) | (b & B00000100);
+        bitClear(PORTC, DDC0);
+        bitSet(PORTC, DDC0);
     }
   }
+  
 
-  while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG - lock if we missed something
+  releaseHalt();   // <27>
 
-  dataFile.close();
+  while (1) {
+    if ((bitRead(PINB, PINB0) == LOW)) {
+        bitSet(PORTC,DDC1);  // pin15, A1 - enable speccys stock rom
+
+        bitSet(PORTC,DDC0);   // A0 signals the Z80 /NMI un-halting the Z80.
+        bitClear(PORTC,DDC0); // 
+        break;
+    }
+  }
+ 
+  while (bitRead(PINB, PINB0) == LOW) {}  // lock if we missed something
+
+  file.close();
   sd.end();
-   while (1) { // DEBUG FLASH - END OF CODE WAS HIT OK
+   while (1) {
       pinMode(ledPin, OUTPUT);  
        digitalWrite(ledPin, HIGH);
         delay(200);         

@@ -7,6 +7,8 @@ start:
     LD (HL),9
     INC HL      
     LD (HL),9
+
+	
 	LD HL,CopyToScreenTag
 	LD DE,16384
 	LD BC, data - CopyToScreenTag
