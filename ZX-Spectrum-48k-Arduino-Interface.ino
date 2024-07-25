@@ -120,10 +120,10 @@ void setup() {
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);  
   
+  pinMode(14, OUTPUT);   // "/NMI"
   pinMode(15, OUTPUT);   // "/ROMCS"
-
   // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-  bitSet(DDRC, DDC0);     
+//  bitSet(DDRC, DDC0);     
   bitClear(PORTC,DDC0);  // pin14 (A0), signals the Z80 /NMI line,
 
   // SELECT ROM (MOVE THIS, BUT NEED TO KEEP HERE FOR NOW ... NO MORE LOGICAL CHANGES YET)
@@ -284,8 +284,8 @@ void loop() {
 void releaseHalt() {
   while ((bitRead(PINB, PINB0) != LOW)) {};
   // Once the input pin is LOW, toggle the output pin
-  bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
-  bitClear(PORTC,DDC0); // this will un-halt the Z80.
+  bitClear(PORTC,DDC0); // A0 signals the Z80 /NMI line,
+  bitSet(PORTC,DDC0); // this will un-halt the Z80.
 }
 
 
