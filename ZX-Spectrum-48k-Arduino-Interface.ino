@@ -124,7 +124,7 @@ void setup() {
   pinMode(15, OUTPUT);   // "/ROMCS"
   // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
 //  bitSet(DDRC, DDC0);     
-  bitClear(PORTC,DDC0);  // pin14 (A0), signals the Z80 /NMI line,
+  bitSet(PORTC,DDC0);  // pin14 (A0), Z80 /NMI line
 
   // SELECT ROM (MOVE THIS, BUT NEED TO KEEP HERE FOR NOW ... NO MORE LOGICAL CHANGES YET)
   bitClear(PORTC,DDC1);  // pin15, A1 , swap out stock rom
