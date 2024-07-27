@@ -44,6 +44,13 @@
  * Note: Ideally, we could use a single byte, but constraints force us to use two bytes.
  */
 
+// SNAPSHOT FILE HEADER (.sna files)
+//REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
+//REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
+//REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
+//REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
+
+
 
 #include <avr/pgmspace.h>
 #include <SPI.h>
@@ -60,21 +67,21 @@
 
 
 // Arduino pin assignment
-const byte interruptPin = 2;  // only pins 2 or 3 for the ATmega328P Microcontroller
-const byte sdPin = 9;         // SD card pin
+//const byte interruptPin = 2;  // only pins 2 or 3 for the ATmega328P Microcontroller
+const byte sdPin = 9;  // SD card pin
 const byte ledPin = 13;
 
- // Arduino Pins that connect up to the z80 data pins
+// Arduino Pins that connect up to the z80 data pins
 const byte Z80_D0Pin = 0;
 const byte Z80_D1Pin = 1;
-const byte Z80_D2Pin = 16;  // A2 (pin2 not available)
+const byte Z80_D2Pin = 2;  // 16;  // A2 (pin2 not available)
 const byte Z80_D3Pin = 3;
 const byte Z80_D4Pin = 4;
 const byte Z80_D5Pin = 5;
 const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
-// Z80 'Halt' Status 
-const byte Z80_HALT = 8;   // PINB0 (PORT B)
+// Z80 'Halt' Status
+const byte Z80_HALT = 8;  // PINB0 (PORT B)
 
 // Message structure
 const byte HEADER_START_G = 0;      // Index for first byte of header
@@ -87,27 +94,38 @@ const byte SIZE_OF_HEADER = 5;
 const byte PAYLOAD_BUFFER_SIZE = 250;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-byte head27[27+2]; 
-//byte bytesReadHeader=0;
+static byte head27[27 + 2] = { 'E', 'X' };  // Execute command "EX"
+//  head27[0] = 'E';
+//  head27[1] = 'X';
 
-byte buffer[BUFFER_SIZE];  // stores header + payload
+static byte buffer[BUFFER_SIZE];  // stores header + payload
 // NOTE: bufferIndex and bufferSize must be in bytes for fast unpacking in interrupt handling,
 // as response time to Z80:IN is critical.
-volatile byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
-volatile byte bufferSize = 0;   // Current size of valid data in the buffer
+//volatile byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
+//volatile byte bufferSize = 0;   // Current size of valid data in the buffer
 
-boolean readyToSend = false;
+//byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
+//byte bufferSize = 0;   // Current size of valid data in the buffer
+
+//boolean readyToSend = false;
 
 SdFat32 sd;
-FatFile dataFile;
+FatFile root;
+FatFile file;
+
+void debugFlash(int flashSpeed);
 
 void setup() {
 
-   //  Serial.begin(9600);
-  //   while (! Serial);
 
-  pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
-  pinMode(ledPin, OUTPUT);        // DEBUG
+  //   Serial.begin(9600);
+  //    while (! Serial);
+
+  bitClear(PORTC, DDC1);
+  pinMode(15, OUTPUT);    // "/ROMCS"
+  bitClear(PORTC, DDC1);  // pin15, A1 , swap out stock rom
+
+  //  pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
 
   // These pins are connected to the address lines on the Z80
   pinMode(Z80_D0Pin, OUTPUT);
@@ -118,174 +136,137 @@ void setup() {
   pinMode(Z80_D5Pin, OUTPUT);
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
-  pinMode(Z80_HALT, INPUT);  
-  
-  pinMode(14, OUTPUT);   // "/NMI"
-  pinMode(15, OUTPUT);   // "/ROMCS"
-  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-//  bitSet(DDRC, DDC0);     
-  bitSet(PORTC,DDC0);  // pin14 (A0), Z80 /NMI line
+  pinMode(Z80_HALT, INPUT);
 
-  // SELECT ROM (MOVE THIS, BUT NEED TO KEEP HERE FOR NOW ... NO MORE LOGICAL CHANGES YET)
-  bitClear(PORTC,DDC1);  // pin15, A1 , swap out stock rom
+  bitSet(PORTC, DDC0);  // (pins default as input) - can you still set while in input mode?
+  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
+  pinMode(14, OUTPUT);  // "/NMI"
+  bitSet(PORTC, DDC0);  // pin14 (A0), Z80 /NMI line
 
   // Initialize SD card
-  if (!sd.begin(sdPin)) {
-     while (1) {
-      pinMode(ledPin, OUTPUT);  
-       digitalWrite(ledPin, HIGH); // sets the digital pin 13 on
-        delay(250);            // waits for a second
-        digitalWrite(ledPin, LOW);  // sets the digital pin 13 off
-        delay(250);            // waits for a second
-    }  
-  }
+  if (!sd.begin(sdPin)) {}
 
   // Interrupt (INT0) on pin 2 - External Interrupt Control Register A (EICRA) / Mask Register (EIMSK).
-  cli();
-  bitSet(EICRA, ISC01);  // Rising Edge of INT0 generates interrupt
-  bitSet(EICRA, ISC00);
-  bitSet(EIMSK, INT0);   // enable INT0 interrupt
-  sei();
+  //  cli();
+  //  bitSet(EICRA, ISC01);  // Rising Edge of INT0 generates interrupt
+  //  bitSet(EICRA, ISC00);
+  //  bitSet(EIMSK, INT0);   // enable INT0 interrupt
+  //  sei();
 
   // Interrupts need to use pins 2 or 3 (I'm using a Nano/Pro Mini ).
-  pinMode(interruptPin, INPUT);  // TODO  ... move somewhere better, maybe once buffer is full.. ISR will INC INDEX 
+  //  pinMode(interruptPin, INPUT);  // TODO  ... move somewhere better, maybe once buffer is full.. ISR will INC INDEX
+
+
+  //char name[20];
+  bool have = false;
+  do {
+    if (!root.open("/")) {
+      root.rewind();
+      randomSeed(analogRead(4));
+      while (file.openNext(&root, O_RDONLY)) {
+        if (file.isFile()) {
+
+          if (file.fileSize() == 49179) {
+            if (random(5) == 0) {
+              //    file.printName(&Serial);
+              //      Serial.println();
+              have = true;
+              break;
+            }
+          }
+        }
+        file.close();
+      }
+    }
+  } while (!have);
+
+  delay(100);
 }
 
-const char *fileNames[] = { "zynaps.sna" , "1.scr", "2.scr", "3.scr", "4.scr" };
-//const byte items = sizeof(fileNames) / sizeof(fileNames[0]);
-byte fileIndex = 0;
 
 void loop() {
 
-  if (!dataFile.open(fileNames[fileIndex])) {
-    dataFile.close();
-    sd.end();
-    while (1) {
-      pinMode(ledPin, OUTPUT);  
-       digitalWrite(ledPin, HIGH); 
-        delay(5000);          
-        digitalWrite(ledPin, LOW);
-        delay(5000);          
-    }  
+  if (file.available()) {
+    byte bytesReadHeader = (byte)file.read(&head27[0 + 2], 27);
+    if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
-  if (dataFile.available()) {
-    byte bytesReadHeader = (byte)dataFile.read(&head27[0+2], 27);
-    if (bytesReadHeader!=27) {
-      dataFile.close();
-      sd.end();
-      while (1) {
-        pinMode(ledPin, OUTPUT);  
-        digitalWrite(ledPin, HIGH); 
-        delay(3000);        
-        digitalWrite(ledPin, LOW); 
-        delay(3000);          
-      }  
-    }
-  }
-
-
+  buffer[HEADER_START_G] = 'G';          // Header
+  buffer[HEADER_START_O] = 'O';          // Header
   uint16_t destinationAddress = 0x4000;  //screen address
 
-  while (dataFile.available()) {
-    buffer[HEADER_START_G] = 'G';  // Header
-    buffer[HEADER_START_O] = 'O';  // Header
+  while (file.available()) {
 
-    const uint8_t high_byte = (destinationAddress >> 8) & 0xFF;
-    const uint8_t low_byte = destinationAddress & 0xFF;
-    buffer[HEADER_HIGH_BYTE] = high_byte;
-    buffer[HEADER_LOW_BYTE] = low_byte;
-
-    byte bytesRead = 0;
-    if (dataFile.available()) {
-      // Read up to PAYLOAD_BUFFER_SIZE bytes or until end of file
-      bytesRead = (byte)dataFile.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-    }
-
+    byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     buffer[HEADER_PAYLOADSIZE] = bytesRead;
+    buffer[HEADER_HIGH_BYTE] = (destinationAddress >> 8) & 0xFF;  // high byte
+    buffer[HEADER_LOW_BYTE] = destinationAddress & 0xFF;          // low byte
 
-    // Pre-setting the data here first and in the main loop works well because the Z80 is in a HALT state.
-    // While halted the Z80 cannot continuously request data from the Arduino via Z80:IN instructions.
-    // Previously I used the ISR for sending data overwhelming the Arduino and causing transmition errors. 
-        
-    byte b = buffer[0]; // Pre-load the first byte (see INT0 for advancing the buffer index)
-    PORTD = (PORTD & B00000100) | (b & B11111011);
-    PORTC = (PORTC & B11111011) | (b & B00000100); 
-    // Above is only needed for the very first time around... infact it could just set 'G'
-    // Technically the last Z80:IN stalls and has to wait for the next new chunk.
-    // Which means this [0] is never needed after the initial chuck.
+    byte bufferSize = SIZE_OF_HEADER + bytesRead;
+    for (byte bufferIndex = 0; bufferIndex < bufferSize; bufferIndex++) {
+      while ((bitRead(PINB, PINB0) == HIGH)) {};
+      // Z80 processor is now halted.  Note: These ports are picked for data alignment
+      //        byte b = buffer[bufferIndex];  // bufferIndex no adjustment needed, reading ahead
+      //        PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
+      //        PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC.
 
-    bufferSize = SIZE_OF_HEADER + bytesRead;
-    bufferIndex = 0;
+      PORTD = buffer[bufferIndex];
 
-    if (destinationAddress == 0x4000) {
-      releaseHalt();
+      bitClear(PORTC, DDC0);                     // this will un-halt the Z80.
+      bitSet(PORTC, DDC0);                       // A0 signals the Z80 /NMI line,
+      while ((bitRead(PINB, PINB0) == LOW)) {};  // Wait Z80 to Un-Halt (line HIGH)
     }
-
-    bufferSize-=1;  // reading from index is always one ahead, stop early
-    while ((bufferIndex-1) < bufferSize) { // -1 allow index to reach real end
-      if ((bitRead(PINB, PINB0) == LOW) ) {
-        // Z80 processor just read and is now halted, we can now  output future data
-        // for next go around. These ports are picked for data alignment
-        byte b = buffer[bufferIndex];  // bufferIndex no adjustment needed, reading ahead
-        PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
-        PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC.
-        bitClear(PORTC,DDC0); // this will un-halt the Z80.
-        bitSet(PORTC,DDC0); // A0 signals the Z80 /NMI line,
-      }
-    }
-    bufferSize = 0;
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
-  //REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
-  //REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
-  //REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20 
-  //REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26	 
+  // Send Snapshot Header
+  byte bufferSize = 27 + 2;
+  for (byte bufferIndex = 0; bufferIndex < bufferSize; bufferIndex++) {
+    while ((bitRead(PINB, PINB0) == HIGH)) {};
+    //   byte b = head27[bufferIndex];
+    //   PORTD = (PORTD & B00000100) | (b & B11111011);
+    //   PORTC = (PORTC & B11111011) | (b & B00000100);
 
-  head27[0] = 'E';  // Execute command "EX"
-  head27[1] = 'X';
-  bufferSize = 27 + 2;
-  bufferIndex = 0;
-  byte b = head27[0];
-  PORTD = (PORTD & B00000100) | (b & B11111011);
-  PORTC = (PORTC & B11111011) | (b & B00000100);
+    PORTD = head27[bufferIndex];
 
-  releaseHalt();
-
-  bufferSize-=1; // again, one ahead (see above)
-  while ((bufferIndex-1) < bufferSize) {
-    if ((bitRead(PINB, PINB0) == LOW)) {
-      b = head27[bufferIndex];
-      PORTD = (PORTD & B00000100) | (b & B11111011);
-      PORTC = (PORTC & B11111011) | (b & B00000100);
-      bitClear(PORTC, DDC0);
-      bitSet(PORTC, DDC0);
-    }
+    bitClear(PORTC, DDC0);
+    bitSet(PORTC, DDC0);
+    while ((bitRead(PINB, PINB0) == LOW)) {};
   }
+
+  while ((bitRead(PINB, PINB0) == HIGH)) {};  // wait for HALT (LOW)
+  bitSet(PORTC, DDC1);                        // pin15 (A1) , put back original stock rom
+
+  // Un-Halt Z80, take line HIGH,LOW,HIGH
+  bitClear(PORTC, DDC0);  // Z80 /NMI line,
+  bitSet(PORTC, DDC0);
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG - lock if we missed something
 
-  dataFile.close();
-  sd.end();
-   while (1) { // DEBUG FLASH - END OF CODE WAS HIT OK
-      pinMode(ledPin, OUTPUT);  
-       digitalWrite(ledPin, HIGH);
-        delay(200);         
-        digitalWrite(ledPin, LOW);  
-        delay(200);          
-    }  
-    
-  //if (++fileIndex >= items) fileIndex = 0;
+  debugFlash(200);
 
   delay(1000000);
 }
 
 void releaseHalt() {
-  while ((bitRead(PINB, PINB0) != LOW)) {};
+  while ((bitRead(PINB, PINB0) == HIGH)) {};
   // Once the input pin is LOW, toggle the output pin
-  bitClear(PORTC,DDC0); // A0 signals the Z80 /NMI line,
-  bitSet(PORTC,DDC0); // this will un-halt the Z80.
+  bitClear(PORTC, DDC0);  // A0 signals the Z80 /NMI line,
+  bitSet(PORTC, DDC0);    // this will un-halt the Z80.
+  while ((bitRead(PINB, PINB0) == LOW)) {};
+}
+
+void debugFlash(int flashspeed) {
+  file.close();
+  root.close();
+  sd.end();
+  while (1) {
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, HIGH);
+    delay(flashspeed);
+    digitalWrite(ledPin, LOW);
+    delay(flashspeed);
+  }
 }
 
 
@@ -299,222 +280,6 @@ void releaseHalt() {
  * and before PORTC I was using PORTB that was not aligned so required extra bit shifts. All adds up when 
  * trying to keep inside the Z80's "IN" timings!!!
  */
-ISR(INT0_vect) {  // triggered by z80:IN
-    bufferIndex++;
-}
-
-
-
-
-
-/*
-
-z80 code for quick ref as of 4jul2024
-
-;https://www.retronator.com/png-to-scr
-
-; OPTIMISED CODE TIPS HERE:-
-; https://www.smspower.org/Development/Z80ProgrammingTechniques
-
-;https://github.com/konkotgit/ZX-external-ROM/blob/master/docs/zx_ext_eprom_512.pdf
-
-; Contended Screen Ram
-; On 48K Spectrums, the block of RAM between &4000 and &7FFF is contented, 
-; that is access to the RAM is shared between the processor and the ULA. 
-
-; ====================
-; PORTS USED BY SYSTEM
-; ====================
-; ULA 		: ---- ---- ---- ---0  
-;			  All even I/O  uses the ULA, officialy 0xFE is used.
-; Keyboard 	: 0x7FFE to 0xFEFE
-; Kempston  : ---- ---- 0001 1111  = 0x1F
-;
-
-WAIT EQU $8
-
-org 0x8000
-start:      
-	DI
-	
-	im 1 ; Set interrupt mode 1
-
-	LD HL,$5CB0 
-    LD (HL),9
-    INC HL      
-    LD (HL),9
-
-	;;ld hl,0x4000
-	;;ld de,6912  ; data remaining is 6144 (bitmap) + 768 (Colour attributes) 
-
-mainloop: 
-
-
-	check_loop:  ; x2 bytes, header "GO"
-	
-	in a,($1f) 
-	halt
-
-	CP 'G'
-	JR NZ, check_loop
-	;;;LD BC,WAIT
-    ;;;CALL DELAY 
-
-	in a,($1f) 
-	halt
-
-	CP 'O'  
-	JR NZ, check_loop
-	; if we get here then we have found "GO" header 
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
-
-	; amount to transfer (small transfers, only 1 byte used)
- 	in a,($1f)    ; 1 byte for amount    
-	halt
-
-    ld d, a   
-	ld e, a       ; keep copy      
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
-
-	; dest (read 2 bytes) - Read the high byte
-    in a,($1f)        
-	halt
-
-    ld H, a       ; 1st for high
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
-    in a,($1f)    ; 2nd for low byte
-	halt
-
-    ld L, a           
-	;;;LD BC,WAIT
-    ;;;CALL DELAY
-
-screenloop:
-
-	; ($1f) place on address buss bottom half (a0 to a7)
-	; Accumulator top half (a8 to a15) - currently I don't care
-	in a,($1f)   ; Read a byte from the I/O port
-	halt
-
-	ld (hl),a	 ; write to screen
-    inc hl
-
-	;;;LD BC,WAIT
-   ;;; CALL DELAY
-
-    dec d 	
-    jp nz,screenloop
-	
-	; CRC CHECK AGIANT LAST DATA TRANSFER
-;	ld d,0  ; not needed
-;	or a
-;	sbc hl,de ; rewind by amount copied
-;	call _crc8b  ; a returns CRC-8
-;
-;	out ($1f),a  ; Send CRC-8 to arduino
-
-; If the code fails, then nothing special needs to happen, as the data is just re-sent 
-; using the same destination again. It will overwrite the failed transmission and get CRC checked again.
-; *** This would be a good time to 'tune' and dial in the transmission speeds dynamically. 
-; *** Could even start up with tuning first.
-
-;;;;	LD BC,WAIT
-;;;;    CALL DELAY
-
-    jr mainloop
-		
- DELAY:
-    NOP
-	DEC BC
-	LD A,B
-	OR C
-	RET Z
-	JR DELAY
-
-
-
-;; =====================================================================
-;; input - hl=start of memory to check, de=length of memory to check
-;; returns - a=result crc
-;; 20b
-;; =====================================================================
-_crc8b:
-	xor a ; 4t - initial value of crc=0 so first byte can be XORed in (CCITT)
-	ld c,$07 ; 7t - c=polyonimal used in loop (small speed up)
-	_byteloop8b:
-	xor (hl) ; 7t - xor in next byte, for first pass a=(hl)
-	inc hl ; 6t - next mem
-	ld b,8 ; 7t - loop over 8 bits
-	_rotate8b:
-	add a,a ; 4t - shift crc left one
-	jr nc,_nextbit8b ; 12/7t - only xor polyonimal if msb set (carry=1)
-	xor c ; 4t - CRC8_CCITT = 0x07
-	_nextbit8b:
-	djnz _rotate8b ; 13/8t
-	ld b,a ; 4t - preserve a in b
-	dec de ; 6t - counter-1
-	ld a,d ; 4t - check if de=0
-	or e ; 4t
-	ld a,b ; 4t - restore a
-	jr nz,_byteloop8b; 12/7t
-	et ; 10t
-
-Divide:                          ; this routine performs the operation BC=HL/E
-  ld a,e                         ; checking the divisor; returning if it is zero
-  or a                           ; from this time on the carry is cleared
-  ret z
-  ld bc,-1                       ; BC is used to accumulate the result
-  ld d,0                         ; clearing D, so DE holds the divisor
-DivLoop:                         ; subtracting DE from HL until the first overflow
-  sbc hl,de                      ; since the carry is zero, SBC works as if it was a SUB
-  inc bc                         ; note that this instruction does not alter the flags
-  jr nc,DivLoop                  ; no carry means that there was no overflow
-  ret
-		
-END start
-
-
-; SAMPLE OF SPECCY ROM - LOCATION 0x0066
-;;; RESET
-;L0066:  PUSH    AF              ; save the
-;        PUSH    HL              ; registers.
-;        LD      HL,($5CB0)      ; fetch the system variable NMIADD.
-;        LD      A,H             ; test address
-;        OR      L               ; for zero.
-;
-;        JR      NZ,L0070        ; skip to NO-RESET if NOT ZERO
-;
-;        JP      (HL)            ; jump to routine ( i.e. L0000 )
-;
-;; NO-RESET
-;L0070:  POP     HL              ; restore the
-;        POP     AF              ; registers.
-;        RETN   
-
-
-
-
-; http://www.robeesworld.com/blog/33/loading_zx_spectrum_snapshots_off_microdrives_part_one
-
-; https://www.seasip.info/ZX/spectrum.html
-
-;----
-
-;https://worldofspectrum.org/faq/reference/formats.htm
-
-; https://github.com/oxidaan/zqloader/blob/master/z80snapshot_loader.cpp
-
-; http://cd.textfiles.com/230/EMULATOR/SINCLAIR/JPP/JPP.TXT
-
-
-
-
-
-;//use end connectors to fudge/repair speccy keyboard
-;//4x3/4x5/1x6/1x4 Keys Matrix Keyboard Array Membrane Switch Keypad Keyboard UK
-
-
-*/
+//ISR(INT0_vect) {  // triggered by z80:IN
+//   bufferIndex++;
+//}

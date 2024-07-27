@@ -2,31 +2,24 @@
 ;   CONSTANTS
 ;******************************************************************************
 ;SCREEN_START		EQU $4000	 ; USE ME FOR FINAL BUILD LOCATION	
-SCREEN_ATTRIBUTES   EQU $5800+8  ; DEBUG LOCATION
+SCREEN_ATTRIBUTES   EQU $5800+32  ; DEBUG LOCATION
 SCREEN_END			EQU $5AFF
 
 ;******************************************************************************
 ;   MACRO SECTION
 ;******************************************************************************
 MACRO READ_ACC_WITH_HALT 
+	halt
     in a, ($1f)  
-    halt     
+;;;;;;    halt     
 ENDM
 MACRO READ_PAIR_WITH_HALT  ,reg1,reg2
+	halt
     in reg1,(c)
-    halt
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
+;;;;    halt
+	halt
     in reg2,(c)
-    halt
+;;;;;    halt
 ENDM
 MACRO SET_BORDER ,colour  ; DEBUG
 	;0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
@@ -47,7 +40,7 @@ L0000:
 		SET_BORDER 4
 		
 mainloop: 
-		HALT     ; Let the Arduino signal when ready to start sending
+	;;;;	HALT     ; Let the Arduino signal when ready to start sending
 
 ;**************************************************************************************************
 ; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
@@ -94,14 +87,16 @@ command_GO:  ; FIRST STAGE - TRANSFER DATA
 	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
 	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
 	; Transfers here are sequential, but any destination location can be targeted.
+	halt
 	in b,(c)  ; transfer size (1 byte)
-	HALT
+;;;;;	HALT
 
 	; Set HL with the 'destination' address (reading 2 bytes)
 	READ_PAIR_WITH_HALT h,l
 
 readDataLoop:
 	; liking the boarder effect, so going with 'in' not 'ini' as need value in Acc
+	halt
 	in a,($1f)   ; Read a byte from the I/O port
 	ld (hl),a	 ; write to screen
     inc hl
@@ -109,7 +104,7 @@ readDataLoop:
 	AND %00000111  ; set border 0 to 7
 	out ($fe), a   ; 
 
-	halt 		 ; do this one after memory write (so final write does not miss out)
+;;;;;	halt 		 ; do this one after memory write (so final write does not miss out)
     djnz readDataLoop
 
     jr mainloop
@@ -135,6 +130,8 @@ readDataLoop:
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
+	SET_BORDER 6
+
 	; Relocate code to run in screen memory
 	LD HL,relocate
 	LD DE,SCREEN_ATTRIBUTES  ; DEBUG
@@ -178,7 +175,8 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	jr	z,skip_EI
 	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
 	ld a,$FB
-	ld (SCREEN_ATTRIBUTES),a  ; IM Opcode = $FB
+;;;	ld (SCREEN_ATTRIBUTES+(NOP_LABLE-relocate)),a  ; IM Opcode = $FB
+	ld (SCREEN_ATTRIBUTES+1),a  ; IM Opcode = $FB
 skip_EI:
 
 	; R REG ... TODO  
@@ -217,12 +215,14 @@ IMset:
 
 	ld bc,($5800+4)	 	 ; Restore BC register pair
 	ld de,($5800+2)		 ; Restore DE register pair
+	ld SP,($5800)		 ; Restore the program's stack pointer
 
 	JP SCREEN_ATTRIBUTES
 
 relocate:
+	HALT 				 ; "last halt" notifies we need original rom
+NOP_LABLE:
 	NOP 				 ; This will be modified to EI if needed
-	ld SP,($5800)		 ; Restore the program's stack pointer
 	RETN				 ; Start program
 relocateEnd:
 
