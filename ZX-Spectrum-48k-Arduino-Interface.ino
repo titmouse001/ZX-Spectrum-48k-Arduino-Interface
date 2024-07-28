@@ -80,8 +80,7 @@ const byte Z80_D4Pin = 4;
 const byte Z80_D5Pin = 5;
 const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
-// Z80 'Halt' Status
-const byte Z80_HALT = 8;  // PINB0 (PORT B)
+const byte Z80_HALT  = 8;  // PINB0 (PORT B), Z80 'Halt' Status
 
 // Message structure
 const byte HEADER_START_G = 0;      // Index for first byte of header
@@ -95,19 +94,7 @@ const byte PAYLOAD_BUFFER_SIZE = 250;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
 static byte head27[27 + 2] = { 'E', 'X' };  // Execute command "EX"
-//  head27[0] = 'E';
-//  head27[1] = 'X';
-
 static byte buffer[BUFFER_SIZE];  // stores header + payload
-// NOTE: bufferIndex and bufferSize must be in bytes for fast unpacking in interrupt handling,
-// as response time to Z80:IN is critical.
-//volatile byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
-//volatile byte bufferSize = 0;   // Current size of valid data in the buffer
-
-//byte bufferIndex = 0;  // Index of the next byte to be written to the buffer
-//byte bufferSize = 0;   // Current size of valid data in the buffer
-
-//boolean readyToSend = false;
 
 SdFat32 sd;
 FatFile root;
@@ -122,7 +109,7 @@ void setup() {
   //    while (! Serial);
 
   bitClear(PORTC, DDC1);
-  pinMode(15, OUTPUT);    // "/ROMCS"
+  pinMode(15, OUTPUT);    // LOW external/HIGH stock rom
   bitClear(PORTC, DDC1);  // pin15, A1 , swap out stock rom
 
   //  pinMode(interruptPin, OUTPUT);  // Don't trigger during setup
@@ -180,7 +167,6 @@ void setup() {
     }
   } while (!have);
 
-  delay(100);
 }
 
 
@@ -190,6 +176,8 @@ void loop() {
     byte bytesReadHeader = (byte)file.read(&head27[0 + 2], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
+
+  delay(50);
 
   buffer[HEADER_START_G] = 'G';          // Header
   buffer[HEADER_START_O] = 'O';          // Header
@@ -203,49 +191,41 @@ void loop() {
     buffer[HEADER_LOW_BYTE] = destinationAddress & 0xFF;          // low byte
 
     byte bufferSize = SIZE_OF_HEADER + bytesRead;
-    for (byte bufferIndex = 0; bufferIndex < bufferSize; bufferIndex++) {
-      while ((bitRead(PINB, PINB0) == HIGH)) {};
-      // Z80 processor is now halted.  Note: These ports are picked for data alignment
-      //        byte b = buffer[bufferIndex];  // bufferIndex no adjustment needed, reading ahead
-      //        PORTD = (PORTD & B00000100) | (b & B11111011);  // 7bits sent preserving PORTD
-      //        PORTC = (PORTC & B11111011) | (b & B00000100);  // 1bit sent preserving PORTC.
+    sendBytes(buffer, bufferSize);
 
-      PORTD = buffer[bufferIndex];
-
-      bitClear(PORTC, DDC0);                     // this will un-halt the Z80.
-      bitSet(PORTC, DDC0);                       // A0 signals the Z80 /NMI line,
-      while ((bitRead(PINB, PINB0) == LOW)) {};  // Wait Z80 to Un-Halt (line HIGH)
-    }
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
-  // Send Snapshot Header
-  byte bufferSize = 27 + 2;
-  for (byte bufferIndex = 0; bufferIndex < bufferSize; bufferIndex++) {
-    while ((bitRead(PINB, PINB0) == HIGH)) {};
-    //   byte b = head27[bufferIndex];
-    //   PORTD = (PORTD & B00000100) | (b & B11111011);
-    //   PORTC = (PORTC & B11111011) | (b & B00000100);
-
-    PORTD = head27[bufferIndex];
-
-    bitClear(PORTC, DDC0);
-    bitSet(PORTC, DDC0);
-    while ((bitRead(PINB, PINB0) == LOW)) {};
-  }
+  // *** Send Snapshot Header Section ***
+  sendBytes(head27, 27+2);
 
   while ((bitRead(PINB, PINB0) == HIGH)) {};  // wait for HALT (LOW)
   bitSet(PORTC, DDC1);                        // pin15 (A1) , put back original stock rom
+ // pinMode(15, INPUT);
+
+  delay(10);
 
   // Un-Halt Z80, take line HIGH,LOW,HIGH
   bitClear(PORTC, DDC0);  // Z80 /NMI line,
   bitSet(PORTC, DDC0);
+
+  pinMode(14, INPUT);  
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG - lock if we missed something
 
   debugFlash(200);
 
   delay(1000000);
+}
+
+void sendBytes(byte* data, byte size) {
+  for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
+    while ((bitRead(PINB, PINB0) == HIGH)) {};
+    PORTD = data[bufferIndex];
+    bitClear(PORTC, DDC0);
+    bitSet(PORTC, DDC0);
+    while ((bitRead(PINB, PINB0) == LOW)) {};
+  }
 }
 
 void releaseHalt() {

@@ -1,7 +1,7 @@
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
-;SCREEN_START		EQU $4000	 ; USE ME FOR FINAL BUILD LOCATION	
+;SCREEN_START		EQU $4000	  ; USE ME FOR FINAL BUILD LOCATION	
 SCREEN_ATTRIBUTES   EQU $5800+32  ; DEBUG LOCATION
 SCREEN_END			EQU $5AFF
 
@@ -11,18 +11,15 @@ SCREEN_END			EQU $5AFF
 MACRO READ_ACC_WITH_HALT 
 	halt
     in a, ($1f)  
-;;;;;;    halt     
 ENDM
 MACRO READ_PAIR_WITH_HALT  ,reg1,reg2
 	halt
     in reg1,(c)
-;;;;    halt
 	halt
     in reg2,(c)
-;;;;;    halt
 ENDM
-MACRO SET_BORDER ,colour  ; DEBUG
-	;0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
+MACRO SET_BORDER ,colour 
+ 	;0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
 	ld a,colour
 	AND %00000111
 	out ($fe), a
@@ -40,13 +37,11 @@ L0000:
 		SET_BORDER 4
 		
 mainloop: 
-	;;;;	HALT     ; Let the Arduino signal when ready to start sending
 
-;**************************************************************************************************
-; At start of each chunck transfer, the first 2 bytes are checked for 'action' indicators.
-; ACTIONS ARE:-
-;  - Transfer data = "GO"
-;  - Execute code = "EX"
+;******************************************************************************
+; For each incoimg chunck of data, the first 2 bytes are 'action' indicators.
+;  # Transfer data = "GO"
+;  # Execute code = "EX"
 ;
 check_initial:   		; First loop to check for either 'G' or 'E'
 	READ_ACC_WITH_HALT
@@ -70,7 +65,6 @@ check_EX:  				; Subroutine to handle 'EX' command
 ; MASKABLE INTERRUPT
 ORG $0038
 L0038:   
-		;;;SET_BORDER 2
         EI 
 		RET
 ;******************************************************************************
@@ -86,10 +80,9 @@ command_GO:  ; FIRST STAGE - TRANSFER DATA
 
 	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
 	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
-	; Transfers here are sequential, but any destination location can be targeted.
+	; Transfers are typically sequential, but any destination location can be targeted.
 	halt
 	in b,(c)  ; transfer size (1 byte)
-;;;;;	HALT
 
 	; Set HL with the 'destination' address (reading 2 bytes)
 	READ_PAIR_WITH_HALT h,l
@@ -104,29 +97,9 @@ readDataLoop:
 	AND %00000111  ; set border 0 to 7
 	out ($fe), a   ; 
 
-;;;;;	halt 		 ; do this one after memory write (so final write does not miss out)
     djnz readDataLoop
 
     jr mainloop
-
-;**************************************************************************************************
-;  SNA Header (27 bytes)
-;  REG_I	00
-;  REG_HL1	01	;HL'
-;  REG_DE1	03	;DE'
-;  REG_BC1	05	;BC'
-;  REG_AF1	07	;AF'
-;  REG_HL	09
-;  REG_DE	11
-;  REG_BC	13
-;  REG_IY	15
-;  REG_IX	17
-;  REG_IFF  19 
-;  REG_R	20 
-;  REG_AF	21
-;  REG_SP	23
-;  REG_IM	25 
-;  REG_BDR	26	 
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
@@ -229,40 +202,8 @@ relocateEnd:
 
 ;**************************************************************************************************
 
-;	ld d,0
-;	OR A  
-;	SBC HL, DE
-;	call _crc8b
-
-;; =====================================================================
-;; input - hl=start of memory to check, de=length of memory to check
-;; returns - a=result crc
-;; 20b
-;; =====================================================================
-_crc8b:
-xor a ; 4t - initial value of crc=0 so first byte can be XORed in (CCITT)
-ld c,$07 ; 7t - c=polyonimal used in loop (small speed up)
-_byteloop8b:
-xor (hl) ; 7t - xor in next byte, for first pass a=(hl)
-inc hl ; 6t - next mem
-ld b,8 ; 7t - loop over 8 bits
-_rotate8b:
-add a,a ; 4t - shift crc left one
-jr nc,_nextbit8b ; 12/7t - only xor polyonimal if msb set (carry=1)
-xor c ; 4t - CRC8_CCITT = 0x07
-_nextbit8b:
-djnz _rotate8b ; 13/8t
-ld b,a ; 4t - preserve a in b
-dec de ; 6t - counter-1
-ld a,d ; 4t - check if de=0
-or e ; 4t
-ld a,b ; 4t - restore a
-jr nz,_byteloop8b; 12/7t
-ret ; 10
-
-
 org $3ff0
-debug:
+debug:   			// debug trap
 	SET_BORDER a
 	inc a
 	jr debug
@@ -271,8 +212,30 @@ last:
 DS  16384 - last
 
 
+;******************************************************
 ; todo
 ; rename "EX" to "SN" 
 ; "SN" - restore SNapshot regs, but not do the exe.
 ; "EX" now just EXecute JMP <LOCATION>
 ; "GO" needs renaming ... maybe, "GD" get data
+;******************************************************
+
+;******************************************************
+;  SNA Header (27 bytes)
+;  REG_I	00
+;  REG_HL1	01	;HL'
+;  REG_DE1	03	;DE'
+;  REG_BC1	05	;BC'
+;  REG_AF1	07	;AF'
+;  REG_HL	09
+;  REG_DE	11
+;  REG_BC	13
+;  REG_IY	15
+;  REG_IX	17
+;  REG_IFF  19 
+;  REG_R	20 
+;  REG_AF	21
+;  REG_SP	23
+;  REG_IM	25 
+;  REG_BDR	26	 
+;******************************************************
