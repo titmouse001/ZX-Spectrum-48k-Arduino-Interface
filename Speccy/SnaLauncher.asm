@@ -62,13 +62,13 @@ check_EX:  				; Subroutine to handle 'EX' command
 	JP command_EX
 
 ;******************************************************************************
-; MASKABLE INTERRUPT
+; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
 ORG $0038
 L0038:   
-        EI 
-		RET
+        EI  
+		RETI
 ;******************************************************************************
-; NON MASKABLE INTERRUPT
+; NON MASKABLE INTERRUPT - USED TO UN-HALT 
 ORG $0066
 L0066:
 		RETN
@@ -148,8 +148,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	jr	z,skip_EI
 	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
 	ld a,$FB
-;;;	ld (SCREEN_ATTRIBUTES+(NOP_LABLE-relocate)),a  ; IM Opcode = $FB
-	ld (SCREEN_ATTRIBUTES+1),a  ; IM Opcode = $FB
+	ld (SCREEN_ATTRIBUTES+(NOP_LABLE-relocate)),a  ; IM Opcode = $FB
 skip_EI:
 
 	; R REG ... TODO  
@@ -191,9 +190,9 @@ IMset:
 	ld SP,($5800)		 ; Restore the program's stack pointer
 
 	JP SCREEN_ATTRIBUTES
-
+	
 relocate:
-	HALT 				 ; "last halt" notifies we need original rom
+	HALT		 		; "last halt" notifies we need original rom
 NOP_LABLE:
 	NOP 				 ; This will be modified to EI if needed
 	RETN				 ; Start program
@@ -203,7 +202,7 @@ relocateEnd:
 ;**************************************************************************************************
 
 org $3ff0
-debug:   			// debug trap
+debug:   			; debug trap
 	SET_BORDER a
 	inc a
 	jr debug
