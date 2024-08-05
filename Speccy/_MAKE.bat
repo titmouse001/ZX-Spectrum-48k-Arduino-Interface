@@ -18,8 +18,6 @@ for %%A in ("*.bin") do (
 
 copy /b SnaLauncher.bin+48.rom EPROM.bin
 
-pause
-
 
 REM pasmo-0.5.4.beta2\pasmo --bin hi.asm .\hi.tap
 
