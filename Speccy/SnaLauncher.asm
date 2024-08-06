@@ -34,10 +34,10 @@ ORG $0000
 L0000:  
 	DI                     
   
-	CALL ClearScreen
-
-	; Stack goes down
+    ; Stack goes down
 	ld SP,WORKING_STACK 	; using screen attribute area works are a bonus debugging tool!
+	
+	jp ClearScreen
 	
 mainloop: 
 
@@ -123,7 +123,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	READ_PAIR_WITH_HALT L,H 
 	READ_PAIR_WITH_HALT E,D 
 	push de
-	READ_PAIR_WITH_HALT c,b  
+	READ_PAIR_WITH_HALT c,b 
 	READ_PAIR_WITH_HALT e,d  ; spare to read AF
 	push de
 	pop af
@@ -191,6 +191,13 @@ IMset:
 ;	PUSH de
 ;	POP AF 
 
+	EI
+	HALT
+	DI   
+	; After this HALT, there should be ample time if 'EI' is restored.
+	; Hopefully the program being restored won't trigger the maskable interrupt 
+	; at $0038 while we do the rest of the restoration process.
+
 	POP af
 	POP bc
 	POP de
@@ -201,6 +208,15 @@ IMset:
 
 	JP SCREEN_START
 	
+;-----------------------------------------------------------------------	
+; This gets placed in screen memory to be run last thing 
+; and start restored program
+relocate:
+	HALT		 		; "last halt" notifies we need original rom
+NOP_LABLE:
+	NOP 				 ; This will be modified to EI if needed
+	RETN				 ; Start program
+relocateEnd:
 ;-----------------------------------------------------------------------	
 
 ClearScreen:
@@ -221,16 +237,7 @@ loop1
      djnz loop1           ;repeat for next 4 bytes
      dec c
      jr nz, loop2         ;outer loop. repeat for next 1024 bytes.
-	 ret;
-
-;-----------------------------------------------------------------------	
-relocate:
-	HALT		 		; "last halt" notifies we need original rom
-NOP_LABLE:
-	NOP 				 ; This will be modified to EI if needed
-	RETN				 ; Start program
-relocateEnd:
-
+	 jp mainloop  ;; ret ... NEED TO AVOID USING STACK
 
 ;**************************************************************************************************
 

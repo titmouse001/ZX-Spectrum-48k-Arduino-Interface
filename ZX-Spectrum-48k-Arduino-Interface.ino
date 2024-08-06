@@ -148,10 +148,14 @@ void loop() {
   // *** Send Snapshot Header Section ***
   sendBytes(head27, 27 + 2);
 
-  releaseHalt();
+  waitHalt();   // Wait for z80 to Halt, but we don't do anyting this side to release to halt.
+                // Maskable takes care of it this time, as z80 needs to find a gap in
+                // the 50FPS interrupt so things don't will walk over the stack when it's finally enabled.
+
+  waitReleaseHalt();
 
   //  delay(1);
-  for (int i = 0; i < 75; i++) { __asm__ __volatile__("nop"); }
+ // for (int i = 0; i < 75; i++) { __asm__ __volatile__("nop"); }
 
 
   // NEED SMALL WAIT HERE TO MAKE MUST GAMES LOAD OK ... NO IDEA WHY!!!
@@ -162,7 +166,7 @@ void loop() {
   // NOTE; BOTH LOADED BUT CRASHED ON HITTING A KEY.  ZUB INTRO PLAYED FINE UNTIL BUTTON PRESSED,
   // COLONY CRASH WHEN THE BUG FIRED ON THE TITLE SCREEN.
 
-  // I'VE HAD NO NOT SWAPPING BACK TO THE INTERNAL ROM - GIVEN UP AND USED BOTH HALFS
+  // I'VE HAD NO LUCK SWAPPING BACK TO THE INTERNAL ROM - GIVEN UP AND USED BOTH HALFS
   // OF THE EPROM.  LOW PART FOR GAME LOADER/HIGH PART FOR 48k rom.
 
   bitSet(PORTC, DDC1);  // pin15 (A1) , put back original stock rom
@@ -182,7 +186,14 @@ void sendBytes(byte* data, byte size) {
   }
 }
 
-void releaseHalt() {
+void waitHalt() {  
+  // z80 side with clear halt line 
+  // last HALT will be allowed to see the maskable interrupt
+  while ((bitRead(PINB, PINB0) == HIGH)) {};
+  while ((bitRead(PINB, PINB0) == LOW)) {};
+}
+
+void waitReleaseHalt() {
   while ((bitRead(PINB, PINB0) == HIGH)) {};
   // Once the input pin is LOW, toggle the output pin
   bitClear(PORTC, DDC0);  // A0 signals the Z80 /NMI line,
