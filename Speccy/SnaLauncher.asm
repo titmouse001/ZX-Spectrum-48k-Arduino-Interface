@@ -134,12 +134,10 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	ld c,$1f  
 	; Restore HL,DE,BC,IY,IX	
 	READ_PAIR_WITH_HALT l,h   ; restore HL
-	READ_PAIR_WITH_HALT e,d;  ; read DE
-;	ld ($5800+2),de			  ; store DE				 
-	push de
-	READ_PAIR_WITH_HALT e,d;  ; read BC
-;	ld ($5800+4),de			  ; store BC
-	push de
+	READ_PAIR_WITH_HALT e,d;  ; read DE		  			 
+	push de					  ; store DE	
+	READ_PAIR_WITH_HALT e,d;  ; read BC	  
+	push de  			      ; store BC
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -161,8 +159,7 @@ skip_EI:
 
 	; restore AF
 	READ_PAIR_WITH_HALT e,d;  ; using spare to restore AF
-;	ld ($5800+6),de			  ; store AF
-	push de
+	push de 				  ; store AF
 
 	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
@@ -187,10 +184,6 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-;	ld de,($5800+6)	     ; Restore AF register pair
-;	PUSH de
-;	POP AF 
-
 	EI
 	HALT
 	DI   
@@ -198,15 +191,12 @@ IMset:
 	; Hopefully the program being restored won't trigger the maskable interrupt 
 	; at $0038 while we do the rest of the restoration process.
 
-	POP af
-	POP bc
-	POP de
-
-;	ld bc,($5800+4)	 	 ; Restore BC register pair
-;	ld de,($5800+2)		 ; Restore DE register pair
+	POP af   			 ; Restore AF register pair
+	POP bc   			 ; Restore BC register pair
+	POP de   			 ; Restore DE register pair	
 	ld SP,($5800)		 ; Restore the program's stack pointer
 
-	JP SCREEN_START
+	JP SCREEN_START		 ; jump to relocated code
 	
 ;-----------------------------------------------------------------------	
 ; This gets placed in screen memory to be run last thing 
