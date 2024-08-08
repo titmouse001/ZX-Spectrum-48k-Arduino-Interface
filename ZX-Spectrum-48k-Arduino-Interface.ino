@@ -33,6 +33,9 @@ const byte Z80_D6Pin = 6;
 const byte Z80_D7Pin = 7;
 
 const byte Z80_HALT = 8;  // PINB0 (PORT B), Z80 'Halt' Status
+
+const byte Z80_A12 = 9;
+
 const byte ledPin = 13;
 const byte Z80_NMI = 14;
 const byte ROM_HALF = 15;
@@ -59,12 +62,12 @@ void debugFlash(int flashSpeed);
 
 void setup() {
 
-  /*
+ /* 
   Serial.begin(9600);
   while (! Serial);
   while (1) {  
-    byte pinState = bitRead(PINC, DDC2);
-    byte val = digitalRead(16);   
+    byte pinState = bitRead(PINB, PINB1);
+ //   byte val = digitalRead(Z80_A12);   
     Serial.println(pinState); 
   }; 
 */
@@ -86,6 +89,7 @@ void setup() {
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
+  pinMode(Z80_A12, INPUT);
 
   // Initialize SD card
   if (!sd.begin()) {}  // no longer using a pin for CS
@@ -131,6 +135,7 @@ void loop() {
 
   while (file.available()) {
 
+
     byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     buffer[HEADER_PAYLOADSIZE] = bytesRead;
     buffer[HEADER_HIGH_BYTE] = (destinationAddress >> 8) & 0xFF;  // high byte
@@ -148,7 +153,8 @@ void loop() {
                 // Maskable takes care of it this time, as z80 needs to find a gap in
                 // the 50FPS interrupt so things don't will walk over the stack when it's finally enabled.
 
-  waitReleaseHalt();
+ //// waitReleaseHalt();
+ /// waitA14();
 
   // USING BOTH HALFS OF THE EPROM.  
   // LOW PART FOR GAME LOADER/HIGH PART FOR 48k rom.
@@ -169,6 +175,11 @@ void sendBytes(byte* data, byte size) {
   }
 }
 
+void waitA14() {  
+  // z80 - monitor/wait for A12 to go LOW/HIGH
+  while ((bitRead(PINB, PINB1) == HIGH)) {};
+  while ((bitRead(PINB, PINB1) == LOW)) {};
+}
 void waitHalt() {  
   // z80 side with clear halt line 
   // last HALT will be allowed to see the maskable interrupt

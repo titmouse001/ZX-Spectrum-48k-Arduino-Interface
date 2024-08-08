@@ -68,7 +68,7 @@ check_EX:  				; Subroutine to handle 'EX' command
 ; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
 ORG $0038
 L0038:   
-        EI  
+     ;;;;;   EI  
 		RETI
 ;******************************************************************************
 ; NON MASKABLE INTERRUPT - USED TO UN-HALT 
@@ -184,17 +184,25 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-	EI
-	HALT
-	DI   
-	; After this HALT, there should be ample time if 'EI' is restored.
-	; Hopefully the program being restored won't trigger the maskable interrupt 
-	; at $0038 while we do the rest of the restoration process.
+	ld ($5802),SP
+	ld SP,($5800)		
+	pop bc
+	ld (SCREEN_START + (JumpInstruction - relocate) +1),bc
+	ld SP,($5802)	
 
 	POP af   			 ; Restore AF register pair
 	POP bc   			 ; Restore BC register pair
 	POP de   			 ; Restore DE register pair	
+
+;;;	EI
+;;;	HALT
+;;;	DI   
+	; After this HALT, there should be ample time if 'EI' is restored.
+	; Hopefully the program being restored won't trigger the maskable interrupt 
+	; at $0038 while we do the rest of the restoration process.
+
 	ld SP,($5800)		 ; Restore the program's stack pointer
+
 
 	JP SCREEN_START		 ; jump to relocated code
 	
@@ -202,10 +210,23 @@ IMset:
 ; This gets placed in screen memory to be run last thing 
 ; and start restored program
 relocate:
-	HALT		 		; "last halt" notifies we need original rom
+;;;HALT		 			 ; "last halt" notifies we need original rom
+;;;	NOP
+	EI
+	HALT
+;;;;;	DI  
+
 NOP_LABLE:
 	NOP 				 ; This will be modified to EI if needed
-	RETN				 ; Start program
+
+;;	RETN				 ; Start program
+
+	inc SP
+	inc SP
+
+JumpInstruction: 		; Self-modifying code
+    jp 0000h            ; This jump location will be modified 
+
 relocateEnd:
 ;-----------------------------------------------------------------------	
 
@@ -236,6 +257,7 @@ debug:   			; debug trap
 	SET_BORDER a
 	inc a
 	jr debug
+
 
 last:
 DS  16384 - last
