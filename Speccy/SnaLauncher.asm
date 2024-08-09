@@ -108,7 +108,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	
 ;;;;SET_BORDER 6
 
-	; Relocate code to run in screen memory
+	; Setup for later -  Relocate code to run in screen memory
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
@@ -184,25 +184,21 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-	ld ($5802),SP
+	;;;;ld ($5802),SP
 	ld SP,($5800)		
 	pop bc
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),bc
-	ld SP,($5802)	
+	;;;;ld SP,($5802)	
+
+	ld SP,WORKING_STACK-(2*3)
 
 	POP af   			 ; Restore AF register pair
 	POP bc   			 ; Restore BC register pair
 	POP de   			 ; Restore DE register pair	
 
-;;;	EI
-;;;	HALT
-;;;	DI   
-	; After this HALT, there should be ample time if 'EI' is restored.
-	; Hopefully the program being restored won't trigger the maskable interrupt 
-	; at $0038 while we do the rest of the restoration process.
-
 	ld SP,($5800)		 ; Restore the program's stack pointer
-
+	inc sp 
+	inc sp
 
 	JP SCREEN_START		 ; jump to relocated code
 	
@@ -210,23 +206,16 @@ IMset:
 ; This gets placed in screen memory to be run last thing 
 ; and start restored program
 relocate:
-;;;HALT		 			 ; "last halt" notifies we need original rom
-;;;	NOP
 	EI
-	HALT
-;;;;;	DI  
-
+	HALT  ; Uses maskable - after there should be ample time if 'EI' is restored.
+		  ; Arduino waits for last halt to signal in 'Upper Rom'
+		
 NOP_LABLE:
-	NOP 				 ; This will be modified to EI if needed
-
-;;	RETN				 ; Start program
-
-	inc SP
-	inc SP
-
+	NOP 				; This will be modified to EI if needed
+;;;	inc SP				; Jp location taken from stack earlyer, but we need to simualte pop
+;;;	inc SP				; 
 JumpInstruction: 		; Self-modifying code
     jp 0000h            ; This jump location will be modified 
-
 relocateEnd:
 ;-----------------------------------------------------------------------	
 
