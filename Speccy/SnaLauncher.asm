@@ -6,6 +6,8 @@ SCREEN_START			EQU $4000	  ; USE ME FOR FINAL BUILD LOCATION
 ;SCREEN_END				EQU $5AFF
 WORKING_STACK			EQU $57FF
 
+TEMP_STORAGE			EQU SCREEN_START
+
 ;******************************************************************************
 ;   MACRO SECTION
 ;******************************************************************************
@@ -106,9 +108,8 @@ readDataLoop:
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
-;;;;SET_BORDER 6
-
-	; Setup for later -  Relocate code to run in screen memory
+ 	; Setup - Later on the code will using a tiny footprint in screen memory for 
+	;	      running code & temporary storage during the restoration process.
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
@@ -163,7 +164,7 @@ skip_EI:
 
 	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
-	ld ($5800),de 			  ; store sack
+	ld (TEMP_STORAGE),de 	  ; store sack
 
 	; Restore IM0, IM1 or IM2  
 	READ_ACC_WITH_HALT		  ; read IM (interrupt mode)
@@ -184,60 +185,68 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-	;;;;ld ($5802),SP
-	ld SP,($5800)		
-	pop bc
-	ld (SCREEN_START + (JumpInstruction - relocate) +1),bc
-	;;;;ld SP,($5802)	
+	; Self-modifying code
+	ld SP,(TEMP_STORAGE)		
+	pop de
+	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 
-	ld SP,WORKING_STACK-(2*3)
-
+	; restore final registers - we know how mutch is on the stack
+	ld SP,WORKING_STACK-(2+2+2)
 	POP af   			 ; Restore AF register pair
 	POP bc   			 ; Restore BC register pair
 	POP de   			 ; Restore DE register pair	
 
-	ld SP,($5800)		 ; Restore the program's stack pointer
-	inc sp 
-	inc sp
+	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
+	inc sp 						 ; skip PC kept here as part of snapshot protocol
+	inc sp						 ; (PC skipped as we have it place in the 'JumpInstruction')
 
+	; Note: WORKING_STACK would have gone 4 deep over its lifetime,
+	;       with 3 push/pop operations, including the NMI 'RETN'.
+
+	; Self-modifying code - restore memory used as temp storage
+	; (note : at this point I would happly use up 1k of rom just to save a single byte in memory!!!!)
+	ld (WORKING_STACK),A
+	ld a,$76				;	HALT
+	ld (SCREEN_START),a
+	ld a,$0					;   NOP
+	ld (SCREEN_START+1),a
+	ld A,(WORKING_STACK)
+
+	EI
+	HALT 				 ; Maskable - Interupt routine forgoes a 'EI',
+	EI					 ; so we need to re-enable ask maskable does not do this
 	JP SCREEN_START		 ; jump to relocated code
 	
 ;-----------------------------------------------------------------------	
-; This gets placed in screen memory to be run last thing 
-; and start restored program
+; *** Start-up restored program ***
+; This gets placed in screen memory (called via JP SCREEN_START)
 relocate:
-	EI
+;;;;	EI  ; 'EI' TO BE MOVED INTO ROM, BUT WILL ANOTHER HALT TO MAKE SURE MASKABLE IS NOT HIT DURING ROM EXECUTION
 	HALT  ; Uses maskable - after there should be ample time if 'EI' is restored.
 		  ; Arduino waits for last halt to signal in 'Upper Rom'
-		
 NOP_LABLE:
 	NOP 				; This will be modified to EI if needed
-;;;	inc SP				; Jp location taken from stack earlyer, but we need to simualte pop
-;;;	inc SP				; 
 JumpInstruction: 		; Self-modifying code
     jp 0000h            ; This jump location will be modified 
 relocateEnd:
 ;-----------------------------------------------------------------------	
+;$4000
+;$5800
+;$5B00
+
+;768 attribute space
 
 ClearScreen:
-     xor a
-     ld hl, 16384         ;first byte of pixel area
-     ld c, 6              ;6 * (256 * 4) = 6144
-loop2
-     ld b, a              ;set B to zero it will cause 256 repeations of loop
-loop1
-     ld (hl), a           ;set byte to zero
-     inc l                ;move to the next byte
-     ld (hl), a
-     inc l
-     ld (hl), a
-     inc l
-     ld (hl), a
-     inc hl               ;this time we are not sure that inc l will not cause overflow
-     djnz loop1           ;repeat for next 4 bytes
-     dec c
-     jr nz, loop2         ;outer loop. repeat for next 1024 bytes.
-	 jp mainloop  ;; ret ... NEED TO AVOID USING STACK
+   	ld a, 0              ;attributte
+    ld hl, 16384         ;pixels
+    ld de, 16385         ;pixels + 1
+    ld bc, 6144          ;pixel area
+    ld (hl), a           ;set first byte to '0' as HL = 16384 = $4000  therefore L = 0
+    ldir                 ;copy bytes
+    ld bc, 767           ;attribute area length - 1
+    ld (hl), a           ;set first byte to attribute value
+    ldir                 ;copy bytes
+    jp mainloop  		 ; don't use call/ret ... !!!NEED TO AVOID USING STACK!!!
 
 ;**************************************************************************************************
 

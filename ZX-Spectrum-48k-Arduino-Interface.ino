@@ -34,7 +34,7 @@ const byte Z80_D7Pin = 7;
 
 const byte Z80_HALT = 8;  // PINB0 (PORT B), Z80 'Halt' Status
 
-const byte Z80_A12 = 9;
+//const byte Z80_A12 = 9;
 
 const byte ledPin = 13;
 const byte Z80_NMI = 14;
@@ -58,11 +58,13 @@ SdFat32 sd;
 FatFile root;
 FatFile file;
 
+File statusFile;
+int currentIndex;
+
 void debugFlash(int flashSpeed);
 
 void setup() {
-
- /* 
+  /* 
   Serial.begin(9600);
   while (! Serial);
   while (1) {  
@@ -73,11 +75,11 @@ void setup() {
 */
 
   bitClear(PORTC, DDC1);
-  pinMode(ROM_HALF, OUTPUT);    // LOW external/HIGH stock rom
-  bitClear(PORTC, DDC1);  // pin15, A1 , swap out stock rom
+  pinMode(ROM_HALF, OUTPUT);  // LOW external/HIGH stock rom
+  bitClear(PORTC, DDC1);      // pin15, A1 , swap out stock rom
 
   pinMode(Z80_NMI, OUTPUT);  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-  bitSet(PORTC, DDC0);  // pin14 (A0), Z80 /NMI line
+  bitSet(PORTC, DDC0);       // pin14 (A0), Z80 /NMI line
 
   // These pins are connected to the address lines on the Z80
   pinMode(Z80_D0Pin, OUTPUT);
@@ -89,36 +91,53 @@ void setup() {
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
-  pinMode(Z80_A12, INPUT);
+  //pinMode(Z80_A12, INPUT);
 
   // Initialize SD card
-  if (!sd.begin()) {}  // no longer using a pin for CS
+  if (!sd.begin()) {}  
 
-  bool have = false;
-  do {  //  DEBUG TEST LOADING - SOMETHING RANDOM TO TEST EACH TIME WE RESET
-    if (!root.open("/")) {
-      root.rewind();
-      randomSeed(analogRead(4));
-      while (file.openNext(&root, O_RDONLY)) {
+  if (!sd.exists("status.txt")) {
+    statusFile.open("status.txt", O_RDWR);
+    if (statusFile) {
+      statusFile.seekSet(0);
+      statusFile.truncate(0);
+      statusFile.seekSet(0);
+      statusFile.print(0);
+      statusFile.close();
+    }
+  }
 
-        if (file.isFile()) {
+  statusFile.open("status.txt", O_RDWR);
+  if (statusFile) {
+    statusFile.seekSet(0);
+    currentIndex = statusFile.parseInt();
+    statusFile.close();
+  }
 
- //           char fileName[16];
- //           file.getName7(fileName, 16);
+//  Serial.println(currentIndex);
 
-          if (file.fileSize() == 49179) {
-            if (random(5) == 0) {
-              //    file.printName(&Serial);
-              //      Serial.println();
-              have = true;
-              break;
-            }
-          }
+
+  if (!root.open("/")) {
+    debugFlash(200);
+  }
+
+  root.rewind();
+  int index = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        if (index == currentIndex) {
+          //   char fileName[16];
+          //   file.getName7(fileName, 16);
+          //    Serial.println(fileName);
+          break;
         }
-        file.close();
+        index++;
       }
     }
-  } while (!have);
+    file.close();
+  }
+
 }
 
 
@@ -149,6 +168,7 @@ void loop() {
   // *** Send Snapshot Header Section ***
   sendBytes(head27, 27 + 2);
 
+  waitHalt(); 
   waitHalt();   // Wait for z80 to Halt, but we don't do anyting this side to release to halt.
                 // Maskable takes care of it this time, as z80 needs to find a gap in
                 // the 50FPS interrupt so things don't will walk over the stack when it's finally enabled.
@@ -161,6 +181,20 @@ void loop() {
   bitSet(PORTC, DDC1);  // pin15 (A1) , put back original stock rom
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, block here if HALT still in action
+
+  statusFile.open("status.txt", O_RDWR);
+  if (statusFile) {
+    statusFile.seekSet(0);
+    currentIndex = statusFile.parseInt();
+    statusFile.seekSet(0);
+    statusFile.truncate(0);
+    currentIndex++;
+    if (currentIndex>8) {
+      currentIndex=0;
+    }
+    statusFile.print(currentIndex);
+    statusFile.close();
+  }
 
   debugFlash(200);  // All ok - Flash led to show we have reached the end with no left over halts
 }
@@ -175,11 +209,13 @@ void sendBytes(byte* data, byte size) {
   }
 }
 
+/*
 void waitA14() {  
   // z80 - monitor/wait for A12 to go LOW/HIGH
   while ((bitRead(PINB, PINB1) == HIGH)) {};
   while ((bitRead(PINB, PINB1) == LOW)) {};
 }
+*/
 void waitHalt() {  
   // z80 side with clear halt line 
   // last HALT will be allowed to see the maskable interrupt
