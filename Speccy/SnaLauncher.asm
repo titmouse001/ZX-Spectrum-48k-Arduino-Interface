@@ -1,12 +1,12 @@
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
-SCREEN_START			EQU $4000	  ; USE ME FOR FINAL BUILD LOCATION	
-;SCREEN_ATTRIBUTES   	EQU $5800+32  ; DEBUG LOCATION
-;SCREEN_END				EQU $5AFF
-WORKING_STACK			EQU $57FF
+SCREEN_START				EQU $4000  ; [6144]
+SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
+SCREEN_END					EQU $57FF
 
-TEMP_STORAGE			EQU SCREEN_START
+WORKING_STACK				EQU SCREEN_END
+TEMP_STORAGE				EQU SCREEN_START
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -136,9 +136,9 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	; Restore HL,DE,BC,IY,IX	
 	READ_PAIR_WITH_HALT l,h   ; restore HL
 	READ_PAIR_WITH_HALT e,d;  ; read DE		  			 
-	push de					  ; store DE	
+;;;;;;	push de					  ; store DE	
 	READ_PAIR_WITH_HALT e,d;  ; read BC	  
-	push de  			      ; store BC
+;;;;;;	push de  			      ; store BC
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -160,7 +160,7 @@ skip_EI:
 
 	; restore AF
 	READ_PAIR_WITH_HALT e,d;  ; using spare to restore AF
-	push de 				  ; store AF
+;;;;;;;;;	push de 				  ; store AF
 
 	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
@@ -191,17 +191,29 @@ IMset:
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 
 	; restore final registers - we know how mutch is on the stack
-	ld SP,WORKING_STACK-(2+2+2)
-	POP af   			 ; Restore AF register pair
-	POP bc   			 ; Restore BC register pair
-	POP de   			 ; Restore DE register pair	
+;//	ld SP,WORKING_STACK-(2+2+2)
+;//	POP af   			 ; Restore AF register pair
+;//	POP bc   			 ; Restore BC register pair
+;//	POP de   			 ; Restore DE register pair	
+
+	ld SP,WORKING_STACK
+	READ_PAIR_WITH_HALT e,d  ; get BC
+	push de
+	READ_PAIR_WITH_HALT e,d  ; get DE 
+	pop bc
+
+	; NOTE:  'READ_PAIR_WITH_HALT' will mess up flags (i.e. uses 'IN') - so restore AF last
+
+	ld SP,WORKING_STACK   
+	READ_ACC_WITH_HALT     ; 'F' is now in A
+	ld (WORKING_STACK),a   ; Store F 
+	READ_ACC_WITH_HALT     ; 'A' is now in A
+	ld (WORKING_STACK+1),a ; Store A  
+	pop af                 ; restore AF
 
 	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
 	inc sp 						 ; skip PC kept here as part of snapshot protocol
 	inc sp						 ; (PC skipped as we have it place in the 'JumpInstruction')
-
-	; Note: WORKING_STACK would have gone 4 deep over its lifetime,
-	;       with 3 push/pop operations, including the NMI 'RETN'.
 
 	; Self-modifying code - restore memory used as temp storage
 	; (note : at this point I would happly use up 1k of rom just to save a single byte in memory!!!!)
@@ -218,10 +230,18 @@ IMset:
 	JP SCREEN_START		 ; jump to relocated code
 	
 ;-----------------------------------------------------------------------	
+; TOTAL STACK USAGE - 3 deep (6 bytes)
+;-----------------------------------------------------------------------	
+; MEMORY USAGE - The entire sequence 
+; 'relocate:' to 'relocateEnd:' uses 5 bytes of memory.
+; (HALT: 1 byte, NOP: 1 byte, jp 0000h: 3 bytes)
+;-----------------------------------------------------------------------
+; This means 11 bytes of screen memory need to tbe destored
+;-----------------------------------------------------------------------
+
 ; *** Start-up restored program ***
 ; This gets placed in screen memory (called via JP SCREEN_START)
 relocate:
-;;;;	EI  ; 'EI' TO BE MOVED INTO ROM, BUT WILL ANOTHER HALT TO MAKE SURE MASKABLE IS NOT HIT DURING ROM EXECUTION
 	HALT  ; Uses maskable - after there should be ample time if 'EI' is restored.
 		  ; Arduino waits for last halt to signal in 'Upper Rom'
 NOP_LABLE:
@@ -230,25 +250,24 @@ JumpInstruction: 		; Self-modifying code
     jp 0000h            ; This jump location will be modified 
 relocateEnd:
 ;-----------------------------------------------------------------------	
-;$4000
-;$5800
-;$5B00
+;screen:$4000 -> [6144] -> attributes:$5800 -> [768] -> $5AFF
 
-;768 attribute space
+;-----------------------------------------------------------------------	
 
 ClearScreen:
-   	ld a, 0              ;attributte
-    ld hl, 16384         ;pixels
-    ld de, 16385         ;pixels + 1
-    ld bc, 6144          ;pixel area
-    ld (hl), a           ;set first byte to '0' as HL = 16384 = $4000  therefore L = 0
-    ldir                 ;copy bytes
-    ld bc, 767           ;attribute area length - 1
-    ld (hl), a           ;set first byte to attribute value
-    ldir                 ;copy bytes
+	SET_BORDER 0
+   	ld a, 0              
+    ld hl, 16384       
+    ld de, 16385        
+    ld bc, 6144       
+    ld (hl), a           ;setup
+    ldir                
+    ld bc, 768-1
+    ld (hl), a  
+    ldir        
     jp mainloop  		 ; don't use call/ret ... !!!NEED TO AVOID USING STACK!!!
 
-;**************************************************************************************************
+;-----------------------------------------------------------------------	
 
 org $3ff0
 debug:   			; debug trap

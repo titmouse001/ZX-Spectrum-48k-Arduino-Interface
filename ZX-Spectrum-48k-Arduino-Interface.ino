@@ -34,8 +34,6 @@ const byte Z80_D7Pin = 7;
 
 const byte Z80_HALT = 8;  // PINB0 (PORT B), Z80 'Halt' Status
 
-//const byte Z80_A12 = 9;
-
 const byte ledPin = 13;
 const byte Z80_NMI = 14;
 const byte ROM_HALF = 15;
@@ -91,7 +89,6 @@ void setup() {
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
-  //pinMode(Z80_A12, INPUT);
 
   // Initialize SD card
   if (!sd.begin()) {}  
@@ -113,9 +110,6 @@ void setup() {
     currentIndex = statusFile.parseInt();
     statusFile.close();
   }
-
-//  Serial.println(currentIndex);
-
 
   if (!root.open("/")) {
     debugFlash(200);
@@ -148,38 +142,46 @@ void loop() {
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
-//  buffer[HEADER_START_G] = 'G';          // Header
-//  buffer[HEADER_START_O] = 'O';          // Header
   uint16_t destinationAddress = 0x4000;  //screen address
-
   while (file.available()) {
-
-
     byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     buffer[HEADER_PAYLOADSIZE] = bytesRead;
     buffer[HEADER_HIGH_BYTE] = (destinationAddress >> 8) & 0xFF;  // high byte
     buffer[HEADER_LOW_BYTE] = destinationAddress & 0xFF;          // low byte
-
     sendBytes(buffer, SIZE_OF_HEADER + bytesRead);
-
     destinationAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
   // *** Send Snapshot Header Section ***
   sendBytes(head27, 27 + 2);
 
+
+
+
+  sendBytes(&head27[2+13], 2);  // BC
+  sendBytes(&head27[2+11], 2);  // DE
+  sendBytes(&head27[2+21], 2);  // AF
+
+
+//  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
+//  REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
+//  REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
+//  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
+
+
+
+
+
+
+ // Wait for the Z80 to halt. The maskable interrupt will handle releasing it during a gap in the 50FPS cycle.
   waitHalt(); 
-  waitHalt();   // Wait for z80 to Halt, but we don't do anyting this side to release to halt.
-                // Maskable takes care of it this time, as z80 needs to find a gap in
-                // the 50FPS interrupt so things don't will walk over the stack when it's finally enabled.
-
- //// waitReleaseHalt();
- /// waitA14();
-
-  // USING BOTH HALFS OF THE EPROM.  
-  // LOW PART FOR GAME LOADER/HIGH PART FOR 48k rom.
-  bitSet(PORTC, DDC1);  // pin15 (A1) , put back original stock rom
-
+ 
+  // Ensure we're running in memory before swapping ROMs.
+  waitHalt();  
+ 
+  // The rom maskable interrupt uses only RETI, so swapping back to original rom won't interfere.
+  bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+  
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, block here if HALT still in action
 
   statusFile.open("status.txt", O_RDWR);
