@@ -10,10 +10,10 @@
 ;   CONSTANTS
 ;******************************************************************************
 SCREEN_START				EQU $4000  ; [6144]
-SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 SCREEN_END					EQU $57FF
+SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 
-WORKING_STACK				EQU SCREEN_END
+WORKING_STACK				EQU SCREEN_END+1  ; +1 as push first decrements SP
 TEMP_STORAGE				EQU SCREEN_START
 
 ;******************************************************************************
@@ -195,7 +195,7 @@ IMset:
 	pop de
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 
-	ld SP,WORKING_STACK
+	ld SP,WORKING_STACK      ; nothing on stack, can set here without harming anything
 	READ_PAIR_WITH_HALT e,d  ; get BC
 	push de
 	READ_PAIR_WITH_HALT e,d  ; get DE 
@@ -204,11 +204,11 @@ IMset:
 	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
 	; Restore AF - This process involves additional steps to minimize 
 	;		       unnecessary modification of screen memory.
-	ld SP,WORKING_STACK   
+;;;;;;;	ld SP,WORKING_STACK   
 	READ_ACC_WITH_HALT     ; 'F' is now in A
-	ld (WORKING_STACK),a   ; Store F 
+	ld (SCREEN_END),a   ; Store F 
 	READ_ACC_WITH_HALT     ; 'A' is now in A
-	ld (WORKING_STACK+1),a ; Store A  
+	ld (SCREEN_END+1),a ; Store A  
 	pop af                 ; restore AF
 
 	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
@@ -217,12 +217,17 @@ IMset:
 
 	; Self-modifying code - restore memory used as temp storage
 	; (note : at this point I would happly use up 1k of rom just to save a single byte in memory!!!!)
-	ld (WORKING_STACK),A
+	ld (SCREEN_END),A
 	ld a,$76				;	HALT
 	ld (SCREEN_START),a
 	ld a,$0					;   NOP
 	ld (SCREEN_START+1),a
-	ld A,(WORKING_STACK)
+
+	ld (SCREEN_END-1),a  ; clean up & leave these blank
+	ld (SCREEN_END-2),a  ; 
+	ld (SCREEN_END-3),a  ;
+
+	ld A,(SCREEN_END)
 
 	EI
 	HALT 				 ; Our Maskable Interupt routine forgoes 'EI',
