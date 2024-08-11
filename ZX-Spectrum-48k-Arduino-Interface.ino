@@ -167,16 +167,10 @@ void loop() {
   sendBytes(&head27[2+11], 2);  // DE
   sendBytes(&head27[2+21], 2);  // AF
 
-
 //  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
 //  REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
 //  REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
 //  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
-
-
-
-
-
 
  // Wait for the Z80 to halt. The maskable interrupt will handle releasing it during a gap in the 50FPS cycle.
   waitHalt(); 
