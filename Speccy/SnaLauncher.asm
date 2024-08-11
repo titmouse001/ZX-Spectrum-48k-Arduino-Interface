@@ -1,3 +1,11 @@
+; NOTES:-
+;            rom: $0000
+;        rom end: $3fff
+;         screen: $4000  [size:6144] 
+;     screen end: $57FF
+;     attributes: $5800  [size:768]
+; attributes end: $5AFF 
+;
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
@@ -35,12 +43,10 @@ ENDM
 ORG $0000
 L0000:  
 	DI                     
-  
     ; Stack goes down
-	ld SP,WORKING_STACK 	; using screen attribute area works are a bonus debugging tool!
-	
+	; Note: The attributes area for the stack can also be a helpful debugging tool when needed.
+	ld SP,WORKING_STACK
 	jp ClearScreen
-	
 mainloop: 
 
 ;******************************************************************************
@@ -119,26 +125,40 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	READ_ACC_WITH_HALT
 	ld	i,a
 
+;	ld c,$1f  
+;	; Restore HL',DE',BC',AF'
+;	READ_PAIR_WITH_HALT L,H 
+;	READ_PAIR_WITH_HALT E,D 
+;	push de
+;	READ_PAIR_WITH_HALT c,b 
+;	READ_PAIR_WITH_HALT e,d  ; spare to read AF
+;	push de
+;	pop af
+;	pop de		
+;	ex	af,af'				; Alternate AF' restored
+;	exx						; Alternates registers restored
+
 	ld c,$1f  
 	; Restore HL',DE',BC',AF'
-	READ_PAIR_WITH_HALT L,H 
-	READ_PAIR_WITH_HALT E,D 
-	push de
-	READ_PAIR_WITH_HALT c,b 
-	READ_PAIR_WITH_HALT e,d  ; spare to read AF
-	push de
-	pop af
-	pop de		
-	ex	af,af'				; Alternate AF' restored
-	exx						; Alternates registers restored
+	READ_PAIR_WITH_HALT L,H  ; Restore HL'
+	READ_PAIR_WITH_HALT e,d  ; spare to read BC'
+	push de 				 ; store BC'
+	READ_PAIR_WITH_HALT e,d  ; Restore DE'
+	pop BC					 ; Restore BC'
+	READ_PAIR_WITH_HALT e,d  ; spare to read AF' - save flags last
+	push de					 ; store AF'
+	pop af					 ; Restore AF'
+	ex	af,af'				 ; Alternate AF' restored
+	exx						 ; Alternates registers restored
+ 
 
 	ld c,$1f  
 	; Restore HL,DE,BC,IY,IX	
 	READ_PAIR_WITH_HALT l,h   ; restore HL
-	READ_PAIR_WITH_HALT e,d;  ; read DE		  			 
-;;;;;;	push de					  ; store DE	
-	READ_PAIR_WITH_HALT e,d;  ; read BC	  
-;;;;;;	push de  			      ; store BC
+	
+	READ_PAIR_WITH_HALT e,d;  ;  TO VOID -  read DE		  			 
+	READ_PAIR_WITH_HALT e,d;  ;  TO VOID -  read BC	  
+
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -158,9 +178,7 @@ skip_EI:
 	; R REG ... TODO  
 	READ_ACC_WITH_HALT ; currently goes to the void
 
-	; restore AF
-	READ_PAIR_WITH_HALT e,d;  ; using spare to restore AF
-;;;;;;;;;	push de 				  ; store AF
+	READ_PAIR_WITH_HALT e,d;  ; TO VOID - using spare to restore AF
 
 	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
@@ -190,20 +208,14 @@ IMset:
 	pop de
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 
-	; restore final registers - we know how mutch is on the stack
-;//	ld SP,WORKING_STACK-(2+2+2)
-;//	POP af   			 ; Restore AF register pair
-;//	POP bc   			 ; Restore BC register pair
-;//	POP de   			 ; Restore DE register pair	
-
 	ld SP,WORKING_STACK
 	READ_PAIR_WITH_HALT e,d  ; get BC
 	push de
 	READ_PAIR_WITH_HALT e,d  ; get DE 
 	pop bc
 
-	; NOTE:  'READ_PAIR_WITH_HALT' will mess up flags (i.e. uses 'IN') - so restore AF last
-
+	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
+	; Restore AF - The process requires some extra steps to save memory.
 	ld SP,WORKING_STACK   
 	READ_ACC_WITH_HALT     ; 'F' is now in A
 	ld (WORKING_STACK),a   ; Store F 
@@ -213,7 +225,7 @@ IMset:
 
 	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
 	inc sp 						 ; skip PC kept here as part of snapshot protocol
-	inc sp						 ; (PC skipped as we have it place in the 'JumpInstruction')
+	inc sp						 ; (PC+2 as we already have it in the 'JumpInstruction')
 
 	; Self-modifying code - restore memory used as temp storage
 	; (note : at this point I would happly use up 1k of rom just to save a single byte in memory!!!!)
@@ -239,19 +251,20 @@ IMset:
 ; This means 11 bytes of screen memory need to tbe destored
 ;-----------------------------------------------------------------------
 
+;-----------------------------------------------------------------------	
 ; *** Start-up restored program ***
+;-----------------------------------------------------------------------	
+;
 ; This gets placed in screen memory (called via JP SCREEN_START)
+;
 relocate:
 	HALT  ; Uses maskable - after there should be ample time if 'EI' is restored.
 		  ; Arduino waits for last halt to signal in 'Upper Rom'
 NOP_LABLE:
-	NOP 				; This will be modified to EI if needed
-JumpInstruction: 		; Self-modifying code
-    jp 0000h            ; This jump location will be modified 
+	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
+JumpInstruction: 		; 
+    jp 0000h            ; Self-modifying code - JP location will be modified 
 relocateEnd:
-;-----------------------------------------------------------------------	
-;screen:$4000 -> [6144] -> attributes:$5800 -> [768] -> $5AFF
-
 ;-----------------------------------------------------------------------	
 
 ClearScreen:

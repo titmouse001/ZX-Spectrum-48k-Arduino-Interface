@@ -153,11 +153,16 @@ void loop() {
   }
 
   // *** Send Snapshot Header Section ***
+
+  // SWAP BC WITH DE
+  byte reg_d = head27[2+3];  // store DE'
+  byte reg_e = head27[2+4];
+  head27[2+3] = head27[2+5];  // DE' is now BC'
+  head27[2+4] = head27[2+6];
+  head27[2+5] = reg_d;        // DB' is now DE'
+  head27[2+6] = reg_e;
+
   sendBytes(head27, 27 + 2);
-
-
-
-
   sendBytes(&head27[2+13], 2);  // BC
   sendBytes(&head27[2+11], 2);  // DE
   sendBytes(&head27[2+21], 2);  // AF
