@@ -125,19 +125,6 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	READ_ACC_WITH_HALT
 	ld	i,a
 
-;	ld c,$1f  
-;	; Restore HL',DE',BC',AF'
-;	READ_PAIR_WITH_HALT L,H 
-;	READ_PAIR_WITH_HALT E,D 
-;	push de
-;	READ_PAIR_WITH_HALT c,b 
-;	READ_PAIR_WITH_HALT e,d  ; spare to read AF
-;	push de
-;	pop af
-;	pop de		
-;	ex	af,af'				; Alternate AF' restored
-;	exx						; Alternates registers restored
-
 	ld c,$1f  
 	; Restore HL',DE',BC',AF'
 	READ_PAIR_WITH_HALT L,H  ; Restore HL'
@@ -215,7 +202,8 @@ IMset:
 	pop bc
 
 	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
-	; Restore AF - The process requires some extra steps to save memory.
+	; Restore AF - This process involves additional steps to minimize 
+	;		       unnecessary modification of screen memory.
 	ld SP,WORKING_STACK   
 	READ_ACC_WITH_HALT     ; 'F' is now in A
 	ld (WORKING_STACK),a   ; Store F 
@@ -237,12 +225,17 @@ IMset:
 	ld A,(WORKING_STACK)
 
 	EI
-	HALT 				 ; Maskable - Interupt routine forgoes a 'EI',
-	EI					 ; so we need to re-enable ask maskable does not do this
-	JP SCREEN_START		 ; jump to relocated code
+	HALT 				 ; Our Maskable Interupt routine forgoes 'EI',
+	EI					 ; Need to re-enable as our maskable does not.
+	JP SCREEN_START		 ; jump to relocated code in screen memory
 	
 ;-----------------------------------------------------------------------	
-; TOTAL STACK USAGE - 3 deep (6 bytes)
+; TOTAL STACK USAGE - 2 deep (4 bytes)
+; At no point does the stack exceed 2 deep (4 bytes). 
+; The interrupt routine uses 2 bytes of stack space for the return address, 
+; but it immediately returns giving back the stack.
+; The stack is pushed/popped, interrupts triggered by halt 
+; don’t increase the stack depth permanently.
 ;-----------------------------------------------------------------------	
 ; MEMORY USAGE - The entire sequence 
 ; 'relocate:' to 'relocateEnd:' uses 5 bytes of memory.
@@ -258,8 +251,13 @@ IMset:
 ; This gets placed in screen memory (called via JP SCREEN_START)
 ;
 relocate:
-	HALT  ; Uses maskable - after there should be ample time if 'EI' is restored.
-		  ; Arduino waits for last halt to signal in 'Upper Rom'
+  HALT  ; Here we just wait for a maskable interrupt.
+        ; The Arduino waits for this halt as a signal to swap over to 'Upper ROM'.
+        ; Note: During HALT, the interrupt service routine will use the stack.
+        ; At this point, we are using the real restored program's stack space,
+        ; so technically the real state might have a full stack. If this is the case, bad things may happen.
+		; (I sould really do the 'inc sp' x2 after the halt, but the would eat more into screen memory,
+		;  maybe add a safe-mode that eats more screen memory)
 NOP_LABLE:
 	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
 JumpInstruction: 		; 

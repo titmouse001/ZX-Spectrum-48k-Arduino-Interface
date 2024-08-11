@@ -50,7 +50,7 @@ const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
 static byte buffer[BUFFER_SIZE]= { 'G', 'O' };   // Load program "GO"
 
-static byte head27[27 + 2] = { 'E', 'X' };  // Execute command "EX"
+static byte head27_2[27 + 2] = { 'E', 'X' };  // Execute command "EX"
  
 SdFat32 sd;
 FatFile root;
@@ -60,6 +60,7 @@ File statusFile;
 int currentIndex;
 
 void debugFlash(int flashSpeed);
+inline void swap(byte &a, byte &b);
 
 void setup() {
   /* 
@@ -91,7 +92,7 @@ void setup() {
   pinMode(Z80_HALT, INPUT);
 
   // Initialize SD card
-  if (!sd.begin()) {}  
+  if (!sd.begin()) {}
 
   if (!sd.exists("status.txt")) {
     statusFile.open("status.txt", O_RDWR);
@@ -131,14 +132,13 @@ void setup() {
     }
     file.close();
   }
-
 }
 
 
 void loop() {
 
   if (file.available()) {
-    byte bytesReadHeader = (byte)file.read(&head27[0 + 2], 27);
+    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
@@ -153,34 +153,31 @@ void loop() {
   }
 
   // *** Send Snapshot Header Section ***
+  swap(head27_2[5], head27_2[7]);  // Swap D' with B'
+  swap(head27_2[6], head27_2[8]);  // Swap E' with C'
 
-  // SWAP BC WITH DE
-  byte reg_d = head27[2+3];  // store DE'
-  byte reg_e = head27[2+4];
-  head27[2+3] = head27[2+5];  // DE' is now BC'
-  head27[2+4] = head27[2+6];
-  head27[2+5] = reg_d;        // DB' is now DE'
-  head27[2+6] = reg_e;
+  // Send the relevant bytes
+  sendBytes(head27_2, sizeof(head27_2));  // Send entire header
+  
+  // Resend BC,DE,AF in that order - Z80 needed to ignored them in the last send
+  sendBytes(&head27_2[15], 2);          // Send BC
+  sendBytes(&head27_2[13], 2);          // Send DE
+  sendBytes(&head27_2[23], 2);          // Send AF
 
-  sendBytes(head27, 27 + 2);
-  sendBytes(&head27[2+13], 2);  // BC
-  sendBytes(&head27[2+11], 2);  // DE
-  sendBytes(&head27[2+21], 2);  // AF
+  //  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
+  //  REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
+  //  REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
+  //  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
 
-//  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
-//  REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
-//  REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
-//  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
+  // Wait for the Z80 to halt. The maskable interrupt will handle releasing it during a gap in the 50FPS cycle.
+  waitHalt();
 
- // Wait for the Z80 to halt. The maskable interrupt will handle releasing it during a gap in the 50FPS cycle.
-  waitHalt(); 
- 
   // Ensure we're running in memory before swapping ROMs.
-  waitHalt();  
- 
+  waitHalt();
+
   // The rom maskable interrupt uses only RETI, so swapping back to original rom won't interfere.
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
-  
+
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, block here if HALT still in action
 
   statusFile.open("status.txt", O_RDWR);
@@ -190,8 +187,8 @@ void loop() {
     statusFile.seekSet(0);
     statusFile.truncate(0);
     currentIndex++;
-    if (currentIndex>8) {
-      currentIndex=0;
+    if (currentIndex > 8) {
+      currentIndex = 0;
     }
     statusFile.print(currentIndex);
     statusFile.close();
@@ -210,13 +207,6 @@ void sendBytes(byte* data, byte size) {
   }
 }
 
-/*
-void waitA14() {  
-  // z80 - monitor/wait for A12 to go LOW/HIGH
-  while ((bitRead(PINB, PINB1) == HIGH)) {};
-  while ((bitRead(PINB, PINB1) == LOW)) {};
-}
-*/
 void waitHalt() {  
   // z80 side with clear halt line 
   // last HALT will be allowed to see the maskable interrupt
@@ -230,6 +220,12 @@ void waitReleaseHalt() {
   bitClear(PORTC, DDC0);  // A0 signals the Z80 /NMI line,
   bitSet(PORTC, DDC0);    // this will un-halt the Z80.
   /////// while ((bitRead(PINB, PINB0) == LOW)) {};
+}
+
+inline void swap(byte &a, byte &b) {
+    byte temp = a;
+    a = b;
+    b = temp;
 }
 
 void debugFlash(int flashspeed) {
