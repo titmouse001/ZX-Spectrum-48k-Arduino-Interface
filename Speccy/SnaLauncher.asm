@@ -50,7 +50,7 @@ L0000:
 mainloop: 
 
 ;******************************************************************************
-; For each incoimg chunck of data, the first 2 bytes are 'action' indicators.
+; For each incoming chunck of data, the first 2 bytes are 'action' indicators.
 ;  # Transfer data = "GO"
 ;  # Execute code = "EX"
 ;
@@ -76,7 +76,7 @@ check_EX:  				; Subroutine to handle 'EX' command
 ; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
 ORG $0038
 L0038:   
-     ;;;;;   EI  
+     ;;;;;   EI    ; LEAVING THIS 'EI' OUT, NEED TO GET IN/OUT AS QUICKLY AS POSSIBLE
 		RETI
 ;******************************************************************************
 ; NON MASKABLE INTERRUPT - USED TO UN-HALT 
@@ -203,34 +203,33 @@ IMset:
 
 	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
 	; Restore AF - This process involves additional steps to minimize 
-	;		       unnecessary modification of screen memory.
-;;;;;;;	ld SP,WORKING_STACK   
+	;		       unnecessary modification of screen memory. 
 	READ_ACC_WITH_HALT     ; 'F' is now in A
-	ld (SCREEN_END),a   ; Store F 
+	ld (SCREEN_END),a      ; Store F 
 	READ_ACC_WITH_HALT     ; 'A' is now in A
-	ld (SCREEN_END+1),a ; Store A  
+	ld (SCREEN_END+1),a    ; Store A  
 	pop af                 ; restore AF
 
+	; Restore Stack - noting that the stack is now no longer avaible !!!
 	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
 	inc sp 						 ; skip PC kept here as part of snapshot protocol
 	inc sp						 ; (PC+2 as we already have it in the 'JumpInstruction')
 
-	; Self-modifying code - restore memory used as temp storage
-	; (note : at this point I would happly use up 1k of rom just to save a single byte in memory!!!!)
-	ld (SCREEN_END),A
-	ld a,$76				;	HALT
+	; Self-modifying code - restore code destroyed by 'TEMP_STORAGE'
+	ld (SCREEN_END),A		; store A 
+	ld a,$76				; set 'HALT'
 	ld (SCREEN_START),a
-	ld a,$0					;   NOP
+	ld a,$0					; set 'NOP'
 	ld (SCREEN_START+1),a
 
-	ld (SCREEN_END-1),a  ; clean up & leave these blank
-	ld (SCREEN_END-2),a  ; 
-	ld (SCREEN_END-3),a  ;
-
-	ld A,(SCREEN_END)
+	; Blank old stack from screen, last byte (SCREEN_END) has to stay to restore A
+	ld (SCREEN_END-1),a  
+	ld (SCREEN_END-2),a  
+	ld (SCREEN_END-3),a  
+	ld A,(SCREEN_END)	 ; Restore A
 
 	EI
-	HALT 				 ; Our Maskable Interupt routine forgoes 'EI',
+	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
 	EI					 ; Need to re-enable as our maskable does not.
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	
