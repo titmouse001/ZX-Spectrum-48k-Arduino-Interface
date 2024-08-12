@@ -1,1 +1,0 @@
-java -jar imagetozxspec-2.2.2.jar
