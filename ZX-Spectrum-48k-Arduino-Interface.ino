@@ -21,6 +21,10 @@
 #include <avr/pgmspace.h>
 #include <SPI.h>
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
+#include "SSD1306AsciiAvrI2c.h"
+#include "fudgefont.h"  // Based on the Adafruit5x7 font, with '!' to '(' changed to work as a VU BAR (8 chars)
+
+#define VERSION ("0.3")
 
 // 'Z80_D0Pin' to 'Z80_D7Pin', Arduino Pins that connect up to the z80 data pins
 const byte Z80_D0Pin = 0;
@@ -59,8 +63,19 @@ FatFile file;
 File statusFile;
 int currentIndex;
 
+#define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
+SSD1306AsciiAvrI2c oled;
+
+
+  const uint8_t ISRDataPin = 9;   // connected to 74HC165 QH (9) pin
+  const uint8_t ISRLatchPin = 10;  // connected to 74HC165 SH/LD (1) pin
+  const uint8_t ISRClockPin = 16;  // connected to 74HC165 CLK (2) pin
+
+
 void debugFlash(int flashSpeed);
 inline void swap(byte &a, byte &b);
+uint8_t reverseBits(uint8_t byte);
+void setupOled();
 
 void setup() {
   /* 
@@ -72,6 +87,14 @@ void setup() {
     Serial.println(pinState); 
   }; 
 */
+
+
+  // 74HC165 shift register
+  pinMode(ISRDataPin, INPUT);
+  pinMode(ISRLatchPin, OUTPUT);
+  pinMode(ISRClockPin, OUTPUT);
+
+//-------------
 
   bitClear(PORTC, DDC1);
   pinMode(ROM_HALF, OUTPUT);  // LOW external/HIGH stock rom
@@ -90,6 +113,9 @@ void setup() {
   pinMode(Z80_D6Pin, OUTPUT);
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
+
+  setupOled();
+
 
   // Initialize SD card
   if (!sd.begin()) {}
@@ -122,9 +148,18 @@ void setup() {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
         if (index == currentIndex) {
-          //   char fileName[16];
-          //   file.getName7(fileName, 16);
-          //    Serial.println(fileName);
+             char fileName[16];
+            file.getName7(fileName, 16);
+
+   oled.clear();
+  oled.print(F("Zx Spectrum interface\n"));
+  oled.print(F("takes <*.sna> files\nLOADING: "));
+  oled.print(fileName);
+  oled.print(F("\nver"));
+  oled.println(F(VERSION));
+
+
+
           break;
         }
         index++;
@@ -200,7 +235,7 @@ void loop() {
 void sendBytes(byte* data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = data[bufferIndex];
+    PORTD = reverseBits(data[bufferIndex]);
     bitClear(PORTC, DDC0);
     bitSet(PORTC, DDC0);
     while ((bitRead(PINB, PINB0) == LOW)) {};
@@ -229,14 +264,50 @@ inline void swap(byte &a, byte &b) {
 }
 
 void debugFlash(int flashspeed) {
+
   file.close();
   root.close();
   sd.end();
   while (1) {
-    pinMode(ledPin, OUTPUT);
+//    pinMode(ledPin, OUTPUT);
+ //   digitalWrite(ledPin, HIGH);
+ //   delay(flashspeed);
+ //   digitalWrite(ledPin, LOW);
+ //   delay(flashspeed);
+
+   uint8_t data = 0;
+   digitalWrite(ISRClockPin, HIGH);  // preset clock to retrieve first bit
+   digitalWrite(ISRLatchPin, HIGH);  // disable input latching and enable shifting
+   data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
+   digitalWrite(ISRLatchPin, LOW);  // disable shifting and enable input latching
+
+  PORTD = reverseBits(data) ;
+
+  if (data) {
     digitalWrite(ledPin, HIGH);
-    delay(flashspeed);
+  }else {
     digitalWrite(ledPin, LOW);
-    delay(flashspeed);
   }
+
+
+  }
+}
+
+void setupOled() {
+  oled.begin(&Adafruit128x32, I2C_ADDRESS);
+  delay(1);
+  // some hardware is slow to initialise, first call does not work.
+  oled.begin(&Adafruit128x32, I2C_ADDRESS);
+  // original Adafruit5x7 font with tweeks at start for VU meter
+  oled.setFont( fudged_Adafruit5x7 );
+  oled.clear();
+  oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
+  oled.println(F(VERSION));
+}
+
+uint8_t reverseBits(uint8_t byte) {
+    byte = (byte & 0xF0) >> 4 | (byte & 0x0F) << 4;
+    byte = (byte & 0xCC) >> 2 | (byte & 0x33) << 2;
+    byte = (byte & 0xAA) >> 1 | (byte & 0x55) << 1;
+    return byte;
 }
