@@ -19,22 +19,33 @@ TEMP_STORAGE				EQU SCREEN_START
 ;******************************************************************************
 ;   MACRO SECTION
 ;******************************************************************************
+
+;--------------------------------
 MACRO READ_ACC_WITH_HALT 
 	halt
     in a, ($1f)  
 ENDM
-MACRO READ_PAIR_WITH_HALT  ,reg1,reg2
+;--------------------------------
+; Note: With READ_PAIR_WITH_HALT don't used BC directly, do this...
+;   READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
+;   push de                    ; Save DE (holds BC)
+;   pop bc                     ; BC restored
+;
+; DONT FORGET TO "ld C,$1F" BEFORE USING
+MACRO READ_PAIR_WITH_HALT  ,reg1,reg2  
 	halt
-    in reg1,(c)
+    in reg1,(c)  
 	halt
     in reg2,(c)
 ENDM
+;--------------------------------
 MACRO SET_BORDER ,colour 
  	;0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
 	ld a,colour
 	AND %00000111
 	out ($fe), a
 ENDM
+;--------------------------------
 
 ;******************************************************************************
 ;   CODE START
@@ -127,11 +138,11 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 
 	ld c,$1f  
 	; Restore HL',DE',BC',AF'
-	READ_PAIR_WITH_HALT L,H  ; Restore HL'
-	READ_PAIR_WITH_HALT e,d  ; spare to read BC'
-	push de 				 ; store BC'
-	READ_PAIR_WITH_HALT e,d  ; Restore DE'
-	pop BC					 ; Restore BC'
+	READ_PAIR_WITH_HALT L,H  ; store HL'
+	READ_PAIR_WITH_HALT e,d  ; store DE'
+	READ_PAIR_WITH_HALT e,d  ; Get BC' (temporarily in DE)
+    push de                  ; Save DE (holds BC')
+    pop bc                   ; BC' restored
 	exx						 ; Alternates registers restored
 	; registers are free again. just AF' left to restore
 	ld c,$1f  
@@ -198,19 +209,19 @@ IMset:
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 
 	ld SP,WORKING_STACK      ; nothing on stack, can set here without harming anything
-	READ_PAIR_WITH_HALT e,d  ; get BC
-	push de
-	READ_PAIR_WITH_HALT e,d  ; get DE 
-	pop bc
+    READ_PAIR_WITH_HALT e, d   ; Restore DE directly
+    READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
+    push de                    ; Save DE (holds BC)
+    pop bc                     ; BC restored
 
 	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
 	; Restore AF - This process involves additional steps to minimize 
 	;		       unnecessary modification of screen memory. 
-	READ_ACC_WITH_HALT     ; 'F' is now in A
-	ld (WORKING_STACK),a      ; Store F S
-	READ_ACC_WITH_HALT     ; 'A' is now in A
-	ld (WORKING_STACK+1),a    ; Store A  
-	pop af                 ; restore AF
+	READ_ACC_WITH_HALT     		; 'F' is now in A
+	ld (WORKING_STACK),a      	; Store F S
+	READ_ACC_WITH_HALT     		; 'A' is now in A
+	ld (WORKING_STACK+1),a    	; Store A  
+	pop af                 		; restore AF
 
 	; Restore Stack - noting that the stack is now no longer avaible !!!
 	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer

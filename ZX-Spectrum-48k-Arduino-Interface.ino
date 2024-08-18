@@ -188,15 +188,11 @@ void loop() {
   }
 
   // *** Send Snapshot Header Section ***
-  swap(head27_2[2+3], head27_2[2+5]);  // Swap  with 
-  swap(head27_2[2+4], head27_2[2+6]);  
-
-  // Send the relevant bytes
   sendBytes(head27_2, sizeof(head27_2));  // Send entire header
   
-  // Resend BC,DE,AF in that order - Z80 needed to ignored them in the last send
-  sendBytes(&head27_2[2+13], 2);          // Send BC
+  // Resend DE,BC & AF in that order - Z80 ignored them in the previous send
   sendBytes(&head27_2[2+11], 2);          // Send DE
+  sendBytes(&head27_2[2+13], 2);          // Send BC
   sendBytes(&head27_2[2+21], 2);          // Send AF
 
   //  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
