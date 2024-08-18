@@ -13,7 +13,7 @@ SCREEN_START				EQU $4000  ; [6144]
 SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 
-WORKING_STACK				EQU SCREEN_END+1  ; +1 as push first decrements SP
+WORKING_STACK				EQU SCREEN_END
 TEMP_STORAGE				EQU SCREEN_START
 
 ;******************************************************************************
@@ -132,12 +132,14 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	push de 				 ; store BC'
 	READ_PAIR_WITH_HALT e,d  ; Restore DE'
 	pop BC					 ; Restore BC'
+	exx						 ; Alternates registers restored
+	; registers are free again. just AF' left to restore
+	ld c,$1f  
 	READ_PAIR_WITH_HALT e,d  ; spare to read AF' - save flags last
 	push de					 ; store AF'
 	pop af					 ; Restore AF'
 	ex	af,af'				 ; Alternate AF' restored
-	exx						 ; Alternates registers restored
- 
+
 
 	ld c,$1f  
 	; Restore HL,DE,BC,IY,IX	
@@ -205,9 +207,9 @@ IMset:
 	; Restore AF - This process involves additional steps to minimize 
 	;		       unnecessary modification of screen memory. 
 	READ_ACC_WITH_HALT     ; 'F' is now in A
-	ld (SCREEN_END),a      ; Store F 
+	ld (WORKING_STACK),a      ; Store F S
 	READ_ACC_WITH_HALT     ; 'A' is now in A
-	ld (SCREEN_END+1),a    ; Store A  
+	ld (WORKING_STACK+1),a    ; Store A  
 	pop af                 ; restore AF
 
 	; Restore Stack - noting that the stack is now no longer avaible !!!
