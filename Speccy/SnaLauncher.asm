@@ -14,7 +14,7 @@ SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 
 WORKING_STACK				EQU SCREEN_END
-TEMP_STORAGE				EQU SCREEN_START
+;;;;TEMP_STORAGE				EQU SCREEN_START
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -88,7 +88,8 @@ check_EX:  				; Subroutine to handle 'EX' command
 ORG $0038
 L0038:   
      ;;;;;   EI    ; LEAVING THIS 'EI' OUT, NEED TO GET IN/OUT AS QUICKLY AS POSSIBLE
-		RETI
+	;;	RETI
+		RET
 ;******************************************************************************
 ; NON MASKABLE INTERRUPT - USED TO UN-HALT 
 ORG $0066
@@ -125,12 +126,16 @@ readDataLoop:
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
- 	; Setup - Later on the code will using a tiny footprint in screen memory for 
-	;	      running code & temporary storage during the restoration process.
+	;-------------------------------------------------------------------------------------------
+ 	; Setup - put copy of ROM routine 'relocate' into Screen memory		
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
-	LDIR
+	LDIR   		
+	; UPDATE: This area is now mostly used as temporary memory and is destroyed; this block copy
+	;         serves to illustrate the intended use. This memory is restored later; for now, it can be put
+	;         to good use since it is not being used just yet.
+	;-------------------------------------------------------------------------------------------
 	
  	; Restore 'I'
 	READ_ACC_WITH_HALT
@@ -167,12 +172,15 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	pop IX					  ; restore IX
 
 	; Restore interrupt enable flip-flop (IFF) 
+	LD A,0
+	ld (SCREEN_START+(JumpInstruction-relocate)),A
 	READ_ACC_WITH_HALT		 ; read IFF
 	AND	%00000100   		 ; get bit 2
 	jr	z,skip_EI
 	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
 	ld a,$FB
-	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; IM Opcode = $FB
+	;;;;ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; IM Opcode = $FB
+	ld (SCREEN_START+(JumpInstruction-relocate)),a  ; IM Opcode = $FB
 skip_EI:
 
 	; R REG ... TODO  
@@ -182,8 +190,9 @@ skip_EI:
 
 	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
-	ld (TEMP_STORAGE),de 	  ; store sack
+	ld (SCREEN_START),de 	  ; store sack
 
+; THIS OK  ... IM0, IM1 or IM2 ????  WITH RESTORE CODE 
 	; Restore IM0, IM1 or IM2  
 	READ_ACC_WITH_HALT		  ; read IM (interrupt mode)
 	or	a
@@ -203,56 +212,77 @@ IMset:
 	AND %00000111		 
 	out ($fe),a			 ; set border
 
-	; Self-modifying code
-	ld SP,(TEMP_STORAGE)		
+	;------------------------------------------------------------------------
+	; Store programs start address, uses self-modifying code into screen memory
+	ld SP,(SCREEN_START)		
 	pop de
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
+	;------------------------------------------------------------------------
 
-	ld SP,WORKING_STACK      ; nothing on stack, can set here without harming anything
+	;------------------------------------------------------------------------
+	; Restore DE & BC
+	ld SP,WORKING_STACK        ; nothing left on temp stack, can set without harming anything
     READ_PAIR_WITH_HALT e, d   ; Restore DE directly
     READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
     push de                    ; Save DE (holds BC)
     pop bc                     ; BC restored
+	;------------------------------------------------------------------------
 
-	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
-	; Restore AF - This process involves additional steps to minimize 
-	;		       unnecessary modification of screen memory. 
+	;------------------------------------------------------------------------
+	; Restore AF - This process involves additional steps as we a running out 
+	;              of free registers, and need to minimize screen memory use. 
+	; !!!Abusing stack's memory - WE NOW HAVE NO FREE REG PAIRS - A REG ONLY!!!!
 	READ_ACC_WITH_HALT     		; 'F' is now in A
-	ld (WORKING_STACK),a      	; Store F S
-	READ_ACC_WITH_HALT     		; 'A' is now in A
-	ld (WORKING_STACK+1),a    	; Store A  
+	ld (WORKING_STACK),a      	; Store F - (STACK START LOCATION SO SAFE FROM PUSH/POP)
+	READ_ACC_WITH_HALT     		; 'A' is now in A (will cause PUSH/POP)
+	ld (WORKING_STACK+1),a    	; Store A - FAKING THE STACK, SO WE CAN POP WITH NO PUSH
 	pop af                 		; restore AF
+	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
+	;------------------------------------------------------------------------
 
-	; Restore Stack - noting that the stack is now no longer avaible !!!
-	ld SP,(TEMP_STORAGE)		 ; Restore the program's stack pointer
-	inc sp 						 ; skip PC kept here as part of snapshot protocol
-	inc sp						 ; (PC+2 as we already have it in the 'JumpInstruction')
+	;------------------------------------------------------------------------
+	; Restore real programs stack
+	ld SP,(SCREEN_START)		 ; Restore the program's stack pointer
+;	inc sp 						 ; 
+;	inc sp						 ; (PC+2 as we already have it in the 'JumpInstruction')
+	;------------------------------------------------------------------------
 
-	; Self-modifying code - restore code destroyed by 'TEMP_STORAGE'
+	;------------------------------------------------------------------------
+	; Restore launch code left in screen memory we used as temp storage
+	; Note: jp $0000, placeholder for programs start address is already set
+	;
+	; Self-modifying code follows:-
 	ld (SCREEN_END),A		; store A 
+
 	ld a,$76				; set 'HALT'
 	ld (SCREEN_START),a
-	ld a,$0					; set 'NOP'
-	ld (SCREEN_START+1),a
 
+	ld a, (SCREEN_START+(JumpInstruction-relocate))	; this location holds IM Opcode or NOP
+	ld (SCREEN_START+1),a   ; set $FB or NOP depending on sna we read earlier
+
+	ld a,$C3				; set 'JP'  - we used this for IM storage above!!!
+	ld (SCREEN_START+(JumpInstruction-relocate)),a   ; 
+	
+	;------------------------------------------------------------------------
 	; Blank old stack from screen, last byte (SCREEN_END) has to stay to restore A
+	ld a,0
 	ld (SCREEN_END-1),a  
-	ld (SCREEN_END-2),a  
-	ld (SCREEN_END-3),a  
 	ld A,(SCREEN_END)	 ; Restore A
+	;------------------------------------------------------------------------
 
+	;------------------------------------------------------------------------
+	; Arduio just waits for the halt line - masable used this time
 	EI
 	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
 	EI					 ; Need to re-enable as our maskable does not.
 	JP SCREEN_START		 ; jump to relocated code in screen memory
+	;------------------------------------------------------------------------
+
 	
 ;-----------------------------------------------------------------------	
-; TOTAL STACK USAGE - 2 deep (4 bytes)
-; At no point does the stack exceed 2 deep (4 bytes). 
-; The interrupt routine uses 2 bytes of stack space for the return address, 
-; but it immediately returns giving back the stack.
-; The stack is pushed/popped, interrupts triggered by halt 
-; don’t increase the stack depth permanently.
+; TOTAL STACK USAGE - 1 deep (2 bytes) - try avoiding anything that makes use of the stack.
+; To help reduce deep, don't:-  (i) Push,  (ii)NMI , (iii) pop (results in a 4 deep!)
+; Interrupts triggered by HALT use the stack, so push/pop need to planned around.
 ;-----------------------------------------------------------------------	
 ; MEMORY USAGE - The entire sequence 
 ; 'relocate:' to 'relocateEnd:' uses 5 bytes of memory.
@@ -268,15 +298,19 @@ IMset:
 ; This gets placed in screen memory (called via JP SCREEN_START)
 ;
 relocate:
-  HALT  ; Here we just wait for a maskable interrupt.
-        ; The Arduino waits for this halt as a signal to swap over to 'Upper ROM'.
-        ; Note: During HALT, the interrupt service routine will use the stack.
-        ; At this point, we are using the real restored program's stack space,
-        ; so technically the real state might have a full stack. If this is the case, bad things may happen.
-		; (I sould really do the 'inc sp' x2 after the halt, but the would eat more into screen memory,
-		;  maybe add a safe-mode that eats more screen memory)
+  	HALT  ; Here we just wait for a maskable interrupt.
+          ; The Arduino waits for this halt as a signal to swap over to 'Upper ROM'.
+          ; Note: During HALT, the interrupt service routine will use the stack.
+          ; At this point, we are using the real restored program's stack space,
+          ; so technically the real state might have a full stack. If this is the case, bad things may happen.
+		  ; (I sould really do the 'inc sp' x2 after the halt, but the would eat more into screen memory,
+		  ;  maybe add a safe-mode that eats more screen memory)
 NOP_LABLE:
 	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
+	
+	inc sp 						 
+	inc sp	
+
 JumpInstruction: 		; 
     jp 0000h            ; Self-modifying code - JP location will be modified 
 relocateEnd:
@@ -317,7 +351,7 @@ DS  16384 - last
 ;******************************************************
 
 ;******************************************************
-;  SNA Header (27 bytes)
+;  SNA Header (27 bytes) - read via IN commands
 ;  REG_I	00
 ;  REG_HL1	01	;HL'
 ;  REG_DE1	03	;DE'

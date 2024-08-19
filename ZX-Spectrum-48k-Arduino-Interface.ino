@@ -206,6 +206,13 @@ void loop() {
   // Ensure we're running in memory before swapping ROMs.
   waitHalt();
 
+//  delayMicroseconds(6);// Exolon fails
+//  delayMicroseconds(8);  // Exolon ok
+   // no delay Exolon fails
+  // 15, 25, 50 zub fails  
+  //100 exelon ok , zub fails, car fails
+  //150 exelon ok , zub fails
+
   // The rom maskable interrupt uses only RETI, so swapping back to original rom won't interfere.
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
 
@@ -250,7 +257,7 @@ void waitReleaseHalt() {
   // Once the input pin is LOW, toggle the output pin
   bitClear(PORTC, DDC0);  // A0 signals the Z80 /NMI line,
   bitSet(PORTC, DDC0);    // this will un-halt the Z80.
-  /////// while ((bitRead(PINB, PINB0) == LOW)) {};
+   while ((bitRead(PINB, PINB0) == LOW)) {};
 }
 
 inline void swap(byte &a, byte &b) {
@@ -265,11 +272,13 @@ void debugFlash(int flashspeed) {
   root.close();
   sd.end();
   while (1) {
-//    pinMode(ledPin, OUTPUT);
- //   digitalWrite(ledPin, HIGH);
- //   delay(flashspeed);
- //   digitalWrite(ledPin, LOW);
- //   delay(flashspeed);
+  /*
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, HIGH);
+    delay(flashspeed);
+    digitalWrite(ledPin, LOW);
+    delay(flashspeed);
+*/
 
    uint8_t data = 0;
    digitalWrite(ISRClockPin, HIGH);  // preset clock to retrieve first bit
