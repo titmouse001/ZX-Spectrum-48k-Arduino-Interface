@@ -172,31 +172,21 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	push de
 	pop IX					  ; restore IX
 
-	; Restore interrupt enable flip-flop (IFF) 
-	LD A,0
-	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; nop
-	READ_ACC_WITH_HALT		 ; read IFF
-	AND	%00000100   		 ; get bit 2
-	jr	z,skip_EI
-	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
-	ld a,$FB
-	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
-skip_EI:
+	jp RestoreInterruptEnableState
+RestoreInterruptComplete:
 
 	; R REG ... TODO  
 	READ_ACC_WITH_HALT ; currently goes to the void
 
 	READ_PAIR_WITH_HALT e,d;  ; TO VOID - using spare to restore AF
 
-	; Store Stack Pointer
-;	READ_PAIR_WITH_HALT e,d;  ; get Stack
-;	ld (SCREEN_START+(spare-relocate)),de 	  ; store sack
-
 	;------------------------------------------------------------------------
+	; Store Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
 	ld (SCREEN_START+(spare-relocate)),de 	
 	ld SP,(SCREEN_START+(spare-relocate))
 	pop de
+	; Store programs start address, uses self-modifying code into screen memory
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
 	dec sp
 	dec sp
@@ -208,20 +198,14 @@ skip_EI:
 IM_SETUP_COMPLETE:
 	;------------------------------------------------------------------------
 
+	;------------------------------------------------------------------------
 	READ_ACC_WITH_HALT   ; Border Colour
 	AND %00000111		 
 	out ($fe),a			 ; set border
-
-	;------------------------------------------------------------------------
-	; Store programs start address, uses self-modifying code into screen memory
-;	ld SP,(SCREEN_START+(spare-relocate))	
-;	pop de
-;	ld (SCREEN_START + (JumpInstruction - relocate) +1),de
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
 	; Restore DE & BC
-;;;;;;;;;    ld SP,WORKING_STACK        ; nothing left on temp stack, can set without harming anything
     READ_PAIR_WITH_HALT e, d   ; Restore DE directly
     READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
     push de                    ; Save DE (holds BC)
@@ -229,45 +213,20 @@ IM_SETUP_COMPLETE:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore AF - This process involves additional steps as we a running out 
-	;              of free registers, and need to minimize screen memory use. 
-	; !!!Abusing stack's memory - WE NOW HAVE NO FREE REG PAIRS - A REG ONLY!!!!
+	; Restore AF - With just register A left to use, this step needs to be creative
 	READ_ACC_WITH_HALT     		; 'F' is now in A
-	ld (WORKING_STACK-2),a      	; Store F - (STACK START LOCATION SO SAFE FROM PUSH/POP)
+	ld (SCREEN_START+(TempVar-relocate)),a 
+
 	READ_ACC_WITH_HALT     		; 'A' is now in A (will cause PUSH/POP)
-	ld (WORKING_STACK-1),a    	; Store A - FAKING THE STACK, SO WE CAN POP WITH NO PUSH
+	ld (WORKING_STACK-1),a    	; Store A 
+
+	ld a,(SCREEN_START+(TempVar-relocate))
+	ld (WORKING_STACK-2),a     	; Store F 
+
 	pop af                 		; restore AF
 	dec sp
-	dec sp
+	dec sp						; need re-aim stack we just borrowed
 	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
-	;------------------------------------------------------------------------
-
-	;------------------------------------------------------------------------
-	; Restore real programs stack
-;;;;;;;;;;;	ld SP,(SCREEN_START+(spare-relocate))		 ; Restore the program's stack pointer
-	;------------------------------------------------------------------------
-
-	;------------------------------------------------------------------------
-	; Restore launch code left in screen memory we used as temp storage
-	; Note: jp $0000, placeholder for programs start address is already set
-	;
-	; Self-modifying code follows:-
-;;	ld (SCREEN_END),A		; store A 
-
-;;	ld a,$76				; set 'HALT'
-;;	ld (SCREEN_START),a
-
-;;;;	ld a, (SCREEN_START+(JumpInstruction-relocate))	; this location holds EI Opcode or NOP
-;;;;	ld (SCREEN_START+1),a   ; set $FB or NOP depending on sna we read earlier
-
-;;	ld a,$C3				; set 'JP'  - we used this for IM storage above!!!
-;;	ld (SCREEN_START+(JumpInstruction-relocate)),a   ; 
-	
-	;------------------------------------------------------------------------
-	; Blank old stack from screen, last byte (SCREEN_END) has to stay to restore A
-;;;	ld a,0
-;;	ld (SCREEN_END-1),a  
-;;	ld A,(SCREEN_END)	 ; Restore A
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -306,20 +265,20 @@ IM_LABLE:
 	IM 0				; Self-modifying code - 'IM <n>'
 NOP_LABLE:
 	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
-;;;;;;spare:
 	inc sp 						 
 	inc sp	
 JumpInstruction: 		
     jp 0000h            ; Self-modifying code - JP location will be modified 
-spare:
-	db $7f,$7f
-
-;; allways use REAL STACK ?!?!?, HAVE 2 BYTES ONCE WE GRAB JUMP ADDRESS FROM STACK
-
-TempStack:
+spare:				; Used to keep real stacks starting pointer
+	db $7f,$7f		; Double perpose, see top & bottom comments (both labels reflect usage intent)
+TempStack:			; Used at startup until real stack is restored
+TempVar:
+	db $7f
 relocateEnd:
-;-----------------------------------------------------------------------	
 
+; ABOVE: "76 ED 46 00 33 33 C3 00 00 7F 7F"  (11 bytes used)
+
+;-----------------------------------------------------------------------	
 ClearScreen:
 	SET_BORDER 0
    	ld a, 0              
@@ -331,7 +290,8 @@ ClearScreen:
     ld bc, 768-1
     ld (hl), a  
     ldir        
-    jp mainloop  		 ; don't use call/ret ... !!!NEED TO AVOID USING STACK!!!
+    jp mainloop  		 ; avoiding stack based calls
+;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
 ; TAKES A-reg as input, must be 0,1 or 2
@@ -355,8 +315,23 @@ not_im1:
 	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
 IMset:
 	jp IM_SETUP_COMPLETE
-	;------------------------------------------------------------------------
+;------------------------------------------------------------------------
 
+;------------------------------------------------------------------------
+RestoreInterruptEnableState: 
+	; Restore interrupt enable flip-flop (IFF) 
+	READ_ACC_WITH_HALT		 ; read IFF
+	AND	%00000100   		 ; get bit 2
+	jr	z,skip_EI
+	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
+	ld a,$FB
+	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
+	jp RestoreInterruptComplete
+skip_EI:
+	LD A,0
+	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; NOP
+	jp RestoreInterruptComplete
+;------------------------------------------------------------------------
 
 org $3ff0
 debug:   			; debug trap
