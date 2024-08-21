@@ -205,6 +205,7 @@ void loop() {
 
   // Ensure we're running in memory before swapping ROMs.
   waitHalt();
+delayMicroseconds(7);
 
 //  delayMicroseconds(6);// Exolon fails
 //  delayMicroseconds(8);  // Exolon ok
@@ -225,7 +226,7 @@ void loop() {
     statusFile.seekSet(0);
     statusFile.truncate(0);
     currentIndex++;
-    if (currentIndex > 8) {
+    if (currentIndex > 13) {
       currentIndex = 0;
     }
     statusFile.print(currentIndex);
