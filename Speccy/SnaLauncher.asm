@@ -1,10 +1,7 @@
 ; NOTES:-
-;            rom: $0000
-;        rom end: $3fff
-;         screen: $4000  [size:6144] 
-;     screen end: $57FF
-;     attributes: $5800  [size:768]
-; attributes end: $5AFF 
+;            rom: $0000 - $3FFF (16 KB ROM)
+;         screen: $4000 - $57FF (6144 bytes - screen display data)
+;     attributes: $5800 - $5AFF (768 bytes - screen color attributes)
 ;
 ;******************************************************************************
 ;   CONSTANTS
@@ -14,7 +11,10 @@ SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 SCREEN_ATTRIBUTES_END   	EQU $5AFF  
 WORKING_STACK				EQU  (SCREEN_START+(TempStack-relocate))
+; Setting the stack to the attributes area allows a visual debugging of the stack
 ;WORKING_STACK				EQU SCREEN_ATTRIBUTES_END+1  ; DEBUG STACK
+
+LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -26,7 +26,7 @@ MACRO READ_ACC_WITH_HALT
     in a, ($1f)  
 ENDM
 ;--------------------------------
-; Note: With READ_PAIR_WITH_HALT don't used BC directly, do this...
+; Note: When using READ_PAIR_WITH_HALT, avoid BC as it’s implicitly used in IN (reg), (C) commands.
 ;   READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
 ;   push de                    ; Save DE (holds BC)
 ;   pop bc                     ; BC restored
@@ -54,18 +54,25 @@ ENDM
 ORG $0000
 L0000:  
 	DI                     
-    ; Stack goes down
+
+    ; Stack grows down, for example:- PUSH="sp-=2, xx->(sp)" , POP="(sp)->xx, sp+=2"
 	; Note: The attributes area for the stack can also be a helpful debugging tool when needed.
+	;-----------------------------------------------------------------------	
+	; TOTAL STACK USAGE MUST BE - 1 deep (2 bytes) - try avoiding anything that makes use of the stack.
+	; Avoid PUSH, POP, and HALT during operations that are sensitive to stack depth.
+	; To help reduce deep, don't:-  (i) Push,  (ii)NMI, (iii) pop (results in a 4 deep!)
+	; Interrupts triggered by HALT use the stack, so push/pop need to planned around.
+
 	ld SP,WORKING_STACK
 	jp ClearScreen
 mainloop: 
 
 ;******************************************************************************
-; For each incoming chunck of data, the first 2 bytes are 'action' indicators.
-;  # Transfer data = "GO"
-;  # Execute code = "EX"
+; For each incoming data transfer, the header (first 2 bytes) are 'action' indicators.
+;  # Transfer data = "GO"   (normally this is screen/program code all-in-one )
+;  # Execute code = "EX" 	(after reading and restoring z80 registers)
 ;
-check_initial:   		; First loop to check for either 'G' or 'E'
+check_initial:   		; Main loop for checking 'GO' or 'EX' (or 'SN' in future)
 	READ_ACC_WITH_HALT
     cp 'G'            
     jr z, check_GO     	; If 'G', jump to check_G
@@ -87,8 +94,7 @@ check_EX:  				; Subroutine to handle 'EX' command
 ; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
 ORG $0038
 L0038:   
-     ;;;;;   EI    ; LEAVING THIS 'EI' OUT, NEED TO GET IN/OUT AS QUICKLY AS POSSIBLE
-	;;	RETI
+		; Leaving out 'EI' to ensure minimal delay, and is simple for us to EI outside
 		RET
 ;******************************************************************************
 ; NON MASKABLE INTERRUPT - USED TO UN-HALT 
@@ -101,63 +107,65 @@ command_GO:  ; FIRST STAGE - TRANSFER DATA
 	
 	ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
 
-	; The actual maximum transfer size is smaller than 1 byte; it's really 250,
-	; as 'amount', 'destination', and "GO" are included in each transfer chunk.
 	; Transfers are typically sequential, but any destination location can be targeted.
+    ; The data transfer size is limited to around 250 bytes due to the inclusion of metadata like 'GO'.
+    ; (Border color changes during transfers for useful visual feedback)
+
 	halt
-	in b,(c)  ; transfer size (1 byte)
+	in b,(c)  ; The transfer size is guaranteed to fit within a single byte.
 
 	; Set HL with the 'destination' address (reading 2 bytes)
-	READ_PAIR_WITH_HALT h,l
+	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
+	; NOTE: Most of the snapshot 16bit data processed later on is big-endian, 
+	;		so you will see things like "READ_PAIR_WITH_HALT l,h" (so l,h not h,l)
 
 readDataLoop:
-	; liking the boarder effect, so going with 'in' not 'ini' as need value in Acc
-	halt
-	in a,($1f)   ; Read a byte from the I/O port
-	ld (hl),a	 ; write to screen
-    inc hl
-    
-	;AND %00000111  ; set border 0 to 7
-	AND %00000011  ;
-	out ($fe), a   ; 
+	halt		 ; As we need to halt each time around we can't use 'ini' we have to use 'in'
+	in a,($1f)   ; Read a byte from the z80 I/O port
+	ld (hl),a	 ; write to memory (technically onward from $4000 on a 48k speccy)
+    inc hl		
 
-    djnz readDataLoop
+	AND LOADING_COLOUR_MASK  
+	out ($fe), a   ; Flash border - fed from actual data while loading
 
-    jr mainloop
+	djnz readDataLoop  ; read loop
+
+    jr mainloop ; done - go back and wait for the next transfer action
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
 	;-------------------------------------------------------------------------------------------
- 	; Setup - put copy of ROM routine 'relocate' into Screen memory		
+ 	; Setup - put copy of ROM routine 'relocate' (final launch code) into Screen memory	
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
-	LDIR   		
-	; UPDATE: This area is now mostly used as temporary memory and is destroyed; this block copy
-	;         serves to illustrate the intended use. This memory is restored later; for now, it can be put
-	;         to good use since it is not being used just yet.
+	LDIR  ; We are preparing this screen memory now while registers are still available.
 	;-------------------------------------------------------------------------------------------
 	
+	;-------------------------------------------------------------------------------------------
  	; Restore 'I'
 	READ_ACC_WITH_HALT
 	ld	i,a
-
-	ld c,$1f  
+	;-------------------------------------------------------------------------------------------
+	
+	;-------------------------------------------------------------------------------------------
 	; Restore HL',DE',BC',AF'
+	ld c,$1f  
 	READ_PAIR_WITH_HALT L,H  ; store HL'
 	READ_PAIR_WITH_HALT e,d  ; store DE'
 	READ_PAIR_WITH_HALT e,d  ; Get BC' (temporarily in DE)
     push de                  ; Save DE (holds BC')
     pop bc                   ; BC' restored
 	exx						 ; Alternates registers restored
-	; registers are free again. just AF' left to restore
+	; registers are free again, just AF' left to restore
 	ld c,$1f  
 	READ_PAIR_WITH_HALT e,d  ; spare to read AF' - save flags last
 	push de					 ; store AF'
 	pop af					 ; Restore AF'
 	ex	af,af'				 ; Alternate AF' restored
-
-
+	;-------------------------------------------------------------------------------------------
+	
+	;-------------------------------------------------------------------------------------------
 	ld c,$1f  
 	; Restore HL,DE,BC,IY,IX	
 	READ_PAIR_WITH_HALT l,h   ; restore HL
@@ -171,6 +179,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	READ_PAIR_WITH_HALT e,d;  ; read IX
 	push de
 	pop IX					  ; restore IX
+	;-------------------------------------------------------------------------------------------
 
 	jp RestoreInterruptEnableState
 RestoreInterruptComplete:
@@ -213,7 +222,7 @@ IM_SETUP_COMPLETE:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore AF - With just register A left to use, this step needs to be creative
+	; Restore AF creatively using only register A.
 	READ_ACC_WITH_HALT     		; 'F' is now in A
 	ld (SCREEN_START+(TempVar-relocate)),a 
 
@@ -236,47 +245,38 @@ IM_SETUP_COMPLETE:
 	EI					 ; Need to re-enable as our maskable does not.
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
-
 	
 ;-----------------------------------------------------------------------	
-; TOTAL STACK USAGE - 1 deep (2 bytes) - try avoiding anything that makes use of the stack.
-; To help reduce deep, don't:-  (i) Push,  (ii)NMI , (iii) pop (results in a 4 deep!)
-; Interrupts triggered by HALT use the stack, so push/pop need to planned around.
-;-----------------------------------------------------------------------	
-; MEMORY USAGE - The entire sequence 
-; 'relocate:' to 'relocateEnd:' uses 5 bytes of memory.
-; (HALT: 1 byte, NOP: 1 byte, jp 0000h: 3 bytes)
-;-----------------------------------------------------------------------
-; This means 11 bytes of screen memory need to tbe destored
-;-----------------------------------------------------------------------
+; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 7F 7F 7F"
+; This means 12 bytes of screen memory will be destored
 
-;-----------------------------------------------------------------------	
-; *** Start-up restored program ***
-;-----------------------------------------------------------------------	
-;
 ; This gets placed in screen memory (called via JP SCREEN_START)
-;
+;-----------------------------------------------------------------------	
+; FINAL STEP - Start-up the restored program 
 relocate:
   	HALT  ; Here we just wait for a maskable interrupt.
-          ; The Arduino waits for this halt as a signal to swap over to 'Upper ROM'.
+		  ; Arduino switches to 'Upper ROM' upon detecting this halt.
           ; Note: During HALT, the interrupt service routine will use the stack.
           ; At this point, we are using the real restored program's stack space.
 IM_LABLE:
+	; "IM_LABLE" here self-modifying code is used here to dynamically adjust the 
+	; interrupt mode and jump location based on runtime data.
 	IM 0				; Self-modifying code - 'IM <n>'
 NOP_LABLE:
 	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
-	inc sp 						 
-	inc sp	
-JumpInstruction: 		
-    jp 0000h            ; Self-modifying code - JP location will be modified 
+	
+	inc sp  ; Snapshot file provides RETN/jump location here, but we have used/destroyed this location
+	inc sp  ; as a temporary 1-deep stack. We previously saved its value and stored it just below.
+
+JumpInstruction: 	; Self-modifying code - JP location will be modified 	
+    jp 0000h        ; !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
 spare:				; Used to keep real stacks starting pointer
 	db $7f,$7f		; Double perpose, see top & bottom comments (both labels reflect usage intent)
 TempStack:			; Used at startup until real stack is restored
 TempVar:
 	db $7f
 relocateEnd:
-
-; ABOVE: "76 ED 46 00 33 33 C3 00 00 7F 7F"  (11 bytes used)
+;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
 ClearScreen:
@@ -345,11 +345,25 @@ DS  16384 - last
 
 
 ;******************************************************
-; todo
-; rename "EX" to "SN" 
-; "SN" - restore SNapshot regs, but not do the exe.
-; "EX" now just EXecute JMP <LOCATION>
-; "GO" needs renaming ... maybe, "GD" get data
+; todo - future extra support for 2-byte "header"
+; 1/ renaming 'GO' to 'GD' (Get Data).
+; 2/ Add SCR loading/viewing "SC"
+; 3/ Add PSG Files - AY Player  "PS" 
+; 4/ Add GIF Files - Gif Viewer/Player "GI"
+; 5/ TO VOID - reorder incoming snapshot header
+; 6/ Options to change loading boarder (off, colour choice)
+; 7/ Options to slow down loading, mimic tapes
+; 8/ load binary TAP files "TP"
+; 9/ load TZX files
+; 10/ Load Z80 Files
+; 11/ Load PNG file
+; 12/ Support poke cheats
+; 13/ Analyse games at load time, add lives + cheats
+; 14/ Analyse music players extract, enable for AY on 48k.
+; 15/ Compress data/unpack - result must be faster (so maybe not)
+; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
+; 17/
+
 ;******************************************************
 
 ;******************************************************
