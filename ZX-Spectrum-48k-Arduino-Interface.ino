@@ -26,21 +26,28 @@
 
 #define VERSION ("0.3")
 
-// 'Z80_D0Pin' to 'Z80_D7Pin', Arduino Pins that connect up to the z80 data pins
-const byte Z80_D0Pin = 0;
-const byte Z80_D1Pin = 1;
-const byte Z80_D2Pin = 2;  // 16;  // A2 (pin2 not available)
-const byte Z80_D3Pin = 3;
-const byte Z80_D4Pin = 4;
-const byte Z80_D5Pin = 5;
-const byte Z80_D6Pin = 6;
-const byte Z80_D7Pin = 7;
-
-const byte Z80_HALT = 8;  // PINB0 (PORT B), Z80 'Halt' Status
-
-const byte ledPin = 13;
-const byte Z80_NMI = 14;
-const byte ROM_HALF = 15;
+// 'Z80_D0Pin' to 'Z80_D7Pin'
+const byte Z80_D0Pin   = 0;  // Arduino to z80 data pins
+const byte Z80_D1Pin   = 1;  //  ""
+const byte Z80_D2Pin   = 2;  //  ""
+const byte Z80_D3Pin   = 3;  //  ""
+const byte Z80_D4Pin   = 4;  //  ""
+const byte Z80_D5Pin   = 5;  //  ""
+const byte Z80_D6Pin   = 6;  //  ""
+const byte Z80_D7Pin   = 7;  //  ""
+const byte Z80_HALT    = 8;  // PINB0 (PORT B), Z80 'Halt' Status
+const byte ISRDataPin  = 9;  // connected to 74HC165 QH (pin-9 on chip)
+const byte ISRLatchPin = 10; // connected to 74HC165 SH/LD (pin-1 on chip)
+//                   pin 11 MOSI - SD CARD
+//                   pin 12 MISO - SD CARD
+//                   pin 13 SCK  - SD CARD
+const byte ledPin      = 13;   // only used for critical errors (flashes)
+const byte Z80_NMI     = 14;
+const byte ROM_HALF    = 15;
+const byte ISRClockPin = 16;  // connected to 74HC165 CLK (pin-2 on chip)
+const byte Z80_REST    = 17;
+//                   pin 18 SDA - OLED
+//                   pin 19 SCL - OLED
 
 // Transfer structure
 const byte HEADER_START_G = 0;      // Index for first byte of header
@@ -67,9 +74,9 @@ int currentIndex;
 SSD1306AsciiAvrI2c oled;
 
 
-  const uint8_t ISRDataPin = 9;   // connected to 74HC165 QH (9) pin
-  const uint8_t ISRLatchPin = 10;  // connected to 74HC165 SH/LD (1) pin
-  const uint8_t ISRClockPin = 16;  // connected to 74HC165 CLK (2) pin
+ // const uint8_t ISRDataPin = 9;   // connected to 74HC165 QH (9) pin
+ // const uint8_t ISRLatchPin = 10;  // connected to 74HC165 SH/LD (1) pin
+ // const uint8_t ISRClockPin = 16;  // connected to 74HC165 CLK (2) pin
 
 
 void debugFlash(int flashSpeed);
