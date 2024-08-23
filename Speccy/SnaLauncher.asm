@@ -363,7 +363,7 @@ DS  16384 - last
 ; 14/ Analyse music players extract, enable for AY on 48k.
 ; 15/ Compress data/unpack - result must be faster (so maybe not)
 ; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
-; 17/
+; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
 
 ;******************************************************
 

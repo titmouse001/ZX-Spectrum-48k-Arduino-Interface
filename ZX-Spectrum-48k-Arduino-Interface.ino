@@ -27,25 +27,25 @@
 #define VERSION ("0.3")
 
 // 'Z80_D0Pin' to 'Z80_D7Pin'
-const byte Z80_D0Pin   = 0;  // Arduino to z80 data pins
-const byte Z80_D1Pin   = 1;  //  ""
-const byte Z80_D2Pin   = 2;  //  ""
-const byte Z80_D3Pin   = 3;  //  ""
-const byte Z80_D4Pin   = 4;  //  ""
-const byte Z80_D5Pin   = 5;  //  ""
-const byte Z80_D6Pin   = 6;  //  ""
-const byte Z80_D7Pin   = 7;  //  ""
-const byte Z80_HALT    = 8;  // PINB0 (PORT B), Z80 'Halt' Status
-const byte ISRDataPin  = 9;  // connected to 74HC165 QH (pin-9 on chip)
-const byte ISRLatchPin = 10; // connected to 74HC165 SH/LD (pin-1 on chip)
+const byte Z80_D0Pin = 0;     // Arduino to z80 data pins
+const byte Z80_D1Pin = 1;     //  ""
+const byte Z80_D2Pin = 2;     //  ""
+const byte Z80_D3Pin = 3;     //  ""
+const byte Z80_D4Pin = 4;     //  ""
+const byte Z80_D5Pin = 5;     //  ""
+const byte Z80_D6Pin = 6;     //  ""
+const byte Z80_D7Pin = 7;     //  ""
+const byte Z80_HALT = 8;      // PINB0 (PORT B), Z80 'Halt' Status
+const byte ISRDataPin = 9;    // connected to 74HC165 QH (pin-9 on chip)
+const byte ISRLatchPin = 10;  // connected to 74HC165 SH/LD (pin-1 on chip)
 //                   pin 11 MOSI - SD CARD
 //                   pin 12 MISO - SD CARD
 //                   pin 13 SCK  - SD CARD
-const byte ledPin      = 13;   // only used for critical errors (flashes)
-const byte Z80_NMI     = 14;
-const byte ROM_HALF    = 15;
+const byte ledPin = 13;  // only used for critical errors (flashes)
+const byte Z80_NMI = 14;
+const byte ROM_HALF = 15;
 const byte ISRClockPin = 16;  // connected to 74HC165 CLK (pin-2 on chip)
-const byte Z80_REST    = 17;
+const byte Z80_REST = 17;
 //                   pin 18 SDA - OLED
 //                   pin 19 SCL - OLED
 
@@ -55,29 +55,22 @@ const byte HEADER_START_O = 1;      // Index for second byte of header
 const byte HEADER_PAYLOADSIZE = 2;  // Index for payload as bytes
 const byte HEADER_HIGH_BYTE = 3;    // Index for high byte of address
 const byte HEADER_LOW_BYTE = 4;     // Index for low byte of address
-const byte SIZE_OF_HEADER = HEADER_LOW_BYTE+1;
+const byte SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
 const byte PAYLOAD_BUFFER_SIZE = 250;
-const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE; 
+const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-static byte buffer[BUFFER_SIZE]= { 'G', 'O' };   // Load program "GO"
+static byte buffer[BUFFER_SIZE] = { 'G', 'O' };  // Load program "GO"
 
 static byte head27_2[27 + 2] = { 'E', 'X' };  // Execute command "EX"
- 
+
 SdFat32 sd;
 FatFile root;
 FatFile file;
-
 File statusFile;
 int currentIndex;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
-
-
- // const uint8_t ISRDataPin = 9;   // connected to 74HC165 QH (9) pin
- // const uint8_t ISRLatchPin = 10;  // connected to 74HC165 SH/LD (1) pin
- // const uint8_t ISRClockPin = 16;  // connected to 74HC165 CLK (2) pin
-
 
 void debugFlash(int flashSpeed);
 inline void swap(byte &a, byte &b);
@@ -95,18 +88,23 @@ void setup() {
   }; 
 */
 
+  // Reset Z80
+  pinMode(Z80_REST, OUTPUT);
+  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+  delay(25);
+  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
 
-  // 74HC165 shift register
+  // Setup pins for "74HC165" shift register
   pinMode(ISRDataPin, INPUT);
   pinMode(ISRLatchPin, OUTPUT);
   pinMode(ISRClockPin, OUTPUT);
 
-//-------------
-
+  // 16k Rom switching (by sellecting which rom half from a 32k Rom)
   bitClear(PORTC, DDC1);
   pinMode(ROM_HALF, OUTPUT);  // LOW external/HIGH stock rom
   bitClear(PORTC, DDC1);      // pin15, A1 , swap out stock rom
 
+  // Connect to Z80's NMI Line to unhalt Z80 (using NMI due to speccys maskable taken for 50fps H/W refresh)
   pinMode(Z80_NMI, OUTPUT);  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
   bitSet(PORTC, DDC0);       // pin14 (A0), Z80 /NMI line
 
@@ -121,12 +119,193 @@ void setup() {
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
 
-  setupOled();
-
+  setupOled();  // Using a mono OLED with 128x32 pixels
 
   // Initialize SD card
-  if (!sd.begin()) {}
+  if (!sd.begin()) {
+    // TODO : ERROR HERE
+  }
 
+  if (!root.open("/")) {
+    debugFlash(200);
+  }
+
+  currentIndex = 0;
+}
+
+
+void loop() {
+
+  if (!openFileByIndex(currentIndex)) {
+    // TODO : ERROR HERE
+  }
+
+  // Read the Snapshots 27-byte header
+  if (file.available()) {
+    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
+    if (bytesReadHeader != 27) { debugFlash(3000); }
+  }
+
+  uint16_t currentAddress = 0x4000;  //starts at beginning of screen
+  while (file.available()) {
+    byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+    buffer[HEADER_PAYLOADSIZE] = bytesRead;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+    sendBytes(buffer, SIZE_OF_HEADER + bytesRead);
+    currentAddress += buffer[HEADER_PAYLOADSIZE];
+  }
+
+  file.close();
+
+  // *** Send Snapshot Header Section ***
+  sendBytes(head27_2, sizeof(head27_2));  // Send entire header
+
+  // Resend DE,BC & AF in that order - Z80 ignored them in the previous send
+  sendBytes(&head27_2[2 + 11], 2);  // Send DE
+  sendBytes(&head27_2[2 + 13], 2);  // Send BC
+  sendBytes(&head27_2[2 + 21], 2);  // Send AF
+
+  // Wait for the Z80 to halt. The Spectrum's maskable interrupt will release it during the 50FPS screen refresh.
+  waitHalt();  // 1st halt - trigger by maskable interrupt
+
+  // At this point the Spectrum is resorting running code in screen memory to safely swap ROM banks.
+  // The Spectrum does a 2nd halt so we can tell it's started executing the final launch code.
+  waitHalt(); // 2nd halt - trigger by maskable interrupt
+
+  delayMicroseconds(7);  // TODO ..... !!!!!!!!!!!!! WHY !!!!!!!!!!!!!
+
+  bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+
+  // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
+
+  while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
+
+  currentIndex++;
+  if (currentIndex > 13) {
+    currentIndex = 0;
+  }
+
+  delay(3000);
+
+  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+  delay(25);
+  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+
+  //debugFlash(200);  // All ok - Flash led to show we have reached the end with no left over halts
+}
+
+void sendBytes(byte *data, byte size) {
+  for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
+    while ((bitRead(PINB, PINB0) == HIGH)) {};
+    PORTD = reverseBits(data[bufferIndex]);
+    bitClear(PORTC, DDC0);
+    bitSet(PORTC, DDC0);
+    while ((bitRead(PINB, PINB0) == LOW)) {};
+  }
+}
+
+void waitHalt() {
+  // Here we are waiting for the speccy to release the hault, it does this every 50fps.
+  while ((bitRead(PINB, PINB0) == HIGH)) {};
+  while ((bitRead(PINB, PINB0) == LOW)) {};
+}
+
+void waitReleaseHalt() {
+  // Here we MUST release the z80 for it's HALT state.
+  while ((bitRead(PINB, PINB0) == HIGH)) {}; // (1) Wait for Halt line to go LOW.
+  bitClear(PORTC, DDC0);                     // (2) A0 (pin-8) signals the Z80 /NMI line,
+  bitSet(PORTC, DDC0);                       //     LOW then HIGH, this will un-halt the Z80.
+  while ((bitRead(PINB, PINB0) == LOW)) {};  // (3) Wait for halt line to go HIGH again.
+}
+
+inline void swap(byte &a, byte &b) {
+  byte temp = a;
+  a = b;
+  b = temp;
+}
+
+void debugFlash(int flashspeed) {
+
+  file.close();
+  root.close();
+  sd.end();
+  while (1) {
+    /*
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, HIGH);
+    delay(flashspeed);
+    digitalWrite(ledPin, LOW);
+    delay(flashspeed);
+*/
+
+    uint8_t data = 0;
+    digitalWrite(ISRClockPin, HIGH);                    // preset clock to retrieve first bit
+    digitalWrite(ISRLatchPin, HIGH);                    // disable input latching and enable shifting
+    data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
+    digitalWrite(ISRLatchPin, LOW);                     // disable shifting and enable input latching
+
+    PORTD = reverseBits(data);
+
+    if (data) {
+      digitalWrite(ledPin, HIGH);
+    } else {
+      digitalWrite(ledPin, LOW);
+    }
+  }
+}
+
+void setupOled() {
+  oled.begin(&Adafruit128x32, I2C_ADDRESS);
+  delay(1);
+  // some hardware is slow to initialise, first call does not work.
+  oled.begin(&Adafruit128x32, I2C_ADDRESS);
+  // original Adafruit5x7 font with tweeks at start for VU meter
+  oled.setFont(fudged_Adafruit5x7);
+  oled.clear();
+  oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
+  oled.println(F(VERSION));
+}
+
+uint8_t reverseBits(uint8_t byte) {
+  byte = (byte & 0xF0) >> 4 | (byte & 0x0F) << 4;
+  byte = (byte & 0xCC) >> 2 | (byte & 0x33) << 2;
+  byte = (byte & 0xAA) >> 1 | (byte & 0x55) << 1;
+  return byte;
+}
+
+
+bool openFileByIndex(int searchIndex) {
+  root.rewind();
+  int index = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        if (index == searchIndex) {
+          char fileName[16];
+          file.getName7(fileName, 16);
+
+          oled.clear();
+          oled.print(F("Zx Spectrum interface\n"));
+          oled.print(F("takes <*.sna> files\nLOADING: "));
+          oled.print(fileName);
+          oled.print(F("\nver"));
+          oled.println(F(VERSION));
+          return true;
+        }
+        index++;
+      }
+    }
+    file.close();
+  }
+  return false;
+}
+
+
+
+
+/*
   if (!sd.exists("status.txt")) {
     statusFile.open("status.txt", O_RDWR);
     if (statusFile) {
@@ -144,89 +323,10 @@ void setup() {
     currentIndex = statusFile.parseInt();
     statusFile.close();
   }
-
-  if (!root.open("/")) {
-    debugFlash(200);
-  }
-
-  root.rewind();
-  int index = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        if (index == currentIndex) {
-             char fileName[16];
-            file.getName7(fileName, 16);
-
-   oled.clear();
-  oled.print(F("Zx Spectrum interface\n"));
-  oled.print(F("takes <*.sna> files\nLOADING: "));
-  oled.print(fileName);
-  oled.print(F("\nver"));
-  oled.println(F(VERSION));
+*/
 
 
-
-          break;
-        }
-        index++;
-      }
-    }
-    file.close();
-  }
-}
-
-
-void loop() {
-
-  if (file.available()) {
-    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
-    if (bytesReadHeader != 27) { debugFlash(3000); }
-  }
-
-  uint16_t destinationAddress = 0x4000;  //screen address
-  while (file.available()) {
-    byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-    buffer[HEADER_PAYLOADSIZE] = bytesRead;
-    buffer[HEADER_HIGH_BYTE] = (destinationAddress >> 8) & 0xFF;  // high byte
-    buffer[HEADER_LOW_BYTE] = destinationAddress & 0xFF;          // low byte
-    sendBytes(buffer, SIZE_OF_HEADER + bytesRead);
-    destinationAddress += buffer[HEADER_PAYLOADSIZE];
-  }
-
-  // *** Send Snapshot Header Section ***
-  sendBytes(head27_2, sizeof(head27_2));  // Send entire header
-  
-  // Resend DE,BC & AF in that order - Z80 ignored them in the previous send
-  sendBytes(&head27_2[2+11], 2);          // Send DE
-  sendBytes(&head27_2[2+13], 2);          // Send BC
-  sendBytes(&head27_2[2+21], 2);          // Send AF
-
-  //  REG_I	 =00, REG_HL'=01, REG_DE'	=03, REG_BC' =05	(.sna file header)
-  //  REG_AF'=07, REG_HL =09, REG_DE	=11, REG_BC	 =13  (        27 bytes)
-  //  REG_IY =15, REG_IX =17, REG_IFF =19, REG_R	 =20
-  //  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
-
-  // Wait for the Z80 to halt. The maskable interrupt will handle releasing it during a gap in the 50FPS cycle.
-  waitHalt();
-
-  // Ensure we're running in memory before swapping ROMs.
-  waitHalt();
-delayMicroseconds(7);
-
-//  delayMicroseconds(6);// Exolon fails
-//  delayMicroseconds(8);  // Exolon ok
-   // no delay Exolon fails
-  // 15, 25, 50 zub fails  
-  //100 exelon ok , zub fails, car fails
-  //150 exelon ok , zub fails
-
-  // The rom maskable interrupt uses only RETI, so swapping back to original rom won't interfere.
-  bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
-
-  while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, block here if HALT still in action
-
-  statusFile.open("status.txt", O_RDWR);
+/*  statusFile.open("status.txt", O_RDWR);
   if (statusFile) {
     statusFile.seekSet(0);
     currentIndex = statusFile.parseInt();
@@ -239,90 +339,4 @@ delayMicroseconds(7);
     statusFile.print(currentIndex);
     statusFile.close();
   }
-
-  debugFlash(200);  // All ok - Flash led to show we have reached the end with no left over halts
-}
-
-void sendBytes(byte* data, byte size) {
-  for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
-    while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = reverseBits(data[bufferIndex]);
-    bitClear(PORTC, DDC0);
-    bitSet(PORTC, DDC0);
-    while ((bitRead(PINB, PINB0) == LOW)) {};
-  }
-}
-
-void waitHalt() {  
-  // z80 side with clear halt line 
-  // last HALT will be allowed to see the maskable interrupt
-  while ((bitRead(PINB, PINB0) == HIGH)) {};
-  while ((bitRead(PINB, PINB0) == LOW)) {};
-}
-
-void waitReleaseHalt() {
-  while ((bitRead(PINB, PINB0) == HIGH)) {};
-  // Once the input pin is LOW, toggle the output pin
-  bitClear(PORTC, DDC0);  // A0 signals the Z80 /NMI line,
-  bitSet(PORTC, DDC0);    // this will un-halt the Z80.
-   while ((bitRead(PINB, PINB0) == LOW)) {};
-}
-
-inline void swap(byte &a, byte &b) {
-    byte temp = a;
-    a = b;
-    b = temp;
-}
-
-void debugFlash(int flashspeed) {
-
-  file.close();
-  root.close();
-  sd.end();
-  while (1) {
-  /*
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, HIGH);
-    delay(flashspeed);
-    digitalWrite(ledPin, LOW);
-    delay(flashspeed);
-*/
-
-   uint8_t data = 0;
-   digitalWrite(ISRClockPin, HIGH);  // preset clock to retrieve first bit
-   digitalWrite(ISRLatchPin, HIGH);  // disable input latching and enable shifting
-   data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
-   digitalWrite(ISRLatchPin, LOW);  // disable shifting and enable input latching
-
-  PORTD = reverseBits(data) ;
-
-  if (data) {
-    digitalWrite(ledPin, HIGH);
-  }else {
-    digitalWrite(ledPin, LOW);
-  }
-
-
-  }
-}
-
-void setupOled() {
-  oled.begin(&Adafruit128x32, I2C_ADDRESS);
-  delay(1);
-  // some hardware is slow to initialise, first call does not work.
-  oled.begin(&Adafruit128x32, I2C_ADDRESS);
-  // original Adafruit5x7 font with tweeks at start for VU meter
-  oled.setFont( fudged_Adafruit5x7 );
-  oled.clear();
-  oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
-  oled.println(F(VERSION));
-}
-
-uint8_t reverseBits(uint8_t byte) {
-    byte = (byte & 0xF0) >> 4 | (byte & 0x0F) << 4;
-    byte = (byte & 0xCC) >> 2 | (byte & 0x33) << 2;
-    byte = (byte & 0xAA) >> 1 | (byte & 0x55) << 1;
-    return byte;
-}
-
-
+  */
