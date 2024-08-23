@@ -1,6 +1,5 @@
 
-::java -jar mdlz80optimizer\mdl.jar SnaLauncher.asm -asm+:html main-annotated.html -dialect pasmo
-::pause
+
 
 REM del /Q *.tap 
 del /Q .\output\*.bin 
