@@ -181,8 +181,9 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	pop IX					  ; restore IX
 	;-------------------------------------------------------------------------------------------
 
-	jp RestoreInterruptEnableState
-RestoreInterruptComplete:
+	READ_ACC_WITH_HALT		 ; read IFF
+	jp RestoreIFFState
+RestoreIFFStateComplete:
 
 	; R REG ... TODO  
 	READ_ACC_WITH_HALT ; currently goes to the void
@@ -203,8 +204,8 @@ RestoreInterruptComplete:
 
 	;------------------------------------------------------------------------
 	READ_ACC_WITH_HALT  ; gets value of IM into reg-A
-	JP RESTORE_INTERRUPT_MODE
-IM_SETUP_COMPLETE:
+	JP RestoreInterruptMode
+RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -294,8 +295,8 @@ ClearScreen:
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
-; TAKES A-reg as input, must be 0,1 or 2
-RESTORE_INTERRUPT_MODE:   
+; IN: Acc must be 0,1 or 2
+RestoreInterruptMode:   
 	; Restore IM0, IM1 or IM2  
 	ld d,a
 	or	a
@@ -314,23 +315,23 @@ not_im1:
 	ld a,$5E  ; im	2 (ED 5E)
 	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
 IMset:
-	jp IM_SETUP_COMPLETE
+	jp RestoreInterruptModeComplete
 ;------------------------------------------------------------------------
 
 ;------------------------------------------------------------------------
-RestoreInterruptEnableState: 
+; IN: Acc this holds byte-19 of the SNA header
+RestoreIFFState:  
 	; Restore interrupt enable flip-flop (IFF) 
-	READ_ACC_WITH_HALT		 ; read IFF
 	AND	%00000100   		 ; get bit 2
 	jr	z,skip_EI
 	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
 	ld a,$FB
 	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
-	jp RestoreInterruptComplete
+	jp RestoreIFFStateComplete
 skip_EI:
 	LD A,0
 	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; NOP
-	jp RestoreInterruptComplete
+	jp RestoreIFFStateComplete
 ;------------------------------------------------------------------------
 
 org $3ff0
