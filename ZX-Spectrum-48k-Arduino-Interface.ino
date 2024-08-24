@@ -68,6 +68,7 @@ FatFile root;
 FatFile file;
 File statusFile;
 int currentIndex;
+int totalFiles;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
@@ -131,14 +132,37 @@ void setup() {
   }
 
   currentIndex = 0;
-}
 
-
-void loop() {
+  root.rewind();
+  totalFiles = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        totalFiles++;
+      }
+    }
+    file.close();
+  }
 
   if (!openFileByIndex(currentIndex)) {
     // TODO : ERROR HERE
   }
+
+
+}
+
+
+void loop() {
+  
+  char fileName[16];
+  file.getName7(fileName, 16);
+  oled.clear();
+  oled.print(F("Zx Spectrum interface\n"));
+  oled.print(F("takes <*.sna> files\nLOADING: "));
+  oled.print(fileName);
+  oled.print(F("\nver"));
+  oled.println(F(VERSION));
+
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
@@ -171,7 +195,7 @@ void loop() {
 
   // At this point the Spectrum is resorting running code in screen memory to safely swap ROM banks.
   // The Spectrum does a 2nd halt so we can tell it's started executing the final launch code.
-  waitHalt(); // 2nd halt - trigger by maskable interrupt
+  waitHalt();  // 2nd halt - trigger by maskable interrupt
 
   delayMicroseconds(7);  // TODO ..... !!!!!!!!!!!!! WHY !!!!!!!!!!!!!
 
@@ -181,19 +205,137 @@ void loop() {
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
 
-  currentIndex++;
-  if (currentIndex > 13) {
-    currentIndex = 0;
-  }
-
+  // currentIndex++;
+  // if (currentIndex > 13) {
+  //  currentIndex = 0;
+  //  }
+  /*
   delay(3000);
-
   bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
   bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
   delay(25);
   bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+*/
+
+
+  unsigned long lastButtonPress = 0;  // Store the last time a button press was processed
+  unsigned long buttonDelay = 300;    // Initial delay between button actions in milliseconds
+  unsigned long lastButtonHoldTime = 0; // Track how long the button has been held
+  bool buttonHeld = false;  // Track if the button is being held
+
+  while (1) {
+    processJoystick();
+
+    // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
+
+    int but = analogRead(21);
+    unsigned long currentMillis = millis();  // Get the current time
+
+    // Determine if a button is pressed and which one
+    bool buttonPressed = false;
+    if (but < (100 + 22)) {
+      buttonPressed = true;
+    } else if (but < (100 + 324)) {
+      buttonPressed = true;
+    } else if (but < (100 + 510)) {
+      buttonPressed = true;
+    }
+
+    if (buttonPressed) {
+      if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
+        // Minimum delay of 50ms, decrease by 20ms each time
+        buttonDelay = max(50, buttonDelay - 20);  
+        lastButtonHoldTime = currentMillis;
+      }
+
+      if (currentMillis - lastButtonPress >= buttonDelay) {
+        if (but < (100 + 22)) {  // First button action
+          currentIndex++;
+          if (currentIndex >= totalFiles) {
+            currentIndex = 0;
+          }
+          updateFileName();
+        } else if (but < (100 + 324)) {  // Second button action
+          bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+          bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+          delay(25);
+          bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+          break;
+        } else if (but < (100 + 510)) {  // Third button action
+          currentIndex--;
+          if (currentIndex < 0) {
+            currentIndex = totalFiles-1;
+          }
+          updateFileName();
+        }
+
+        // Update timing for the next press
+        lastButtonPress = currentMillis;
+        buttonHeld = true;  // Mark that the button is held
+        lastButtonHoldTime = currentMillis;  // Reset hold timing
+      }
+    } else {
+      // If no button is pressed, reset the button-held status and delay
+      buttonHeld = false;
+      buttonDelay = 300;  // Reset to the initial delay
+    }
+  }
+
+
+
+
+
+/*
+   unsigned long currentMillis = millis();  // Get the current time
+
+    if (currentMillis - lastButtonPress >= buttonDelay) {  // Check if enough time has passed since the last action
+ 
+      int but = analogRead(21);
+
+      oled.setCursor(0, 0);
+      if (but < (100 + 22)) {
+        currentIndex++;
+        if (currentIndex > 13) {
+          currentIndex = 0;
+        }
+        updateFileName();
+        lastButtonPress = currentMillis;  
+      } else if (but < (100 + 324)) {
+        bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+        bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+        delay(25);
+        bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+        break;
+      } else if (but < (100 + 510)) {
+        currentIndex--;
+        if (currentIndex < 0) {
+          currentIndex = 13;
+        }
+        updateFileName();
+        lastButtonPress = currentMillis;  
+      } 
+    }
+  
+  }  */
 
   //debugFlash(200);  // All ok - Flash led to show we have reached the end with no left over halts
+}
+
+void updateFileName() {
+  file.close();
+  if (openFileByIndex(currentIndex)) {
+    char fileName[16];
+    file.getName7(fileName, 16);
+    oled.setCursor(0, 0);
+//    oled.clear();
+//    oled.print(F("Zx Spectrum interface\n"));
+//    oled.print(F("takes <*.sna> files\nFILE: "));
+    oled.print(F("FILE: "));
+    oled.print(fileName);
+    oled.print(".sna      ");    
+  } else {
+    // TODO : ERROR HERE
+  }
 }
 
 void sendBytes(byte *data, byte size) {
@@ -214,10 +356,10 @@ void waitHalt() {
 
 void waitReleaseHalt() {
   // Here we MUST release the z80 for it's HALT state.
-  while ((bitRead(PINB, PINB0) == HIGH)) {}; // (1) Wait for Halt line to go LOW.
-  bitClear(PORTC, DDC0);                     // (2) A0 (pin-8) signals the Z80 /NMI line,
-  bitSet(PORTC, DDC0);                       //     LOW then HIGH, this will un-halt the Z80.
-  while ((bitRead(PINB, PINB0) == LOW)) {};  // (3) Wait for halt line to go HIGH again.
+  while ((bitRead(PINB, PINB0) == HIGH)) {};  // (1) Wait for Halt line to go LOW.
+  bitClear(PORTC, DDC0);                      // (2) A0 (pin-8) signals the Z80 /NMI line,
+  bitSet(PORTC, DDC0);                        //     LOW then HIGH, this will un-halt the Z80.
+  while ((bitRead(PINB, PINB0) == LOW)) {};   // (3) Wait for halt line to go HIGH again.
 }
 
 inline void swap(byte &a, byte &b) {
@@ -264,15 +406,15 @@ void setupOled() {
   // original Adafruit5x7 font with tweeks at start for VU meter
   oled.setFont(fudged_Adafruit5x7);
   oled.clear();
-  oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
-  oled.println(F(VERSION));
+   oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
+   oled.println(F(VERSION));
 }
 
-uint8_t reverseBits(uint8_t byte) {
-  byte = (byte & 0xF0) >> 4 | (byte & 0x0F) << 4;
-  byte = (byte & 0xCC) >> 2 | (byte & 0x33) << 2;
-  byte = (byte & 0xAA) >> 1 | (byte & 0x55) << 1;
-  return byte;
+inline byte reverseBits(byte data) {
+  data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
+  data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
+  data = (data & 0xAA) >> 1 | (data & 0x55) << 1;
+  return data;
 }
 
 
@@ -283,15 +425,6 @@ bool openFileByIndex(int searchIndex) {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
         if (index == searchIndex) {
-          char fileName[16];
-          file.getName7(fileName, 16);
-
-          oled.clear();
-          oled.print(F("Zx Spectrum interface\n"));
-          oled.print(F("takes <*.sna> files\nLOADING: "));
-          oled.print(fileName);
-          oled.print(F("\nver"));
-          oled.println(F(VERSION));
           return true;
         }
         index++;
@@ -303,6 +436,51 @@ bool openFileByIndex(int searchIndex) {
 }
 
 
+
+
+void processJoystick() {
+
+  digitalWrite(ISRClockPin, HIGH);                         // preset clock to retrieve first bit
+  digitalWrite(ISRLatchPin, HIGH);                         // disable input latching and enable shifting
+  byte data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
+  digitalWrite(ISRLatchPin, LOW);                          // disable shifting and enable input latching
+  PORTD = reverseBits(data);
+  if (data) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+  /*
+
+
+  bitSet(PORTB, 0);  // HIGH, pin 16 (PB0), clock to retrieve first bit
+  bitSet(PORTB, 2);  // HIGH, pin 10 (PB2), disable input latching/enable shifting
+
+  // Read the data byte using shiftIn replacement with direct port manipulation
+  byte data = 0;
+  for (int i = 0; i < 8; i++) {
+    data <<= 1;
+    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
+      bitSet(data, 0);
+    }
+    // Toggle clock pin low to high to read the next bit
+    bitClear(PORTB, 0);    // Clock low
+    delayMicroseconds(1);  // Short delay to ensure stable clocking
+    bitSet(PORTB, 0);      // Clock high
+  }
+
+  bitClear(PORTB, 2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+
+  data = reverseBits(data);  // H/W error in prototype!
+  PORTD = data;  // output to z80 data lines
+
+  if (data) {
+    bitSet(PORTB, 5);  // LED, pin 13 (PB5)
+  } else {
+    bitClear(PORTB, 5);  // LED, pin 13 (PB5)
+  }
+  */
+}
 
 
 /*
