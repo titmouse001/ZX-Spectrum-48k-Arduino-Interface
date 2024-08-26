@@ -36,15 +36,15 @@ const byte Z80_D5Pin = 5;     //  ""
 const byte Z80_D6Pin = 6;     //  ""
 const byte Z80_D7Pin = 7;     //  ""
 const byte Z80_HALT = 8;      // PINB0 (PORT B), Z80 'Halt' Status
-const byte ISRDataPin = 9;    // connected to 74HC165 QH (pin-9 on chip)
-const byte ISRLatchPin = 10;  // connected to 74HC165 SH/LD (pin-1 on chip)
+const byte ShiftRegDataPin = 9;    // connected to 74HC165 QH (pin-9 on chip)
+const byte ShiftRegLatchPin = 10;  // connected to 74HC165 SH/LD (pin-1 on chip)
 //                   pin 11 MOSI - SD CARD
 //                   pin 12 MISO - SD CARD
 //                   pin 13 SCK  - SD CARD
 const byte ledPin = 13;  // only used for critical errors (flashes)
 const byte Z80_NMI = 14;
 const byte ROM_HALF = 15;
-const byte ISRClockPin = 16;  // connected to 74HC165 CLK (pin-2 on chip)
+const byte ShiftRegClockPin = 16;  // connected to 74HC165 CLK (pin-2 on 165)
 const byte Z80_REST = 17;
 //                   pin 18 SDA - OLED
 //                   pin 19 SCL - OLED
@@ -68,6 +68,7 @@ FatFile root;
 FatFile file;
 File statusFile;
 int currentIndex;
+int lastIndex;
 int totalFiles;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
@@ -77,6 +78,54 @@ void debugFlash(int flashSpeed);
 inline void swap(byte &a, byte &b);
 uint8_t reverseBits(uint8_t byte);
 void setupOled();
+
+
+
+  unsigned long lastButtonPress = 0;  // Store the last time a button press was processed
+  unsigned long buttonDelay = 300;    // Initial delay between button actions in milliseconds
+  unsigned long lastButtonHoldTime = 0; // Track how long the button has been held
+  bool buttonHeld = false;  // Track if the button is being held
+
+// Transposed data storage
+uint8_t transposed[8] = {0};
+
+// Function to transpose the 5x7 font
+void transposeMatrix(uint8_t *input, uint8_t *output) {
+  for (byte row = 0; row < 7; row++) {
+    for (byte col = 0; col < 5; col++) {
+      byte value = pgm_read_byte(&input[col]);
+      bool bit = (value >> row) & 0x01;
+      output[row] |= (bit << (4 - col));
+    }
+  }
+}
+
+uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
+    // Base screen address in ZX Spectrum
+    uint16_t base_address = 0x4000;
+
+    // Calculate section offset based on the Y coordinate
+    uint16_t section_offset;
+    if (y < 64) {
+        section_offset = 0;  // First section
+    } else if (y < 128) {
+        section_offset = 0x0800;  // Second section
+    } else {
+        section_offset = 0x1000;  // Third section
+    }
+
+    // Calculate the correct interleaved line address
+    uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
+    uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
+    uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
+
+    // Calculate the horizontal byte index (each byte represents 8 pixels)
+    uint8_t x_byte_index = x >> 3;
+
+    // Calculate and return the final screen address
+    return base_address + section_offset + row_within_section + x_byte_index;
+}
+
 
 void setup() {
   /* 
@@ -96,9 +145,9 @@ void setup() {
   bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
 
   // Setup pins for "74HC165" shift register
-  pinMode(ISRDataPin, INPUT);
-  pinMode(ISRLatchPin, OUTPUT);
-  pinMode(ISRClockPin, OUTPUT);
+  pinMode(ShiftRegDataPin, INPUT);
+  pinMode(ShiftRegLatchPin, OUTPUT);
+  pinMode(ShiftRegClockPin, OUTPUT);
 
   // 16k Rom switching (by sellecting which rom half from a 32k Rom)
   bitClear(PORTC, DDC1);
@@ -132,6 +181,9 @@ void setup() {
   }
 
   currentIndex = 0;
+  lastIndex=-1;
+
+  char fileName[16];
 
   root.rewind();
   totalFiles = 0;
@@ -139,14 +191,58 @@ void setup() {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
         totalFiles++;
+        file.getName7(fileName, 16);
       }
     }
     file.close();
   }
 
-  if (!openFileByIndex(currentIndex)) {
-    // TODO : ERROR HERE
-  }
+  //-------------
+
+
+  uint16_t currentAddress = 0x5800;
+//768
+    buffer[HEADER_PAYLOADSIZE] =250;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+    for (int i=0; i<250 ; i++) { 
+      buffer[SIZE_OF_HEADER+i] = 7;
+    }
+    sendBytes(buffer, SIZE_OF_HEADER + 250); 
+
+currentAddress+=250;
+   buffer[HEADER_PAYLOADSIZE] =250;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+    for (int i=0; i<250 ; i++) { 
+      buffer[SIZE_OF_HEADER+i] = 7;
+    }
+    sendBytes(buffer, SIZE_OF_HEADER + 250); 
+
+
+
+
+    memset(&buffer[2],0 , 255-SIZE_OF_HEADER);
+    char message[32];
+    sprintf(message, "Found %s", fileName);
+
+    for (int i=0; i<strlen(message); i++) { 
+      memset(transposed, 0, 8);
+      byte* data = &fudged_Adafruit5x7[((message[i] - 0x20)*5)+0+6];    
+      transposeMatrix(data ,transposed);   
+      int x=0;
+      for (int y=0 ; y<192-8; y+=8) {
+        for (int k=0; k<7; k++) { 
+            uint16_t currentAddress=  zx_spectrum_screen_address(x+(i*8),y+k);
+            buffer[HEADER_PAYLOADSIZE] = 1;
+            buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF; 
+            buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;      
+            buffer[SIZE_OF_HEADER+0] = transposed[k];
+            sendBytes(buffer, SIZE_OF_HEADER +1);
+        }
+      }
+    }
+
 
 
 }
@@ -154,15 +250,19 @@ void setup() {
 
 void loop() {
   
+  oled.clear();
+  while (1) {
+    if (selectGame()) {
+      break;
+    };
+  }
+
+
   char fileName[16];
   file.getName7(fileName, 16);
   oled.clear();
-  oled.print(F("Zx Spectrum interface\n"));
-  oled.print(F("takes <*.sna> files\nLOADING: "));
-  oled.print(fileName);
-  oled.print(F("\nver"));
-  oled.println(F(VERSION));
-
+  oled.print(F("Loading:\n"));
+  oled.println(fileName);
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
@@ -180,7 +280,7 @@ void loop() {
     currentAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
-  file.close();
+ //file.close();
 
   // *** Send Snapshot Header Section ***
   sendBytes(head27_2, sizeof(head27_2));  // Send entire header
@@ -205,137 +305,18 @@ void loop() {
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
 
-  // currentIndex++;
-  // if (currentIndex > 13) {
-  //  currentIndex = 0;
-  //  }
-  /*
-  delay(3000);
-  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-  delay(25);
-  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-*/
+  oled.clear();
+  oled.print("running:\n");
+  oled.println(fileName);
 
-
-  unsigned long lastButtonPress = 0;  // Store the last time a button press was processed
-  unsigned long buttonDelay = 300;    // Initial delay between button actions in milliseconds
-  unsigned long lastButtonHoldTime = 0; // Track how long the button has been held
-  bool buttonHeld = false;  // Track if the button is being held
-
-  while (1) {
+  while(1) {
     processJoystick();
-
-    // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
-
-    int but = analogRead(21);
-    unsigned long currentMillis = millis();  // Get the current time
-
-    // Determine if a button is pressed and which one
-    bool buttonPressed = false;
-    if (but < (100 + 22)) {
-      buttonPressed = true;
-    } else if (but < (100 + 324)) {
-      buttonPressed = true;
-    } else if (but < (100 + 510)) {
-      buttonPressed = true;
-    }
-
-    if (buttonPressed) {
-      if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-        // Minimum delay of 50ms, decrease by 20ms each time
-        buttonDelay = max(50, buttonDelay - 20);  
-        lastButtonHoldTime = currentMillis;
-      }
-
-      if (currentMillis - lastButtonPress >= buttonDelay) {
-        if (but < (100 + 22)) {  // First button action
-          currentIndex++;
-          if (currentIndex >= totalFiles) {
-            currentIndex = 0;
-          }
-          updateFileName();
-        } else if (but < (100 + 324)) {  // Second button action
-          bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-          bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-          delay(25);
-          bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-          break;
-        } else if (but < (100 + 510)) {  // Third button action
-          currentIndex--;
-          if (currentIndex < 0) {
-            currentIndex = totalFiles-1;
-          }
-          updateFileName();
-        }
-
-        // Update timing for the next press
-        lastButtonPress = currentMillis;
-        buttonHeld = true;  // Mark that the button is held
-        lastButtonHoldTime = currentMillis;  // Reset hold timing
-      }
-    } else {
-      // If no button is pressed, reset the button-held status and delay
-      buttonHeld = false;
-      buttonDelay = 300;  // Reset to the initial delay
+    if (analogRead(21) < (100 + 510)) {
+      break;
     }
   }
-
-
-
-
-
-/*
-   unsigned long currentMillis = millis();  // Get the current time
-
-    if (currentMillis - lastButtonPress >= buttonDelay) {  // Check if enough time has passed since the last action
- 
-      int but = analogRead(21);
-
-      oled.setCursor(0, 0);
-      if (but < (100 + 22)) {
-        currentIndex++;
-        if (currentIndex > 13) {
-          currentIndex = 0;
-        }
-        updateFileName();
-        lastButtonPress = currentMillis;  
-      } else if (but < (100 + 324)) {
-        bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-        bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-        delay(25);
-        bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-        break;
-      } else if (but < (100 + 510)) {
-        currentIndex--;
-        if (currentIndex < 0) {
-          currentIndex = 13;
-        }
-        updateFileName();
-        lastButtonPress = currentMillis;  
-      } 
-    }
-  
-  }  */
 
   //debugFlash(200);  // All ok - Flash led to show we have reached the end with no left over halts
-}
-
-void updateFileName() {
-  file.close();
-  if (openFileByIndex(currentIndex)) {
-    char fileName[16];
-    file.getName7(fileName, 16);
-    oled.setCursor(0, 0);
-//    oled.clear();
-//    oled.print(F("Zx Spectrum interface\n"));
-//    oled.print(F("takes <*.sna> files\nFILE: "));
-    oled.print(F("FILE: "));
-    oled.print(fileName);
-    oled.print(".sna      ");    
-  } else {
-    // TODO : ERROR HERE
-  }
 }
 
 void sendBytes(byte *data, byte size) {
@@ -368,33 +349,17 @@ inline void swap(byte &a, byte &b) {
   b = temp;
 }
 
-void debugFlash(int flashspeed) {
-
+void updateFileName() {
   file.close();
-  root.close();
-  sd.end();
-  while (1) {
-    /*
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, HIGH);
-    delay(flashspeed);
-    digitalWrite(ledPin, LOW);
-    delay(flashspeed);
-*/
-
-    uint8_t data = 0;
-    digitalWrite(ISRClockPin, HIGH);                    // preset clock to retrieve first bit
-    digitalWrite(ISRLatchPin, HIGH);                    // disable input latching and enable shifting
-    data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
-    digitalWrite(ISRLatchPin, LOW);                     // disable shifting and enable input latching
-
-    PORTD = reverseBits(data);
-
-    if (data) {
-      digitalWrite(ledPin, HIGH);
-    } else {
-      digitalWrite(ledPin, LOW);
-    }
+  if (openFileByIndex(currentIndex)) {
+    char fileName[16];
+    file.getName7(fileName, 16);
+    oled.setCursor(0, 0);
+    oled.print(F("Select File:\n"));
+    oled.print(fileName);
+    oled.print("      ");    
+  } else {
+    // TODO : ERROR HERE
   }
 }
 
@@ -417,7 +382,6 @@ inline byte reverseBits(byte data) {
   return data;
 }
 
-
 bool openFileByIndex(int searchIndex) {
   root.rewind();
   int index = 0;
@@ -435,86 +399,102 @@ bool openFileByIndex(int searchIndex) {
   return false;
 }
 
-
-
-
 void processJoystick() {
-
-  digitalWrite(ISRClockPin, HIGH);                         // preset clock to retrieve first bit
-  digitalWrite(ISRLatchPin, HIGH);                         // disable input latching and enable shifting
-  byte data = shiftIn(ISRDataPin, ISRClockPin, MSBFIRST);  // capture input values
-  digitalWrite(ISRLatchPin, LOW);                          // disable shifting and enable input latching
-  PORTD = reverseBits(data);
-  if (data) {
-    digitalWrite(ledPin, HIGH);
-  } else {
-    digitalWrite(ledPin, LOW);
-  }
-  /*
-
-
-  bitSet(PORTB, 0);  // HIGH, pin 16 (PB0), clock to retrieve first bit
-  bitSet(PORTB, 2);  // HIGH, pin 10 (PB2), disable input latching/enable shifting
-
-  // Read the data byte using shiftIn replacement with direct port manipulation
+ 
+  bitSet(PORTB, DDB2);    // HIGH, pin 10, disable input latching/enable shifting
+  bitSet(PORTC, DDC2); // HIGH, pin 16, clock to retrieve first bit
+  
   byte data = 0;
+  // Read the data byte using shiftIn replacement with direct port manipulation
   for (int i = 0; i < 8; i++) {
     data <<= 1;
     if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
       bitSet(data, 0);
     }
-    // Toggle clock pin low to high to read the next bit
-    bitClear(PORTB, 0);    // Clock low
+    // Toggle clock pin low to high to read the next bit 
+    bitClear(PORTC, DDC2); // Clock low
     delayMicroseconds(1);  // Short delay to ensure stable clocking
-    bitSet(PORTB, 0);      // Clock high
+    bitSet(PORTC, DDC2);  // Clock high
   }
-
-  bitClear(PORTB, 2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
 
   data = reverseBits(data);  // H/W error in prototype!
   PORTD = data;  // output to z80 data lines
-
-  if (data) {
-    bitSet(PORTB, 5);  // LED, pin 13 (PB5)
-  } else {
-    bitClear(PORTB, 5);  // LED, pin 13 (PB5)
-  }
-  */
 }
 
+bool selectGame() {
 
-/*
-  if (!sd.exists("status.txt")) {
-    statusFile.open("status.txt", O_RDWR);
-    if (statusFile) {
-      statusFile.seekSet(0);
-      statusFile.truncate(0);
-      statusFile.seekSet(0);
-      statusFile.print(0);
-      statusFile.close();
+    // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
+
+    int but = analogRead(21);
+    unsigned long currentMillis = millis();  // Get the current time
+
+    // Determine if a button is pressed and which one
+    bool buttonPressed = false;
+    if (but < (100 + 22)) {
+      buttonPressed = true;
+    } else if (but < (100 + 324)) {
+      buttonPressed = true;
+    } else if (but < (100 + 510)) {
+      buttonPressed = true;
     }
-  }
 
-  statusFile.open("status.txt", O_RDWR);
-  if (statusFile) {
-    statusFile.seekSet(0);
-    currentIndex = statusFile.parseInt();
-    statusFile.close();
-  }
-*/
+    if (buttonPressed) {
+      if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
+        // Minimum delay of 50ms, decrease by 20ms each time
+        buttonDelay = max(50, buttonDelay - 20);  
+        lastButtonHoldTime = currentMillis;
+      }
 
+      if (currentMillis - lastButtonPress >= buttonDelay) {     
+        if (but < (100 + 22)) {  // First button action
+          currentIndex++;
+          if (currentIndex >= totalFiles) {
+            currentIndex = 0;
+          }
+          updateFileName();
+        } else if (but < (100 + 324)) {  // Second button action
+     //     if (currentIndex!=lastIndex ){
+            updateFileName();
 
-/*  statusFile.open("status.txt", O_RDWR);
-  if (statusFile) {
-    statusFile.seekSet(0);
-    currentIndex = statusFile.parseInt();
-    statusFile.seekSet(0);
-    statusFile.truncate(0);
-    currentIndex++;
-    if (currentIndex > 13) {
-      currentIndex = 0;
+            bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+            bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+            delay(10);
+            bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+            return true;
+      //   }
+        //  lastIndex=currentIndex;
+        } else if (but < (100 + 510)) {  // Third button action
+          currentIndex--;
+          if (currentIndex < 0) {
+            currentIndex = totalFiles-1;
+          }
+          updateFileName();
+        }
+
+        buttonHeld = true; 
+        lastButtonPress = currentMillis; 
+        lastButtonHoldTime = currentMillis; 
+      }
+    } else {
+      // If no button is pressed, reset the button-held status and delay
+      buttonHeld = false;
+      buttonDelay = 300;  // Reset to the initial delay
     }
-    statusFile.print(currentIndex);
-    statusFile.close();
+
+    return false;
+}
+
+void debugFlash(int flashspeed) {
+  // If we get here it's faital
+  file.close();
+  root.close();
+  sd.end();
+  while (1) {
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, HIGH);
+    delay(flashspeed);
+    digitalWrite(ledPin, LOW);
+    delay(flashspeed);
   }
-  */
+}
