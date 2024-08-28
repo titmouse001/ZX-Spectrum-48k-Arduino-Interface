@@ -42,7 +42,7 @@ public:
 		
 		memset(finalOutput, 0, static_cast<size_t>(32L) * FONT_HEIGHT);
 
-		char tx[] = "ABCDEFGHIqazwsxedcrfvtgbyhnujmiklop";
+		char tx[] = "ABCDEFGHIqazwsx";
 		if (strlen(tx) > 32) {
 			strncpy_s(tx, tx, 32);
 		}
@@ -53,7 +53,6 @@ public:
 
 		for (int i = 0; tx[i] != '\0'; i++) {
 			uint8_t* ptr = &fudged_Adafruit5x7[(tx[i] - 0x20) * FONT_WIDTH];
-			uint8_t data[FONT_HEIGHT] = { 0 };  
 			for (int row = 0; row < FONT_HEIGHT; row++) {
 				uint8_t transposedRow = 0;
 				for (int col = 0; col < FONT_WIDTH; col++) {
@@ -63,6 +62,21 @@ public:
 			}
 		}
 
+		int xend = bitPosition[0];
+		for (int row = 0; row < FONT_HEIGHT; row++) {
+			uint8_t* ptr = &finalOutput[row * BUFFER_SIZE];
+			for (int x = 0; x < xend; x++) {
+				if (ptr[x / 8] & (0x80 >> (x & 7)) ) {
+					Draw(x, row, olc::Pixel(200, 200,200));
+					if (row > 4)
+						Draw(x, row, olc::Pixel(0, 200, 0));
+					else
+						Draw(x, row, olc::Pixel(255, 255, 255));
+				}		
+			}
+		}
+
+		/*
 		int xpos = 0;
 		for (int k = 0; tx[k] != '\0'; k++) {
 			for (int y = 0; y < FONT_HEIGHT; y++) {
@@ -78,6 +92,7 @@ public:
 			}
 			xpos += 8;
 		}
+		*/
 		return true;
 
 	}

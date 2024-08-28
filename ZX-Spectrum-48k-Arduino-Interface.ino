@@ -87,18 +87,17 @@ void setupOled();
   bool buttonHeld = false;  // Track if the button is being held
 
 // Transposed data storage
-uint8_t transposed[8] = {0};
+//uint8_t transposed[8] = {0};
 
-// Function to transpose the 5x7 font
-void transposeMatrix(uint8_t *input, uint8_t *output) {
-  for (byte row = 0; row < 7; row++) {
-    for (byte col = 0; col < 5; col++) {
-      byte value = pgm_read_byte(&input[col]);
-      bool bit = (value >> row) & 0x01;
-      output[row] |= (bit << (4 - col));
-    }
-  }
-}
+static const int _FONT_WIDTH = 5;
+static const int _FONT_HEIGHT = 7;
+static const int _FONT_GAP = 1;
+static const int _FONT_BUFFER_SIZE = 32;
+
+byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
+int bitPosition[_FONT_HEIGHT] = { 0 };
+
+  char fileName[16];
 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
     // Base screen address in ZX Spectrum
@@ -126,17 +125,31 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
     return base_address + section_offset + row_within_section + x_byte_index;
 }
 
+void joinBits(uint8_t input, byte bitWidth, byte k) {
+		int bitPos = bitPosition[k];     
+		int byteIndex = bitPos / 8;         
+		int bitIndex = bitPos % 8;          
+		// Using a WORD to allow for a boundary crossing
+		uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
+		finalOutput[byteIndex] |= alignedInput >> bitIndex;
+		if (bitIndex + bitWidth > 8) {  // spans across two bytes
+			finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
+		}
+		bitPosition[k] += bitWidth;
+	}
 
 void setup() {
-  /* 
-  Serial.begin(9600);
-  while (! Serial);
-  while (1) {  
-    byte pinState = bitRead(PINB, PINB1);
- //   byte val = digitalRead(Z80_A12);   
-    Serial.println(pinState); 
-  }; 
-*/
+
+  // Serial.begin(9600);
+  // while (! Serial);
+
+  // Serial.println("STARTING");
+  //  while (1) {
+  //  byte pinState = bitRead(PINB, PINB1);
+  //   byte val = digitalRead(Z80_A12);
+  //  Serial.println(pinState);
+  // };
+
 
   // Reset Z80
   pinMode(Z80_REST, OUTPUT);
@@ -171,6 +184,40 @@ void setup() {
 
   setupOled();  // Using a mono OLED with 128x32 pixels
 
+  //-------------
+
+
+  uint16_t currentAddress = 0x5800;
+  //768
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+
+  currentAddress += 250;
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+
+  currentAddress += 250;
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+
+
+
+
   // Initialize SD card
   if (!sd.begin()) {
     // TODO : ERROR HERE
@@ -180,85 +227,113 @@ void setup() {
     debugFlash(200);
   }
 
-  currentIndex = 0;
-  lastIndex=-1;
-
-  char fileName[16];
 
   root.rewind();
   totalFiles = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
-        totalFiles++;
+    
         file.getName7(fileName, 16);
+        //---------------
+
+        for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8;  }
+        memset(&buffer[2], 0, 255 - SIZE_OF_HEADER);
+        memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
+
+        for (int i = 0; fileName[i] != '\0'; i++) {
+          byte* ptr = &fudged_Adafruit5x7[((fileName[i] - 0x20) * 5) + 0 + 6];
+
+          for (int row = 0; row < _FONT_HEIGHT; row++) {
+            uint8_t transposedRow = 0;
+            for (int col = 0; col < _FONT_WIDTH; col++) {
+              byte value = pgm_read_byte(&ptr[col]);
+              transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+            }
+            joinBits(transposedRow, _FONT_WIDTH + _FONT_GAP, row);
+          }
+        }
+
+        int amount = ((bitPosition[0] + 7) / 8);
+        for (int y = 0; y < _FONT_HEIGHT; y++) {
+          uint8_t* ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+          uint16_t currentAddress = zx_spectrum_screen_address(8, y + ((totalFiles) * 8));
+          buffer[HEADER_PAYLOADSIZE] = amount;
+          buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+          buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+          for (int i = 0; i < amount; i++) {
+            buffer[SIZE_OF_HEADER + i] = ptr[i];
+          }
+          sendBytes(buffer, SIZE_OF_HEADER + amount);
+        }
+
+        totalFiles++;
+        //---------------
       }
     }
     file.close();
   }
 
-  //-------------
 
-
-  uint16_t currentAddress = 0x5800;
-//768
-    buffer[HEADER_PAYLOADSIZE] =250;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-    for (int i=0; i<250 ; i++) { 
-      buffer[SIZE_OF_HEADER+i] = 7;
-    }
-    sendBytes(buffer, SIZE_OF_HEADER + 250); 
-
-currentAddress+=250;
-   buffer[HEADER_PAYLOADSIZE] =250;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-    for (int i=0; i<250 ; i++) { 
-      buffer[SIZE_OF_HEADER+i] = 7;
-    }
-    sendBytes(buffer, SIZE_OF_HEADER + 250); 
-
-
-
-
-    memset(&buffer[2],0 , 255-SIZE_OF_HEADER);
-    char message[32];
-    sprintf(message, "Found %s", fileName);
-
-    for (int i=0; i<strlen(message); i++) { 
-      memset(transposed, 0, 8);
-      byte* data = &fudged_Adafruit5x7[((message[i] - 0x20)*5)+0+6];    
-      transposeMatrix(data ,transposed);   
-      int x=0;
-      for (int y=0 ; y<192-8; y+=8) {
-        for (int k=0; k<7; k++) { 
-            uint16_t currentAddress=  zx_spectrum_screen_address(x+(i*8),y+k);
-            buffer[HEADER_PAYLOADSIZE] = 1;
-            buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF; 
-            buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;      
-            buffer[SIZE_OF_HEADER+0] = transposed[k];
-            sendBytes(buffer, SIZE_OF_HEADER +1);
-        }
-      }
-    }
-
-
-
+  currentIndex = 0;
+  lastIndex = -1;
 }
-
 
 void loop() {
   
   oled.clear();
   while (1) {
-    if (selectGame()) {
+    if (selectGame() ) {
       break;
-    };
+    }else {
+
+
+      for (int k=0; k<totalFiles; k++) {
+
+
+         if (currentIndex==k)  {
+          fileName[0]='>';
+         }else {
+          fileName[0]=' ';
+         }
+          fileName[1] = '\0';
+        //---------------
+
+        for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8;  }
+        memset(&buffer[2], 0, 255 - SIZE_OF_HEADER);
+        memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
+
+        for (int i = 0; fileName[i] != '\0'; i++) {
+          byte* ptr = &fudged_Adafruit5x7[((fileName[i] - 0x20) * 5) + 0 + 6];
+
+          for (int row = 0; row < _FONT_HEIGHT; row++) {
+            uint8_t transposedRow = 0;
+            for (int col = 0; col < _FONT_WIDTH; col++) {
+              byte value = pgm_read_byte(&ptr[col]);
+              transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+            }
+            joinBits(transposedRow, _FONT_WIDTH /*+ _FONT_GAP*/, row);
+          }
+        }
+
+        int amount = ((bitPosition[0] + 7) / 8);
+        for (int y = 0; y < _FONT_HEIGHT; y++) {
+          uint8_t* ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+          uint16_t currentAddress = zx_spectrum_screen_address(0, y + ((k) * 8));
+          buffer[HEADER_PAYLOADSIZE] = amount;
+          buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+          buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+          for (int i = 0; i < amount; i++) {
+            buffer[SIZE_OF_HEADER + i] = ptr[i];
+          }
+          sendBytes(buffer, SIZE_OF_HEADER + amount);
+        }
+      }
+    }
   }
 
 
-  char fileName[16];
+  //char fileName[16];
   file.getName7(fileName, 16);
   oled.clear();
   oled.print(F("Loading:\n"));
@@ -352,7 +427,7 @@ inline void swap(byte &a, byte &b) {
 void updateFileName() {
   file.close();
   if (openFileByIndex(currentIndex)) {
-    char fileName[16];
+   // char fileName[16];
     file.getName7(fileName, 16);
     oled.setCursor(0, 0);
     oled.print(F("Select File:\n"));
@@ -371,7 +446,7 @@ void setupOled() {
   // original Adafruit5x7 font with tweeks at start for VU meter
   oled.setFont(fudged_Adafruit5x7);
   oled.clear();
-   oled.print(F("Zx Spectrum interface\ntakes <*.sna> files\n\nver"));
+   oled.print(F("ver"));
    oled.println(F(VERSION));
 }
 
@@ -454,7 +529,6 @@ bool selectGame() {
           }
           updateFileName();
         } else if (but < (100 + 324)) {  // Second button action
-     //     if (currentIndex!=lastIndex ){
             updateFileName();
 
             bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
@@ -462,8 +536,6 @@ bool selectGame() {
             delay(10);
             bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
             return true;
-      //   }
-        //  lastIndex=currentIndex;
         } else if (but < (100 + 510)) {  // Third button action
           currentIndex--;
           if (currentIndex < 0) {

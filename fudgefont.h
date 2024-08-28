@@ -1,7 +1,9 @@
 #ifndef fudgedfont5x7_h
 #define fudgedfont5x7_h
 
-char fudged_Adafruit5x7[] = {
+//char fudged_Adafruit5x7[] = {
+  
+GLCDFONTDECL(fudged_Adafruit5x7) = {
    	0x0, 0x0, // size of zero indicates fixed width font,
 
  	  0x05, // width
