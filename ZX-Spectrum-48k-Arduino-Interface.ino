@@ -67,8 +67,7 @@ SdFat32 sd;
 FatFile root;
 FatFile file;
 File statusFile;
-//int currentIndex;
-//int lastIndex;
+
 int totalFiles;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
@@ -79,15 +78,19 @@ inline void swap(byte &a, byte &b);
 uint8_t reverseBits(uint8_t byte);
 void setupOled();
 void DrawText(int xpos, int ypos, char *message) ;
-
+void refreshFileList();
+void moveUp();
+void moveDown();
+uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
+void joinBits(uint8_t input, byte bitWidth, byte k);
+void clear();
+void HighLightFile();
+byte getAnalogButton( int but) ;
 
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
 unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
 unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
 bool buttonHeld = false;               // Track if the button is being held
-
-// Transposed data storage
-//uint8_t transposed[8] = {0};
 
 static const int _FONT_WIDTH = 5;
 static const int _FONT_HEIGHT = 7;
@@ -98,100 +101,11 @@ byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
 int bitPosition[_FONT_HEIGHT] = { 0 };
 
 char fileName[42];
-void clear();
 
 #define WINDOW_SIZE 24  // Number of items visible at a time
-
 uint16_t oldAddress= 0; 
 int currentIndex = 0;  // The currently selected index in the list
 int startIndex = 0;    // The start index of the current viewing window
-
-void refreshFileList() {
-  root.rewind();
-  int clr = 0;
-  int count = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-
-        if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-          int a = file.getName7(fileName, 41);
-          if (a == 0) { a = file.getSFN(fileName, 41); }
-          DrawText(0, ((count - startIndex) * 8), fileName);
-          clr++;
-        }
-        count++;
-      }
-    }
-    file.close();
-  }
-
-  fileName[0] = '-';
-  fileName[1] = '\0';
-  for (int i = 0; i < WINDOW_SIZE - clr; i++) {
-    DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
-  }
-}
-
-void moveUp() {
-  if (currentIndex > startIndex) {
-    currentIndex--;
-  } else if (startIndex > 0) {
-    startIndex -= WINDOW_SIZE;
-    currentIndex = startIndex + WINDOW_SIZE - 1;
-    refreshFileList();
-  }
-}
-
-void moveDown() {
-  if (currentIndex < startIndex + WINDOW_SIZE - 1 && currentIndex < totalFiles - 1) {
-    currentIndex++;
-  } else if (startIndex + WINDOW_SIZE < totalFiles) {
-    startIndex += WINDOW_SIZE;
-    currentIndex = startIndex;
-    refreshFileList();
-  }
-}
-
-
-uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
-  // Base screen address in ZX Spectrum
-  uint16_t base_address = 0x4000;
-
-  // Calculate section offset based on the Y coordinate
-  uint16_t section_offset;
-  if (y < 64) {
-    section_offset = 0;  // First section
-  } else if (y < 128) {
-    section_offset = 0x0800;  // Second section
-  } else {
-    section_offset = 0x1000;  // Third section
-  }
-
-  // Calculate the correct interleaved line address
-  uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
-  uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
-  uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
-
-  // Calculate the horizontal byte index (each byte represents 8 pixels)
-  uint8_t x_byte_index = x >> 3;
-
-  // Calculate and return the final screen address
-  return base_address + section_offset + row_within_section + x_byte_index;
-}
-
-void joinBits(uint8_t input, byte bitWidth, byte k) {
-  int bitPos = bitPosition[k];
-  int byteIndex = bitPos / 8;
-  int bitIndex = bitPos % 8;
-  // Using a WORD to allow for a boundary crossing
-  uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
-  finalOutput[byteIndex] |= alignedInput >> bitIndex;
-  if (bitIndex + bitWidth > 8) {  // spans across two bytes
-    finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
-  }
-  bitPosition[k] += bitWidth;
-}
 
 void setup() {
 
@@ -250,11 +164,6 @@ void setup() {
     debugFlash(200);
   }
 
-  //  currentIndex = 0;
-  //  lastIndex = -1;
-
-  // updateFileName();
-
   root.rewind();
   totalFiles = 0;
   while (file.openNext(&root, O_RDONLY)) {
@@ -271,30 +180,6 @@ void loop() {
 
   clear();
 
-/*
-
-  root.rewind();
-  int count = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        int a = file.getName7(fileName, 41);
-        if (a == 0) { a = file.getSFN(fileName, 41); }
-
-        if (count == currentIndex) {
-          DrawText(8, (count * 8), fileName);
-        } else {
-          DrawText(0, (count * 8), fileName);
-        }
-        count++;
-        if (count >= startIndex + WINDOW_SIZE) {
-          break;
-        }
-      }
-    }
-    file.close();
-  }
-*/
   refreshFileList();
 
   while (1) {
@@ -302,68 +187,11 @@ void loop() {
     if (sg == 2) {
       break;
     } else if (sg == 1 || sg == 3) {
-
-      uint16_t currentAddress = 0x5800 + ((currentIndex-startIndex)*32);
-      buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
-      buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-      buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-
-      for (int i = 0; i < 32; i++) {  // copy gfx
-        // 0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
-        buffer[SIZE_OF_HEADER + i] = B00001111;   // FBPPPIII
-      }
-      sendBytes(buffer, SIZE_OF_HEADER + 32);
-
-      if (oldAddress != currentAddress) {   
-        buffer[HEADER_HIGH_BYTE] = (oldAddress >> 8) & 0xFF;
-        buffer[HEADER_LOW_BYTE] = oldAddress & 0xFF;  
-       for (int i = 0; i < 32; i++) {  // copy gfx
-          buffer[SIZE_OF_HEADER + i] = B00000111;   // FBPPPIII
-        }
-        sendBytes(buffer, SIZE_OF_HEADER + 32);
-        oldAddress = currentAddress;
-      }
+       HighLightFile();
     }
-     updateFileName();
+    updateFileName();
   }
-/*
-      root.rewind();
-      int clr = 0;
-      int count = 0;
-      while (file.openNext(&root, O_RDONLY)) {
-        if (file.isFile()) {
-          if (file.fileSize() == 49179) {
-
-            if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-
-              int a = file.getName7(&fileName[1], 40);
-              if (a == 0) { a = file.getSFN(&fileName[1], 40); }
-
-              if (count == currentIndex) {
-                fileName[0] = '>';
-                DrawText(0, ((count - startIndex) * 8), &fileName[0]);
-              } else {
-                DrawText(0, ((count - startIndex) * 8), &fileName[1]);
-              }
-    
-
-              clr++;
-            }
-            count++;
-          }
-        }
-        file.close();
-      }
-
-      fileName[0] = '-';
-      fileName[1] = '\0';
-      for (int i = 0; i < WINDOW_SIZE - clr; i++) {
-        DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
-      }
-*/
  
- 
-  //char fileName[16];
   file.getName7(fileName, 15);
   oled.clear();
   oled.print(F("Loading:\n"));
@@ -417,17 +245,8 @@ void loop() {
   while (1) {
     processJoystick();
 
-    int but = analogRead(21);
-    bool buttonPressed = false;
-    if (but < (100 + 22)) {
-      buttonPressed = false;
-    } else if (but < (100 + 324)) {
-      buttonPressed = true;
-    } else if (but < (100 + 510)) {
-      buttonPressed = false;
-    }
 
-    if (buttonPressed) {
+    if (getAnalogButton( analogRead(21) )==2) {
       delay(500);
       bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
       bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
@@ -553,17 +372,7 @@ byte selectGame() {
   int but = analogRead(21);
   unsigned long currentMillis = millis();  // Get the current time
 
-  // Determine if a button is pressed and which one
-  bool buttonPressed = false;
-  if (but < (100 + 22)) {
-    buttonPressed = true;
-  } else if (but < (100 + 324)) {
-    buttonPressed = true;
-  } else if (but < (100 + 510)) {
-    buttonPressed = true;
-  }
-
-  if (buttonPressed) {
+  if (getAnalogButton( but )) {
     if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
       // Minimum delay of 50ms, decrease by 20ms each time
       buttonDelay = max(50, buttonDelay - 20);
@@ -572,14 +381,7 @@ byte selectGame() {
 
     if (currentMillis - lastButtonPress >= buttonDelay) {
       if (but < (100 + 22)) {  // 1st button
-
         moveDown();
-
-        //          currentIndex++;
-        //         if (currentIndex >= totalFiles) {
-        //           currentIndex = 0;
-        //         }
-        //////////     updateFileName();
         ret =  1;
       } else if (but < (100 + 324)) {  // 2nd button
 
@@ -589,21 +391,13 @@ byte selectGame() {
           // TODO : ERROR HERE
         }
 
-
         bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
         bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
         delay(10);
         bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-        //return true;
         ret = 2;
       } else if (but < (100 + 510)) {  // 3rd button
-                                       //          currentIndex--;
-                                       //          if (currentIndex < 0) {
-                                       //            currentIndex = totalFiles-1;
-                                       //          }
-
         moveUp();
-        ///////     updateFileName();
         ret = 3;
       }
 
@@ -687,6 +481,129 @@ void clear() {
   sendBytes(buffer, SIZE_OF_HEADER + 250);
 }
 
+void refreshFileList() {
+  root.rewind();
+  int clr = 0;
+  int count = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+
+        if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
+          int a = file.getName7(fileName, 41);
+          if (a == 0) { a = file.getSFN(fileName, 41); }
+          DrawText(0, ((count - startIndex) * 8), fileName);
+          clr++;
+        }
+        count++;
+      }
+    }
+    file.close();
+  }
+
+  fileName[0] = '-';
+  fileName[1] = '\0';
+  for (int i = 0; i < WINDOW_SIZE - clr; i++) {
+    DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
+  }
+}
+
+void moveUp() {
+  if (currentIndex > startIndex) {
+    currentIndex--;
+  } else if (startIndex > 0) {
+    startIndex -= WINDOW_SIZE;
+    currentIndex = startIndex + WINDOW_SIZE - 1;
+    refreshFileList();
+  }
+}
+
+void moveDown() {
+  if (currentIndex < startIndex + WINDOW_SIZE - 1 && currentIndex < totalFiles - 1) {
+    currentIndex++;
+  } else if (startIndex + WINDOW_SIZE < totalFiles) {
+    startIndex += WINDOW_SIZE;
+    currentIndex = startIndex;
+    refreshFileList();
+  }
+}
+
+
+uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
+  // Base screen address in ZX Spectrum
+  uint16_t base_address = 0x4000;
+
+  // Calculate section offset based on the Y coordinate
+  uint16_t section_offset;
+  if (y < 64) {
+    section_offset = 0;  // First section
+  } else if (y < 128) {
+    section_offset = 0x0800;  // Second section
+  } else {
+    section_offset = 0x1000;  // Third section
+  }
+
+  // Calculate the correct interleaved line address
+  uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
+  uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
+  uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
+
+  // Calculate the horizontal byte index (each byte represents 8 pixels)
+  uint8_t x_byte_index = x >> 3;
+
+  // Calculate and return the final screen address
+  return base_address + section_offset + row_within_section + x_byte_index;
+}
+
+void joinBits(uint8_t input, byte bitWidth, byte k) {
+  int bitPos = bitPosition[k];
+  int byteIndex = bitPos / 8;
+  int bitIndex = bitPos % 8;
+  // Using a WORD to allow for a boundary crossing
+  uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
+  finalOutput[byteIndex] |= alignedInput >> bitIndex;
+  if (bitIndex + bitWidth > 8) {  // spans across two bytes
+    finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
+  }
+  bitPosition[k] += bitWidth;
+}
+
+void HighLightFile() {
+
+  uint16_t currentAddress = 0x5800 + ((currentIndex - startIndex) * 32);
+  buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+
+  for (int i = 0; i < 32; i++) {  // copy gfx
+    // 0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White
+    buffer[SIZE_OF_HEADER + i] = B00001111;  // FBPPPIII
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 32);
+
+  if (oldAddress != currentAddress) {
+    buffer[HEADER_HIGH_BYTE] = (oldAddress >> 8) & 0xFF;
+    buffer[HEADER_LOW_BYTE] = oldAddress & 0xFF;
+    for (int i = 0; i < 32; i++) {             // copy gfx
+      buffer[SIZE_OF_HEADER + i] = B00000111;  // FBPPPIII
+    }
+    sendBytes(buffer, SIZE_OF_HEADER + 32);
+    oldAddress = currentAddress;
+  }
+}
+
+byte getAnalogButton( int but) {
+   // int but = analogRead(21);
+    byte buttonPressed = 0;
+    if (but < (100 + 22)) {
+      buttonPressed = 1;
+    } else if (but < (100 + 324)) {
+      buttonPressed = 2;
+    } else if (but < (100 + 510)) {
+      buttonPressed = 3;
+    }
+    return buttonPressed;
+}
 
 void debugFlash(int flashspeed) {
   // If we get here it's faital
