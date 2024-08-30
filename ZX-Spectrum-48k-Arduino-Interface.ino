@@ -78,7 +78,7 @@ void debugFlash(int flashSpeed);
 inline void swap(byte &a, byte &b);
 uint8_t reverseBits(uint8_t byte);
 void setupOled();
-
+void DrawText(int xpos, int ypos, char *message) ;
 
 
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
@@ -102,9 +102,36 @@ void clear();
 
 #define WINDOW_SIZE 24  // Number of items visible at a time
 
+uint16_t oldAddress= 0; 
 int currentIndex = 0;  // The currently selected index in the list
 int startIndex = 0;    // The start index of the current viewing window
 
+void refreshFileList() {
+  root.rewind();
+  int clr = 0;
+  int count = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+
+        if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
+          int a = file.getName7(fileName, 41);
+          if (a == 0) { a = file.getSFN(fileName, 41); }
+          DrawText(0, ((count - startIndex) * 8), fileName);
+          clr++;
+        }
+        count++;
+      }
+    }
+    file.close();
+  }
+
+  fileName[0] = '-';
+  fileName[1] = '\0';
+  for (int i = 0; i < WINDOW_SIZE - clr; i++) {
+    DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
+  }
+}
 
 void moveUp() {
   if (currentIndex > startIndex) {
@@ -112,6 +139,7 @@ void moveUp() {
   } else if (startIndex > 0) {
     startIndex -= WINDOW_SIZE;
     currentIndex = startIndex + WINDOW_SIZE - 1;
+    refreshFileList();
   }
 }
 
@@ -121,6 +149,7 @@ void moveDown() {
   } else if (startIndex + WINDOW_SIZE < totalFiles) {
     startIndex += WINDOW_SIZE;
     currentIndex = startIndex;
+    refreshFileList();
   }
 }
 
@@ -242,7 +271,7 @@ void loop() {
 
   clear();
 
-
+/*
 
   root.rewind();
   int count = 0;
@@ -261,54 +290,79 @@ void loop() {
         if (count >= startIndex + WINDOW_SIZE) {
           break;
         }
-
       }
     }
     file.close();
   }
+*/
+  refreshFileList();
 
   while (1) {
     byte sg = selectGame();
-    if (sg==2) {
+    if (sg == 2) {
       break;
-    } else if (sg==1 || sg==3)  {
+    } else if (sg == 1 || sg == 3) {
 
-        root.rewind();
-        int clr = 0;
-        int count = 0;
-        while (file.openNext(&root, O_RDONLY)) {
-          if (file.isFile()) {
-            if (file.fileSize() == 49179) {
+      uint16_t currentAddress = 0x5800 + ((currentIndex-startIndex)*32);
+      buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
+      buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+      buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
 
-              if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-                int a = file.getName7(&fileName[1], 40);
-                if (a == 0) { a = file.getSFN(&fileName[1], 40); }
+      for (int i = 0; i < 32; i++) {  // copy gfx
+        // 0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White		
+        buffer[SIZE_OF_HEADER + i] = B00001111;   // FBPPPIII
+      }
+      sendBytes(buffer, SIZE_OF_HEADER + 32);
 
-                if (count == currentIndex) {
-                  fileName[0]= '>' ;
-                  DrawText(0, ((count-startIndex) * 8), &fileName[0]);
-                }else {
-                  DrawText(0, ((count-startIndex) * 8), &fileName[1]);
-                }
-                clr++;           
-              }
-              count++;
-            }
-          }
-          file.close();
+      if (oldAddress != currentAddress) {   
+        buffer[HEADER_HIGH_BYTE] = (oldAddress >> 8) & 0xFF;
+        buffer[HEADER_LOW_BYTE] = oldAddress & 0xFF;  
+       for (int i = 0; i < 32; i++) {  // copy gfx
+          buffer[SIZE_OF_HEADER + i] = B00000111;   // FBPPPIII
         }
-
-      fileName[0]= '-' ;
-      fileName[1]= '\0' ;
-        for (int i=0; i<WINDOW_SIZE-clr;i++) {
-            DrawText(0, ((WINDOW_SIZE-1) - i) * 8, fileName);
-        }
-
-    updateFileName();
-
+        sendBytes(buffer, SIZE_OF_HEADER + 32);
+        oldAddress = currentAddress;
+      }
     }
+     updateFileName();
   }
+/*
+      root.rewind();
+      int clr = 0;
+      int count = 0;
+      while (file.openNext(&root, O_RDONLY)) {
+        if (file.isFile()) {
+          if (file.fileSize() == 49179) {
 
+            if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
+
+              int a = file.getName7(&fileName[1], 40);
+              if (a == 0) { a = file.getSFN(&fileName[1], 40); }
+
+              if (count == currentIndex) {
+                fileName[0] = '>';
+                DrawText(0, ((count - startIndex) * 8), &fileName[0]);
+              } else {
+                DrawText(0, ((count - startIndex) * 8), &fileName[1]);
+              }
+    
+
+              clr++;
+            }
+            count++;
+          }
+        }
+        file.close();
+      }
+
+      fileName[0] = '-';
+      fileName[1] = '\0';
+      for (int i = 0; i < WINDOW_SIZE - clr; i++) {
+        DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
+      }
+*/
+ 
+ 
   //char fileName[16];
   file.getName7(fileName, 15);
   oled.clear();
@@ -420,7 +474,9 @@ void updateFileName() {
   file.close();
   if (openFileByIndex(currentIndex)) {
     // char fileName[16];
-    file.getName7(fileName, 15);
+    int a = file.getName7(fileName, 41);
+    if (a == 0) { a = file.getSFN(fileName, 40); }
+//    file.getName7(fileName, 15);
     oled.setCursor(0, 0);
     oled.print(F("Select:\n"));
     oled.print(fileName);
@@ -493,7 +549,7 @@ void processJoystick() {
 byte selectGame() {
 
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
-
+  byte ret = 0;
   int but = analogRead(21);
   unsigned long currentMillis = millis();  // Get the current time
 
@@ -523,15 +579,15 @@ byte selectGame() {
         //         if (currentIndex >= totalFiles) {
         //           currentIndex = 0;
         //         }
-   //////////     updateFileName();
-        return 1;
+        //////////     updateFileName();
+        ret =  1;
       } else if (but < (100 + 324)) {  // 2nd button
 
-  file.close();
-  if (openFileByIndex(currentIndex)) {
-  } else {
-    // TODO : ERROR HERE
-  }
+        file.close();
+        if (openFileByIndex(currentIndex)) {
+        } else {
+          // TODO : ERROR HERE
+        }
 
 
         bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
@@ -539,7 +595,7 @@ byte selectGame() {
         delay(10);
         bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
         //return true;
-        return 2;
+        ret = 2;
       } else if (but < (100 + 510)) {  // 3rd button
                                        //          currentIndex--;
                                        //          if (currentIndex < 0) {
@@ -547,8 +603,8 @@ byte selectGame() {
                                        //          }
 
         moveUp();
-   ///////     updateFileName();
-        return 3;
+        ///////     updateFileName();
+        ret = 3;
       }
 
       buttonHeld = true;
@@ -561,7 +617,7 @@ byte selectGame() {
     buttonDelay = 300;  // Reset to the initial delay
   }
 
-  return 0;
+  return ret;
 }
 
 
