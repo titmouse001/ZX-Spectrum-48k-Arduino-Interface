@@ -27,15 +27,15 @@
 #define VERSION ("0.3")
 
 // 'Z80_D0Pin' to 'Z80_D7Pin'
-const byte Z80_D0Pin = 0;     // Arduino to z80 data pins
-const byte Z80_D1Pin = 1;     //  ""
-const byte Z80_D2Pin = 2;     //  ""
-const byte Z80_D3Pin = 3;     //  ""
-const byte Z80_D4Pin = 4;     //  ""
-const byte Z80_D5Pin = 5;     //  ""
-const byte Z80_D6Pin = 6;     //  ""
-const byte Z80_D7Pin = 7;     //  ""
-const byte Z80_HALT = 8;      // PINB0 (PORT B), Z80 'Halt' Status
+const byte Z80_D0Pin = 0;          // Arduino to z80 data pins
+const byte Z80_D1Pin = 1;          //  ""
+const byte Z80_D2Pin = 2;          //  ""
+const byte Z80_D3Pin = 3;          //  ""
+const byte Z80_D4Pin = 4;          //  ""
+const byte Z80_D5Pin = 5;          //  ""
+const byte Z80_D6Pin = 6;          //  ""
+const byte Z80_D7Pin = 7;          //  ""
+const byte Z80_HALT = 8;           // PINB0 (PORT B), Z80 'Halt' Status
 const byte ShiftRegDataPin = 9;    // connected to 74HC165 QH (pin-9 on chip)
 const byte ShiftRegLatchPin = 10;  // connected to 74HC165 SH/LD (pin-1 on chip)
 //                   pin 11 MOSI - SD CARD
@@ -67,8 +67,8 @@ SdFat32 sd;
 FatFile root;
 FatFile file;
 File statusFile;
-int currentIndex;
-int lastIndex;
+//int currentIndex;
+//int lastIndex;
 int totalFiles;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
@@ -81,10 +81,10 @@ void setupOled();
 
 
 
-  unsigned long lastButtonPress = 0;  // Store the last time a button press was processed
-  unsigned long buttonDelay = 300;    // Initial delay between button actions in milliseconds
-  unsigned long lastButtonHoldTime = 0; // Track how long the button has been held
-  bool buttonHeld = false;  // Track if the button is being held
+unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
+unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
+unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
+bool buttonHeld = false;               // Track if the button is being held
 
 // Transposed data storage
 //uint8_t transposed[8] = {0};
@@ -97,46 +97,72 @@ static const int _FONT_BUFFER_SIZE = 32;
 byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
 int bitPosition[_FONT_HEIGHT] = { 0 };
 
-  char fileName[16];
+char fileName[42];
+void clear();
+
+#define WINDOW_SIZE 24  // Number of items visible at a time
+
+int currentIndex = 0;  // The currently selected index in the list
+int startIndex = 0;    // The start index of the current viewing window
+
+
+void moveUp() {
+  if (currentIndex > startIndex) {
+    currentIndex--;
+  } else if (startIndex > 0) {
+    startIndex -= WINDOW_SIZE;
+    currentIndex = startIndex + WINDOW_SIZE - 1;
+  }
+}
+
+void moveDown() {
+  if (currentIndex < startIndex + WINDOW_SIZE - 1 && currentIndex < totalFiles - 1) {
+    currentIndex++;
+  } else if (startIndex + WINDOW_SIZE < totalFiles) {
+    startIndex += WINDOW_SIZE;
+    currentIndex = startIndex;
+  }
+}
+
 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
-    // Base screen address in ZX Spectrum
-    uint16_t base_address = 0x4000;
+  // Base screen address in ZX Spectrum
+  uint16_t base_address = 0x4000;
 
-    // Calculate section offset based on the Y coordinate
-    uint16_t section_offset;
-    if (y < 64) {
-        section_offset = 0;  // First section
-    } else if (y < 128) {
-        section_offset = 0x0800;  // Second section
-    } else {
-        section_offset = 0x1000;  // Third section
-    }
+  // Calculate section offset based on the Y coordinate
+  uint16_t section_offset;
+  if (y < 64) {
+    section_offset = 0;  // First section
+  } else if (y < 128) {
+    section_offset = 0x0800;  // Second section
+  } else {
+    section_offset = 0x1000;  // Third section
+  }
 
-    // Calculate the correct interleaved line address
-    uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
-    uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
-    uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
+  // Calculate the correct interleaved line address
+  uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
+  uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
+  uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
 
-    // Calculate the horizontal byte index (each byte represents 8 pixels)
-    uint8_t x_byte_index = x >> 3;
+  // Calculate the horizontal byte index (each byte represents 8 pixels)
+  uint8_t x_byte_index = x >> 3;
 
-    // Calculate and return the final screen address
-    return base_address + section_offset + row_within_section + x_byte_index;
+  // Calculate and return the final screen address
+  return base_address + section_offset + row_within_section + x_byte_index;
 }
 
 void joinBits(uint8_t input, byte bitWidth, byte k) {
-		int bitPos = bitPosition[k];     
-		int byteIndex = bitPos / 8;         
-		int bitIndex = bitPos % 8;          
-		// Using a WORD to allow for a boundary crossing
-		uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
-		finalOutput[byteIndex] |= alignedInput >> bitIndex;
-		if (bitIndex + bitWidth > 8) {  // spans across two bytes
-			finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
-		}
-		bitPosition[k] += bitWidth;
-	}
+  int bitPos = bitPosition[k];
+  int byteIndex = bitPos / 8;
+  int bitIndex = bitPos % 8;
+  // Using a WORD to allow for a boundary crossing
+  uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
+  finalOutput[byteIndex] |= alignedInput >> bitIndex;
+  if (bitIndex + bitWidth > 8) {  // spans across two bytes
+    finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
+  }
+  bitPosition[k] += bitWidth;
+}
 
 void setup() {
 
@@ -186,38 +212,6 @@ void setup() {
 
   //-------------
 
-
-  uint16_t currentAddress = 0x5800;
-  //768
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
-
-  currentAddress += 250;
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
-
-  currentAddress += 250;
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
-
-
-
-
   // Initialize SD card
   if (!sd.begin()) {
     // TODO : ERROR HERE
@@ -227,114 +221,96 @@ void setup() {
     debugFlash(200);
   }
 
+  //  currentIndex = 0;
+  //  lastIndex = -1;
+
+  // updateFileName();
 
   root.rewind();
   totalFiles = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
-    
-        file.getName7(fileName, 16);
-        //---------------
-
-        for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8;  }
-        memset(&buffer[2], 0, 255 - SIZE_OF_HEADER);
-        memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
-
-        for (int i = 0; fileName[i] != '\0'; i++) {
-          byte* ptr = &fudged_Adafruit5x7[((fileName[i] - 0x20) * 5) + 0 + 6];
-
-          for (int row = 0; row < _FONT_HEIGHT; row++) {
-            uint8_t transposedRow = 0;
-            for (int col = 0; col < _FONT_WIDTH; col++) {
-              byte value = pgm_read_byte(&ptr[col]);
-              transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
-            }
-            joinBits(transposedRow, _FONT_WIDTH + _FONT_GAP, row);
-          }
-        }
-
-        int amount = ((bitPosition[0] + 7) / 8);
-        for (int y = 0; y < _FONT_HEIGHT; y++) {
-          uint8_t* ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
-          uint16_t currentAddress = zx_spectrum_screen_address(8, y + ((totalFiles) * 8));
-          buffer[HEADER_PAYLOADSIZE] = amount;
-          buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-          buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-          for (int i = 0; i < amount; i++) {
-            buffer[SIZE_OF_HEADER + i] = ptr[i];
-          }
-          sendBytes(buffer, SIZE_OF_HEADER + amount);
-        }
-
         totalFiles++;
-        //---------------
+      }
+    }
+    file.close();
+  }
+}
+
+void loop() {
+
+  clear();
+
+
+
+  root.rewind();
+  int count = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        int a = file.getName7(fileName, 41);
+        if (a == 0) { a = file.getSFN(fileName, 41); }
+
+        if (count == currentIndex) {
+          DrawText(8, (count * 8), fileName);
+        } else {
+          DrawText(0, (count * 8), fileName);
+        }
+        count++;
+        if (count >= startIndex + WINDOW_SIZE) {
+          break;
+        }
+
       }
     }
     file.close();
   }
 
-
-  currentIndex = 0;
-  lastIndex = -1;
-}
-
-void loop() {
-  
-  oled.clear();
   while (1) {
-    if (selectGame() ) {
+    byte sg = selectGame();
+    if (sg==2) {
       break;
-    }else {
+    } else if (sg==1 || sg==3)  {
 
+        root.rewind();
+        int clr = 0;
+        int count = 0;
+        while (file.openNext(&root, O_RDONLY)) {
+          if (file.isFile()) {
+            if (file.fileSize() == 49179) {
 
-      for (int k=0; k<totalFiles; k++) {
+              if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
+                int a = file.getName7(&fileName[1], 40);
+                if (a == 0) { a = file.getSFN(&fileName[1], 40); }
 
-
-         if (currentIndex==k)  {
-          fileName[0]='>';
-         }else {
-          fileName[0]=' ';
-         }
-          fileName[1] = '\0';
-        //---------------
-
-        for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8;  }
-        memset(&buffer[2], 0, 255 - SIZE_OF_HEADER);
-        memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
-
-        for (int i = 0; fileName[i] != '\0'; i++) {
-          byte* ptr = &fudged_Adafruit5x7[((fileName[i] - 0x20) * 5) + 0 + 6];
-
-          for (int row = 0; row < _FONT_HEIGHT; row++) {
-            uint8_t transposedRow = 0;
-            for (int col = 0; col < _FONT_WIDTH; col++) {
-              byte value = pgm_read_byte(&ptr[col]);
-              transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+                if (count == currentIndex) {
+                  fileName[0]= '>' ;
+                  DrawText(0, ((count-startIndex) * 8), &fileName[0]);
+                }else {
+                  DrawText(0, ((count-startIndex) * 8), &fileName[1]);
+                }
+                clr++;           
+              }
+              count++;
             }
-            joinBits(transposedRow, _FONT_WIDTH /*+ _FONT_GAP*/, row);
           }
+          file.close();
         }
 
-        int amount = ((bitPosition[0] + 7) / 8);
-        for (int y = 0; y < _FONT_HEIGHT; y++) {
-          uint8_t* ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
-          uint16_t currentAddress = zx_spectrum_screen_address(0, y + ((k) * 8));
-          buffer[HEADER_PAYLOADSIZE] = amount;
-          buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-          buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-          for (int i = 0; i < amount; i++) {
-            buffer[SIZE_OF_HEADER + i] = ptr[i];
-          }
-          sendBytes(buffer, SIZE_OF_HEADER + amount);
+      fileName[0]= '-' ;
+      fileName[1]= '\0' ;
+        for (int i=0; i<WINDOW_SIZE-clr;i++) {
+            DrawText(0, ((WINDOW_SIZE-1) - i) * 8, fileName);
         }
-      }
+
+    updateFileName();
+
     }
   }
 
-
   //char fileName[16];
-  file.getName7(fileName, 16);
+  file.getName7(fileName, 15);
   oled.clear();
   oled.print(F("Loading:\n"));
   oled.println(fileName);
@@ -355,7 +331,7 @@ void loop() {
     currentAddress += buffer[HEADER_PAYLOADSIZE];
   }
 
- //file.close();
+  file.close();
 
   // *** Send Snapshot Header Section ***
   sendBytes(head27_2, sizeof(head27_2));  // Send entire header
@@ -384,9 +360,25 @@ void loop() {
   oled.print("running:\n");
   oled.println(fileName);
 
-  while(1) {
+  while (1) {
     processJoystick();
-    if (analogRead(21) < (100 + 510)) {
+
+    int but = analogRead(21);
+    bool buttonPressed = false;
+    if (but < (100 + 22)) {
+      buttonPressed = false;
+    } else if (but < (100 + 324)) {
+      buttonPressed = true;
+    } else if (but < (100 + 510)) {
+      buttonPressed = false;
+    }
+
+    if (buttonPressed) {
+      delay(500);
+      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+      delay(10);
+      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     }
   }
@@ -427,12 +419,13 @@ inline void swap(byte &a, byte &b) {
 void updateFileName() {
   file.close();
   if (openFileByIndex(currentIndex)) {
-   // char fileName[16];
-    file.getName7(fileName, 16);
+    // char fileName[16];
+    file.getName7(fileName, 15);
     oled.setCursor(0, 0);
-    oled.print(F("Select File:\n"));
+    oled.print(F("Select:\n"));
     oled.print(fileName);
-    oled.print("      ");    
+    oled.print("      ");
+      file.close();
   } else {
     // TODO : ERROR HERE
   }
@@ -446,8 +439,8 @@ void setupOled() {
   // original Adafruit5x7 font with tweeks at start for VU meter
   oled.setFont(fudged_Adafruit5x7);
   oled.clear();
-   oled.print(F("ver"));
-   oled.println(F(VERSION));
+  oled.print(F("ver"));
+  oled.println(F(VERSION));
 }
 
 inline byte reverseBits(byte data) {
@@ -475,10 +468,10 @@ bool openFileByIndex(int searchIndex) {
 }
 
 void processJoystick() {
- 
-  bitSet(PORTB, DDB2);    // HIGH, pin 10, disable input latching/enable shifting
-  bitSet(PORTC, DDC2); // HIGH, pin 16, clock to retrieve first bit
-  
+
+  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
+  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
+
   byte data = 0;
   // Read the data byte using shiftIn replacement with direct port manipulation
   for (int i = 0; i < 8; i++) {
@@ -486,76 +479,158 @@ void processJoystick() {
     if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
       bitSet(data, 0);
     }
-    // Toggle clock pin low to high to read the next bit 
-    bitClear(PORTC, DDC2); // Clock low
-    delayMicroseconds(1);  // Short delay to ensure stable clocking
-    bitSet(PORTC, DDC2);  // Clock high
+    // Toggle clock pin low to high to read the next bit
+    bitClear(PORTC, DDC2);  // Clock low
+    delayMicroseconds(1);   // Short delay to ensure stable clocking
+    bitSet(PORTC, DDC2);    // Clock high
   }
   bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
 
   data = reverseBits(data);  // H/W error in prototype!
-  PORTD = data;  // output to z80 data lines
+  PORTD = data;              // output to z80 data lines
 }
 
-bool selectGame() {
+byte selectGame() {
 
-    // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
+  // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
 
-    int but = analogRead(21);
-    unsigned long currentMillis = millis();  // Get the current time
+  int but = analogRead(21);
+  unsigned long currentMillis = millis();  // Get the current time
 
-    // Determine if a button is pressed and which one
-    bool buttonPressed = false;
-    if (but < (100 + 22)) {
-      buttonPressed = true;
-    } else if (but < (100 + 324)) {
-      buttonPressed = true;
-    } else if (but < (100 + 510)) {
-      buttonPressed = true;
+  // Determine if a button is pressed and which one
+  bool buttonPressed = false;
+  if (but < (100 + 22)) {
+    buttonPressed = true;
+  } else if (but < (100 + 324)) {
+    buttonPressed = true;
+  } else if (but < (100 + 510)) {
+    buttonPressed = true;
+  }
+
+  if (buttonPressed) {
+    if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
+      // Minimum delay of 50ms, decrease by 20ms each time
+      buttonDelay = max(50, buttonDelay - 20);
+      lastButtonHoldTime = currentMillis;
     }
 
-    if (buttonPressed) {
-      if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-        // Minimum delay of 50ms, decrease by 20ms each time
-        buttonDelay = max(50, buttonDelay - 20);  
-        lastButtonHoldTime = currentMillis;
+    if (currentMillis - lastButtonPress >= buttonDelay) {
+      if (but < (100 + 22)) {  // 1st button
+
+        moveDown();
+
+        //          currentIndex++;
+        //         if (currentIndex >= totalFiles) {
+        //           currentIndex = 0;
+        //         }
+   //////////     updateFileName();
+        return 1;
+      } else if (but < (100 + 324)) {  // 2nd button
+
+  file.close();
+  if (openFileByIndex(currentIndex)) {
+  } else {
+    // TODO : ERROR HERE
+  }
+
+
+        bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+        bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+        delay(10);
+        bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+        //return true;
+        return 2;
+      } else if (but < (100 + 510)) {  // 3rd button
+                                       //          currentIndex--;
+                                       //          if (currentIndex < 0) {
+                                       //            currentIndex = totalFiles-1;
+                                       //          }
+
+        moveUp();
+   ///////     updateFileName();
+        return 3;
       }
 
-      if (currentMillis - lastButtonPress >= buttonDelay) {     
-        if (but < (100 + 22)) {  // First button action
-          currentIndex++;
-          if (currentIndex >= totalFiles) {
-            currentIndex = 0;
-          }
-          updateFileName();
-        } else if (but < (100 + 324)) {  // Second button action
-            updateFileName();
-
-            bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-            bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-            delay(10);
-            bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-            return true;
-        } else if (but < (100 + 510)) {  // Third button action
-          currentIndex--;
-          if (currentIndex < 0) {
-            currentIndex = totalFiles-1;
-          }
-          updateFileName();
-        }
-
-        buttonHeld = true; 
-        lastButtonPress = currentMillis; 
-        lastButtonHoldTime = currentMillis; 
-      }
-    } else {
-      // If no button is pressed, reset the button-held status and delay
-      buttonHeld = false;
-      buttonDelay = 300;  // Reset to the initial delay
+      buttonHeld = true;
+      lastButtonPress = currentMillis;
+      lastButtonHoldTime = currentMillis;
     }
+  } else {
+    // If no button is pressed, reset the button-held status and delay
+    buttonHeld = false;
+    buttonDelay = 300;  // Reset to the initial delay
+  }
 
-    return false;
+  return 0;
 }
+
+
+void DrawText(int xpos, int ypos, char *message) {
+
+  for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8; }
+  memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
+
+  for (int i = 0; message[i] != '\0'; i++) {
+    byte *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
+
+    for (int row = 0; row < _FONT_HEIGHT; row++) {
+      uint8_t transposedRow = 0;
+      for (int col = 0; col < _FONT_WIDTH; col++) {
+        byte value = pgm_read_byte(&ptr[col]);
+        transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+      }
+      joinBits(transposedRow, _FONT_WIDTH + _FONT_GAP, row);
+    }
+  }
+
+  memset(&buffer[SIZE_OF_HEADER], 0, 32);
+ // int amount = ((bitPosition[0] + 7) / 8);
+  for (int y = 0; y < _FONT_HEIGHT; y++) {
+    uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+    uint16_t currentAddress = zx_spectrum_screen_address(xpos, ypos + y);
+    buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+    //for (int i = 0; i < amount; i++) {  // copy gfx
+    for (int i = 0; i < 32; i++) {  // copy gfx
+      buffer[SIZE_OF_HEADER + i] = ptr[i];
+    }
+    //sendBytes(buffer, SIZE_OF_HEADER + amount);
+    sendBytes(buffer, SIZE_OF_HEADER + 32);
+  }
+}
+
+
+void clear() {
+  uint16_t currentAddress = 0x5800;
+  //768
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+
+  currentAddress += 250;
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+
+  currentAddress += 250;
+  buffer[HEADER_PAYLOADSIZE] = 250;
+  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+  for (int i = 0; i < 250; i++) {
+    buffer[SIZE_OF_HEADER + i] = 7;
+  }
+  sendBytes(buffer, SIZE_OF_HEADER + 250);
+}
+
 
 void debugFlash(int flashspeed) {
   // If we get here it's faital

@@ -76,23 +76,6 @@ public:
 			}
 		}
 
-		/*
-		int xpos = 0;
-		for (int k = 0; tx[k] != '\0'; k++) {
-			for (int y = 0; y < FONT_HEIGHT; y++) {
-				uint8_t* ptr = &finalOutput[(BUFFER_SIZE * y) + k];
-				for (int x = 0; x < 8; x++) {
-					if (ptr[x/8] & (0x80 >> x)) {
-						if (y>4)
-							Draw(xpos+x , y+1, olc::Pixel(0, 200, 0));
-						else 
-							Draw(xpos + x, y, olc::Pixel(255, 255, 255));
-					}
-				}
-			}
-			xpos += 8;
-		}
-		*/
 		return true;
 
 	}
