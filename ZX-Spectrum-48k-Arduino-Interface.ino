@@ -69,34 +69,33 @@ FatFile root;
 FatFile file;
 File statusFile;
 
-int totalFiles;
+uint16_t totalFiles;
 
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
 
-void debugFlash(int flashSpeed);
-inline void swap(byte &a, byte &b);
-uint8_t reverseBits(uint8_t byte);
-void setupOled();
-void DrawText(int xpos, int ypos, char *message) ;
-void refreshFileList();
-void moveUp();
-void moveDown();
-uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
-void joinBits(uint8_t input, byte bitWidth, byte k);
-void clear();
-void HighLightFile();
-byte getAnalogButton( int but) ;
+//void debugFlash(int flashSpeed);
+//inline void swap(byte &a, byte &b);
+//uint8_t reverseBits(uint8_t byte);
+//void setupOled();
+//void DrawText(int xpos, int ypos, char *message) ;
+//void refreshFileList();
+//void moveUp();
+//void moveDown();
+//uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
+//void clear();
+//void HighLightFile();
+//uint8_t getAnalogButton( int but) ;
 
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
 unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
 unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
 bool buttonHeld = false;               // Track if the button is being held
 
-static const int _FONT_WIDTH = 5;
-static const int _FONT_HEIGHT = 7;
-static const int _FONT_GAP = 1;
-static const int _FONT_BUFFER_SIZE = 32;
+static const uint8_t _FONT_WIDTH = 5;
+static const uint8_t _FONT_HEIGHT = 7;
+static const uint8_t _FONT_GAP = 1;
+static const uint8_t _FONT_BUFFER_SIZE = 32;
 
 byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
 //uint16_t bitPosition[_FONT_HEIGHT] = { 0 };
@@ -104,9 +103,12 @@ byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
 char fileName[42];
 
 #define WINDOW_SIZE 24  // Number of items visible at a time
-uint16_t oldAddress= 0; 
-int currentIndex = 0;  // The currently selected index in the list
-int startIndex = 0;    // The start index of the current viewing window
+uint16_t oldHighlightAddress= 0; 
+uint16_t currentIndex = 0;  // The currently selected index in the list
+uint16_t startIndex = 0;    // The start index of the current viewing window
+
+
+enum { BUTTON_NONE, BUTTON_DOWN, BUTTON_SELECT, BUTTON_UP };
 
 void setup() {
 
@@ -185,19 +187,19 @@ void loop() {
 
   while (1) {
     byte sg = readButtons();
-    if (sg == 2) {
-   //   file.close();
+    if (sg == BUTTON_SELECT) {
       if (openFileByIndex(currentIndex)) {
       } else {
         // TODO : ERROR HERE
       }
 
-      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-      delay(10);
-      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+      resetSpeccy();
+//      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+//      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+//      delay(10);
+//      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
-    } else if (sg == 1 || sg == 3) {
+    } else if (sg == BUTTON_DOWN || sg == BUTTON_UP) {
       HighLightFile();
     }
     updateFileName();
@@ -259,17 +261,11 @@ void loop() {
     processJoystick();
 
     if (getAnalogButton(analogRead(21)) == 2) {
-
-      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-      delay(10);
-      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-
-      //      delay(500);
-      //     bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-      //    bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-      //   delay(10);
-      //  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+      resetSpeccy();
+//      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+//      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+//      delay(10);
+//      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     }
   }
@@ -308,17 +304,14 @@ inline void swap(byte &a, byte &b) {
 }
 
 void updateFileName() {
-//  file.close();
   if (openFileByIndex(currentIndex)) {
-    // char fileName[16];
-    int a = file.getName7(fileName, 41);
+    uint8_t a = file.getName7(fileName, 41);
     if (a == 0) { a = file.getSFN(fileName, 40); }
-//    file.getName7(fileName, 15);
     oled.setCursor(0, 0);
     oled.print(F("Select:\n"));
     oled.print(fileName);
     oled.print("      ");
-      file.close();
+    file.close();
   } else {
     // TODO : ERROR HERE
   }
@@ -343,9 +336,9 @@ inline byte reverseBits(byte data) {
   return data;
 }
 
-bool openFileByIndex(int searchIndex) {
+bool openFileByIndex(uint8_t searchIndex) {
   root.rewind();
-  int index = 0;
+  uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
@@ -367,7 +360,7 @@ void processJoystick() {
 
   byte data = 0;
   // Read the data byte using shiftIn replacement with direct port manipulation
-  for (int i = 0; i < 8; i++) {
+  for (uint8_t i = 0; i < 8; i++) {
     data <<= 1;
     if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
       bitSet(data, 0);
@@ -387,7 +380,7 @@ byte readButtons() {
 
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = 0;
-  int but = analogRead(21);
+  int  but = analogRead(21);
   unsigned long currentMillis = millis();  // Get the current time
 
   if (getAnalogButton( but )) {
@@ -400,25 +393,12 @@ byte readButtons() {
     if (currentMillis - lastButtonPress >= buttonDelay) {
       if (but < (100 + 22)) {  // 1st button
         moveDown();
-        ret =  1;
+        ret =  BUTTON_UP;
       } else if (but < (100 + 324)) {  // 2nd button
-/*
-        file.close();
-        if (openFileByIndex(currentIndex)) {
-        } else {
-          // TODO : ERROR HERE
-        }
-
-        bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-        bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-        delay(10);
-        bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-
-*/
-        ret = 2;
+        ret = BUTTON_SELECT;
       } else if (but < (100 + 510)) {  // 3rd button
         moveUp();
-        ret = 3;
+        ret = BUTTON_DOWN;
       }
 
       buttonHeld = true;
@@ -575,52 +555,32 @@ void HighLightFile() {
   sendBytes(buffer, 7 );
 
   // clear away old selector bar
-  if (oldAddress != currentAddress) {
-    buffer[4] = (oldAddress >> 8) & 0xFF;
-    buffer[5] = oldAddress & 0xFF;
+  if (oldHighlightAddress != currentAddress) {
+    buffer[4] = (oldHighlightAddress >> 8) & 0xFF;
+    buffer[5] = oldHighlightAddress & 0xFF;
     buffer[6] = B00000111;  // FBPPPIII
     sendBytes(buffer, 7);
-    oldAddress = currentAddress;
+    oldHighlightAddress = currentAddress;
   }
-
-/*
-  buffer[0] = 'G';
-  buffer[1] = 'O';
-
-  uint16_t currentAddress = 0x5800 + ((currentIndex - startIndex) * 32);
-  buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-
-  for (int i = 0; i < 32; i++) {  // copy gfx
-    // 0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White
-    buffer[SIZE_OF_HEADER + i] = B00001111;  // FBPPPIII
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 32);
-
-  if (oldAddress != currentAddress) {
-    buffer[HEADER_HIGH_BYTE] = (oldAddress >> 8) & 0xFF;
-    buffer[HEADER_LOW_BYTE] = oldAddress & 0xFF;
-    for (int i = 0; i < 32; i++) {             // copy gfx
-      buffer[SIZE_OF_HEADER + i] = B00000111;  // FBPPPIII
-    }
-    sendBytes(buffer, SIZE_OF_HEADER + 32);
-    oldAddress = currentAddress;
-  }
-  */
 }
 
-byte getAnalogButton( int but) {
-   // int but = analogRead(21);
+uint8_t getAnalogButton(int but) {
     byte buttonPressed = 0;
     if (but < (100 + 22)) {
-      buttonPressed = 1;
+      buttonPressed = BUTTON_UP;
     } else if (but < (100 + 324)) {
-      buttonPressed = 2;
+      buttonPressed = BUTTON_SELECT;
     } else if (but < (100 + 510)) {
-      buttonPressed = 3;
+      buttonPressed = BUTTON_DOWN;
     }
     return buttonPressed;
+}
+
+void resetSpeccy(){
+  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+  delay(10);
+  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
 }
 
 void debugFlash(int flashspeed) {
