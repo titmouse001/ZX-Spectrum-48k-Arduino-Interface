@@ -203,6 +203,8 @@ void loop() {
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
+  buffer[0] = 'G';
+  buffer[1] = 'O';
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
   while (file.available()) {
     byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
@@ -417,6 +419,8 @@ byte selectGame() {
 
 void DrawText(int xpos, int ypos, char *message) {
 
+  buffer[0] = 'G';
+  buffer[1] = 'O';
   for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8; }
   memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
 
@@ -434,6 +438,7 @@ void DrawText(int xpos, int ypos, char *message) {
   }
 
   memset(&buffer[SIZE_OF_HEADER], 0, 32);
+
  // int amount = ((bitPosition[0] + 7) / 8);
   for (int y = 0; y < _FONT_HEIGHT; y++) {
     uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
@@ -452,7 +457,11 @@ void DrawText(int xpos, int ypos, char *message) {
 
 
 void clear() {
+  
+  buffer[0] = 'G';
+  buffer[1] = 'O';
   uint16_t currentAddress = 0x5800;
+  
   //768
   buffer[HEADER_PAYLOADSIZE] = 250;
   buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
@@ -569,6 +578,32 @@ void joinBits(uint8_t input, byte bitWidth, byte k) {
 }
 
 void HighLightFile() {
+  //0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White	
+
+  // Draw selector bar - blue with white text
+  uint16_t amount = 32;
+  uint16_t currentAddress = 0x5800 + ((currentIndex - startIndex) * 32);
+  buffer[0] = 'F';                          // Fill mode
+  buffer[1] = 'L';
+  buffer[2] = (amount >> 8) & 0xFF;         // high byte
+  buffer[3] =  amount & 0xFF;               // low byte
+  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+  buffer[5] = currentAddress & 0xFF;        // low byte
+  buffer[6] = B00001111;  // FBPPPIII; background colour
+  sendBytes(buffer, 7 );
+
+  // clear away old selector bar
+  if (oldAddress != currentAddress) {
+    buffer[4] = (oldAddress >> 8) & 0xFF;
+    buffer[5] = oldAddress & 0xFF;
+    buffer[6] = B00000111;  // FBPPPIII
+    sendBytes(buffer, 7);
+    oldAddress = currentAddress;
+  }
+
+/*
+  buffer[0] = 'G';
+  buffer[1] = 'O';
 
   uint16_t currentAddress = 0x5800 + ((currentIndex - startIndex) * 32);
   buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
@@ -590,6 +625,7 @@ void HighLightFile() {
     sendBytes(buffer, SIZE_OF_HEADER + 32);
     oldAddress = currentAddress;
   }
+  */
 }
 
 byte getAnalogButton( int but) {

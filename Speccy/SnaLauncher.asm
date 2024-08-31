@@ -78,6 +78,8 @@ check_initial:   		; Main loop for checking 'GO' or 'EX' (or 'SN' in future)
     jr z, check_GO     	; If 'G', jump to check_G
     cp 'E'            
     jr z, check_EX     	; If 'E', jump to check_E
+    cp 'F'            
+    jr z, check_FL     	; If 'F', jump to check_F
     jr check_initial   	; Otherwise, keep checking
 check_GO:  				; Subroutine to handle 'GO' command
 	READ_ACC_WITH_HALT
@@ -89,6 +91,11 @@ check_EX:  				; Subroutine to handle 'EX' command
     cp 'X'            
     jr nz, check_initial ; If not 'X', go back to initial check
 	JP command_EX
+check_FL:  				; Subroutine to handle 'FL' command
+	READ_ACC_WITH_HALT
+    cp 'L'            
+    jr nz, check_initial 
+	JP command_FL
 
 ;******************************************************************************
 ; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
@@ -102,6 +109,35 @@ ORG $0066
 L0066:
 		RETN
 ;******************************************************************************
+
+
+command_FL: 
+	
+	ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
+
+	READ_PAIR_WITH_HALT d,e  ; Fill amount 16bit value, little-endian
+
+	; Set HL with the 'destination' address (reading 2 bytes)
+	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
+	; NOTE: Most of the snapshot 16bit data processed later on is big-endian, 
+	;		so you will see things like "READ_PAIR_WITH_HALT l,h" (so l,h not h,l)
+
+	halt		 
+	in a,($1f)   ; Read a byte as "clear to" value
+
+	ld c,a
+
+fillLoop:
+	ld (hl),c	 ; write to memory
+    inc hl		
+
+    DEC DE      
+    LD A, D      
+    OR E         
+    Jr NZ, fillLoop   
+
+    jr mainloop ; done - go back and wait for the next transfer action
+
 
 command_GO:  ; FIRST STAGE - TRANSFER DATA
 	
@@ -122,7 +158,7 @@ command_GO:  ; FIRST STAGE - TRANSFER DATA
 readDataLoop:
 	halt		 ; As we need to halt each time around we can't use 'ini' we have to use 'in'
 	in a,($1f)   ; Read a byte from the z80 I/O port
-	ld (hl),a	 ; write to memory (technically onward from $4000 on a 48k speccy)
+	ld (hl),a	 ; write to memory
     inc hl		
 
 	AND LOADING_COLOUR_MASK  
@@ -130,7 +166,7 @@ readDataLoop:
 
 	djnz readDataLoop  ; read loop
 
-    jr mainloop ; done - go back and wait for the next transfer action
+    jp mainloop ; done - go back and wait for the next transfer action
 
 command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
 	
