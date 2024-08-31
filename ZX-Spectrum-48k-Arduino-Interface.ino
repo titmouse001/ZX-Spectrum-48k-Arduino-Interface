@@ -23,6 +23,7 @@
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 #include "SSD1306AsciiAvrI2c.h"
 #include "fudgefont.h"  // Based on the Adafruit5x7 font, with '!' to '(' changed to work as a VU BAR (8 chars)
+#include "utils.h" 
 
 #define VERSION ("0.3")
 
@@ -98,7 +99,7 @@ static const int _FONT_GAP = 1;
 static const int _FONT_BUFFER_SIZE = 32;
 
 byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
-int bitPosition[_FONT_HEIGHT] = { 0 };
+//uint16_t bitPosition[_FONT_HEIGHT] = { 0 };
 
 char fileName[42];
 
@@ -421,36 +422,34 @@ void DrawText(int xpos, int ypos, char *message) {
 
   buffer[0] = 'G';
   buffer[1] = 'O';
-  for (int i = 0; i < _FONT_HEIGHT; i++) { bitPosition[i] = (_FONT_BUFFER_SIZE * i) * 8; }
   memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
 
-  for (int i = 0; message[i] != '\0'; i++) {
+  for (uint8_t i = 0; message[i] != '\0'; i++) {
     byte *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
 
-    for (int row = 0; row < _FONT_HEIGHT; row++) {
+    for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
       uint8_t transposedRow = 0;
-      for (int col = 0; col < _FONT_WIDTH; col++) {
+      for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
         byte value = pgm_read_byte(&ptr[col]);
         transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
       }
-      joinBits(transposedRow, _FONT_WIDTH + _FONT_GAP, row);
+
+      uint16_t bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
+      MathUtils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
     }
   }
 
   memset(&buffer[SIZE_OF_HEADER], 0, 32);
 
- // int amount = ((bitPosition[0] + 7) / 8);
-  for (int y = 0; y < _FONT_HEIGHT; y++) {
+  for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
     uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
     uint16_t currentAddress = zx_spectrum_screen_address(xpos, ypos + y);
     buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
     buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
     buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    //for (int i = 0; i < amount; i++) {  // copy gfx
     for (int i = 0; i < 32; i++) {  // copy gfx
       buffer[SIZE_OF_HEADER + i] = ptr[i];
     }
-    //sendBytes(buffer, SIZE_OF_HEADER + amount);
     sendBytes(buffer, SIZE_OF_HEADER + 32);
   }
 }
@@ -564,6 +563,7 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   return base_address + section_offset + row_within_section + x_byte_index;
 }
 
+/*
 void joinBits(uint8_t input, byte bitWidth, byte k) {
   int bitPos = bitPosition[k];
   int byteIndex = bitPos / 8;
@@ -576,7 +576,7 @@ void joinBits(uint8_t input, byte bitWidth, byte k) {
   }
   bitPosition[k] += bitWidth;
 }
-
+*/
 void HighLightFile() {
   //0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White	
 
