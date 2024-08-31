@@ -179,20 +179,30 @@ void setup() {
 
 void loop() {
 
-  clear();
-
+  clearScreenAttributes();
   refreshFileList();
+  HighLightFile();
 
   while (1) {
-    byte sg = selectGame();
+    byte sg = readButtons();
     if (sg == 2) {
+   //   file.close();
+      if (openFileByIndex(currentIndex)) {
+      } else {
+        // TODO : ERROR HERE
+      }
+
+      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+      delay(10);
+      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     } else if (sg == 1 || sg == 3) {
-       HighLightFile();
+      HighLightFile();
     }
     updateFileName();
   }
- 
+
   file.getName7(fileName, 15);
   oled.clear();
   oled.print(F("Loading:\n"));
@@ -248,13 +258,18 @@ void loop() {
   while (1) {
     processJoystick();
 
+    if (getAnalogButton(analogRead(21)) == 2) {
 
-    if (getAnalogButton( analogRead(21) )==2) {
-      delay(500);
       bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
       bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
       delay(10);
       bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+
+      //      delay(500);
+      //     bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
+      //    bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
+      //   delay(10);
+      //  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     }
   }
@@ -293,7 +308,7 @@ inline void swap(byte &a, byte &b) {
 }
 
 void updateFileName() {
-  file.close();
+//  file.close();
   if (openFileByIndex(currentIndex)) {
     // char fileName[16];
     int a = file.getName7(fileName, 41);
@@ -368,7 +383,7 @@ void processJoystick() {
   PORTD = data;              // output to z80 data lines
 }
 
-byte selectGame() {
+byte readButtons() {
 
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = 0;
@@ -387,7 +402,7 @@ byte selectGame() {
         moveDown();
         ret =  1;
       } else if (but < (100 + 324)) {  // 2nd button
-
+/*
         file.close();
         if (openFileByIndex(currentIndex)) {
         } else {
@@ -398,6 +413,8 @@ byte selectGame() {
         bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
         delay(10);
         bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+
+*/
         ret = 2;
       } else if (but < (100 + 510)) {  // 3rd button
         moveUp();
@@ -455,38 +472,17 @@ void DrawText(int xpos, int ypos, char *message) {
 }
 
 
-void clear() {
-  
-  buffer[0] = 'G';
-  buffer[1] = 'O';
+void clearScreenAttributes() {
+  uint16_t amount = 768;
   uint16_t currentAddress = 0x5800;
-  
-  //768
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
-
-  currentAddress += 250;
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
-
-  currentAddress += 250;
-  buffer[HEADER_PAYLOADSIZE] = 250;
-  buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-  buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-  for (int i = 0; i < 250; i++) {
-    buffer[SIZE_OF_HEADER + i] = 7;
-  }
-  sendBytes(buffer, SIZE_OF_HEADER + 250);
+  buffer[0] = 'F';                          // Fill mode
+  buffer[1] = 'L';
+  buffer[2] = (amount >> 8) & 0xFF;         // high byte
+  buffer[3] =  amount & 0xFF;               // low byte
+  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+  buffer[5] = currentAddress & 0xFF;        // low byte
+  buffer[6] = B00000111;  // FBPPPIII;  
+  sendBytes(buffer, 7 );  // Send clear command for z80 to process
 }
 
 void refreshFileList() {
@@ -563,20 +559,6 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   return base_address + section_offset + row_within_section + x_byte_index;
 }
 
-/*
-void joinBits(uint8_t input, byte bitWidth, byte k) {
-  int bitPos = bitPosition[k];
-  int byteIndex = bitPos / 8;
-  int bitIndex = bitPos % 8;
-  // Using a WORD to allow for a boundary crossing
-  uint16_t alignedInput = (uint16_t)input << (8 - bitWidth);
-  finalOutput[byteIndex] |= alignedInput >> bitIndex;
-  if (bitIndex + bitWidth > 8) {  // spans across two bytes
-    finalOutput[byteIndex + 1] |= alignedInput << (8 - bitIndex);
-  }
-  bitPosition[k] += bitWidth;
-}
-*/
 void HighLightFile() {
   //0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White	
 
