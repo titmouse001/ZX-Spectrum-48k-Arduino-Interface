@@ -185,6 +185,8 @@ void loop() {
   refreshFileList();
   HighLightFile();
 
+  uint16_t oldIndex=-1;
+
   while (1) {
     byte sg = readButtons();
     if (sg == BUTTON_SELECT) {
@@ -192,20 +194,20 @@ void loop() {
       } else {
         // TODO : ERROR HERE
       }
-
       resetSpeccy();
-//      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-//      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-//      delay(10);
-//      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     } else if (sg == BUTTON_DOWN || sg == BUTTON_UP) {
-      HighLightFile();
+      HighLightFile();  
+    } else {
+      if (oldIndex != currentIndex) {
+        updateFileName();
+        oldIndex= currentIndex;
+      }
     }
-    updateFileName();
+
   }
 
-  file.getName7(fileName, 15);
+  file.getName(fileName, 15);
   oled.clear();
   oled.print(F("Loading:\n"));
   oled.println(fileName);
@@ -259,13 +261,8 @@ void loop() {
 
   while (1) {
     processJoystick();
-
     if (getAnalogButton(analogRead(21)) == 2) {
       resetSpeccy();
-//      bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-//      bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-//      delay(10);
-//      bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
       break;
     }
   }
@@ -276,7 +273,7 @@ void loop() {
 void sendBytes(byte *data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = reverseBits(data[bufferIndex]);
+    PORTD = MathUtils::reverseBits(data[bufferIndex]);
     bitClear(PORTC, DDC0);
     bitSet(PORTC, DDC0);
     while ((bitRead(PINB, PINB0) == LOW)) {};
@@ -297,12 +294,13 @@ void waitReleaseHalt() {
   while ((bitRead(PINB, PINB0) == LOW)) {};   // (3) Wait for halt line to go HIGH again.
 }
 
+/*
 inline void swap(byte &a, byte &b) {
   byte temp = a;
   a = b;
   b = temp;
 }
-
+*/
 void updateFileName() {
   if (openFileByIndex(currentIndex)) {
     uint8_t a = file.getName7(fileName, 41);
@@ -329,12 +327,14 @@ void setupOled() {
   oled.println(F(VERSION));
 }
 
+/*
 inline byte reverseBits(byte data) {
   data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
   data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
   data = (data & 0xAA) >> 1 | (data & 0x55) << 1;
   return data;
 }
+*/
 
 bool openFileByIndex(uint8_t searchIndex) {
   root.rewind();
@@ -354,49 +354,32 @@ bool openFileByIndex(uint8_t searchIndex) {
 }
 
 void processJoystick() {
-
-  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
-  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
-
-  byte data = 0;
-  // Read the data byte using shiftIn replacement with direct port manipulation
-  for (uint8_t i = 0; i < 8; i++) {
-    data <<= 1;
-    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
-      bitSet(data, 0);
-    }
-    // Toggle clock pin low to high to read the next bit
-    bitClear(PORTC, DDC2);  // Clock low
-    delayMicroseconds(1);   // Short delay to ensure stable clocking
-    bitSet(PORTC, DDC2);    // Clock high
-  }
-  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
-
-  data = reverseBits(data);  // H/W error in prototype!
-  PORTD = data;              // output to z80 data lines
+  PORTD =  readJoystick();      // output to z80 data lines
 }
 
 byte readButtons() {
 
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = 0;
-  int  but = analogRead(21);
-  unsigned long currentMillis = millis();  // Get the current time
+  int but = analogRead(21);
+  uint8_t joy = MathUtils::reverseBits( readJoystick() );
+  //"00FUDLR" bit pattern
 
-  if (getAnalogButton( but )) {
+  if (getAnalogButton(but) || (joy&B00111100) ) {
+     unsigned long currentMillis = millis();  // Get the current time
     if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
       // Minimum delay of 50ms, decrease by 20ms each time
-      buttonDelay = max(50, buttonDelay - 20);
+      buttonDelay = max(40, buttonDelay - 20);
       lastButtonHoldTime = currentMillis;
     }
 
-    if (currentMillis - lastButtonPress >= buttonDelay) {
-      if (but < (100 + 22)) {  // 1st button
+    if ((!buttonHeld) || (currentMillis - lastButtonPress >= buttonDelay)) {
+      if (but < (100 + 22) || (joy&B00000100)) {  // 1st button
         moveDown();
-        ret =  BUTTON_UP;
-      } else if (but < (100 + 324)) {  // 2nd button
+        ret = BUTTON_UP;
+      } else if (but < (100 + 324) || (joy&B00010000) ) {  // 2nd button
         ret = BUTTON_SELECT;
-      } else if (but < (100 + 510)) {  // 3rd button
+      } else if (but < (100 + 510) || (joy&B00001000) ) {  // 3rd button
         moveUp();
         ret = BUTTON_DOWN;
       }
@@ -410,10 +393,8 @@ byte readButtons() {
     buttonHeld = false;
     buttonDelay = 300;  // Reset to the initial delay
   }
-
   return ret;
 }
-
 
 void DrawText(int xpos, int ypos, char *message) {
 
@@ -421,36 +402,51 @@ void DrawText(int xpos, int ypos, char *message) {
   buffer[1] = 'O';
   memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
 
+  uint16_t bitPosition = 0;
+  uint8_t amount=0;
   for (uint8_t i = 0; message[i] != '\0'; i++) {
-    byte *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
-
+    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
     for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
       uint8_t transposedRow = 0;
       for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
         byte value = pgm_read_byte(&ptr[col]);
         transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
       }
-
-      uint16_t bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
+      bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
       MathUtils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
     }
+    amount++;
   }
 
-  memset(&buffer[SIZE_OF_HEADER], 0, 32);
-
+  //memset(&buffer[SIZE_OF_HEADER], 0, 32);
+  amount = ((amount * 6) + 7 ) / 8;
   for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
     uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
     uint16_t currentAddress = zx_spectrum_screen_address(xpos, ypos + y);
-    buffer[HEADER_PAYLOADSIZE] = 32;  //amount;
+    
+    buffer[HEADER_START_G] = 'G';
+    buffer[HEADER_START_O] = 'O';
+    buffer[HEADER_PAYLOADSIZE] = amount;
     buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
     buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    for (int i = 0; i < 32; i++) {  // copy gfx
+    for (int i = 0; i < amount; i++) {  // copy gfx
       buffer[SIZE_OF_HEADER + i] = ptr[i];
     }
-    sendBytes(buffer, SIZE_OF_HEADER + 32);
+    sendBytes(buffer, SIZE_OF_HEADER + amount);
+
+    uint16_t clr = 32 - amount;
+    currentAddress += amount;
+    buffer[0] = 'F';                          // Fill mode
+    buffer[1] = 'L';
+    buffer[2] = (clr >> 8) & 0xFF;         // high byte
+    buffer[3] =  clr & 0xFF;               // low byte
+    buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+    buffer[5] = currentAddress & 0xFF;        // low byte
+    buffer[6] = B00000000;  
+    sendBytes(buffer, 7 );
+
   }
 }
-
 
 void clearScreenAttributes() {
   uint16_t amount = 768;
@@ -461,21 +457,21 @@ void clearScreenAttributes() {
   buffer[3] =  amount & 0xFF;               // low byte
   buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
   buffer[5] = currentAddress & 0xFF;        // low byte
-  buffer[6] = B00000111;  // FBPPPIII;  
+  buffer[6] = B01000111;  // FBPPPIII;  
   sendBytes(buffer, 7 );  // Send clear command for z80 to process
 }
 
 void refreshFileList() {
   root.rewind();
-  int clr = 0;
-  int count = 0;
+  uint8_t clr = 0;
+  uint8_t count = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
       if (file.fileSize() == 49179) {
 
         if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-          int a = file.getName7(fileName, 41);
-          if (a == 0) { a = file.getSFN(fileName, 41); }
+          int len = file.getName7(fileName, 41);
+          if (len== 0) { file.getSFN(fileName, 41); }
           DrawText(0, ((count - startIndex) * 8), fileName);
           clr++;
         }
@@ -483,12 +479,18 @@ void refreshFileList() {
       }
     }
     file.close();
+    if (clr==WINDOW_SIZE) {
+      break;
+    }
   }
 
   fileName[0] = '-';
   fileName[1] = '\0';
-  for (int i = 0; i < WINDOW_SIZE - clr; i++) {
-    DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
+ // for (int i = 0; i < WINDOW_SIZE - clr; i++) {
+//    DrawText(0, ((WINDOW_SIZE - 1) - i) * 8, fileName);
+//  }
+  for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
+    DrawText(0, (i * 8), fileName);
   }
 }
 
@@ -551,14 +553,14 @@ void HighLightFile() {
   buffer[3] =  amount & 0xFF;               // low byte
   buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
   buffer[5] = currentAddress & 0xFF;        // low byte
-  buffer[6] = B00001111;  // FBPPPIII; background colour
+  buffer[6] = B00101000;  // FBPPPIII; background colour
   sendBytes(buffer, 7 );
 
   // clear away old selector bar
   if (oldHighlightAddress != currentAddress) {
     buffer[4] = (oldHighlightAddress >> 8) & 0xFF;
     buffer[5] = oldHighlightAddress & 0xFF;
-    buffer[6] = B00000111;  // FBPPPIII
+    buffer[6] = B01000111;  // FBPPPIII
     sendBytes(buffer, 7);
     oldHighlightAddress = currentAddress;
   }
@@ -581,6 +583,32 @@ void resetSpeccy(){
   bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
   delay(10);
   bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+}
+
+
+
+uint8_t readJoystick() {
+//"00FUDLR" bit pattern
+
+  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
+  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
+
+  byte data = 0;
+  // Read the data byte using shiftIn replacement with direct port manipulation
+  for (uint8_t i = 0; i < 8; i++) {
+    data <<= 1;
+    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
+      bitSet(data, 0);
+    }
+    // Toggle clock pin low to high to read the next bit
+    bitClear(PORTC, DDC2);  // Clock low
+    delayMicroseconds(1);   // Short delay to ensure stable clocking
+    bitSet(PORTC, DDC2);    // Clock high
+  }
+  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+
+  return MathUtils::reverseBits(data);  // H/W error in prototype!
+ 
 }
 
 void debugFlash(int flashspeed) {
