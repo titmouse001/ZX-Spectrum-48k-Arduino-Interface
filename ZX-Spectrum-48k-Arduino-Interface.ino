@@ -112,16 +112,51 @@ enum { BUTTON_NONE, BUTTON_DOWN, BUTTON_SELECT, BUTTON_UP };
 
 void setup() {
 
-  // Serial.begin(9600);
-  // while (! Serial);
+  /*
+   setupOled();  // Using a mono OLED with 128x32 pixels
+
+  pinMode(ShiftRegDataPin, INPUT);
+  pinMode(ShiftRegLatchPin, OUTPUT);
+  pinMode(ShiftRegClockPin, OUTPUT);
+
+ //  Serial.begin(9600);
+ //  while (! Serial);
 
   // Serial.println("STARTING");
-  //  while (1) {
-  //  byte pinState = bitRead(PINB, PINB1);
-  //   byte val = digitalRead(Z80_A12);
-  //  Serial.println(pinState);
-  // };
+   while (1) {
+    oled.setCursor(0, 0);
 
+  // Step 1: Sample
+  digitalWrite(ShiftRegLatchPin, LOW);
+  digitalWrite(ShiftRegLatchPin, HIGH);
+ 
+
+
+  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
+  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
+
+  byte data = 0;
+  // Read the data byte using shiftIn replacement with direct port manipulation
+  for (uint8_t i = 0; i < 8; i++) {
+    data <<= 1;
+    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
+      bitSet(data, 0);
+    }
+    // Toggle clock pin low to high to read the next bit
+    bitClear(PORTC, DDC2);  // Clock low
+    delayMicroseconds(1);   // Short delay to ensure stable clocking
+    bitSet(PORTC, DDC2);    // Clock high
+  }
+  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+
+
+  
+    oled.print(data);
+    oled.print("        ");
+   delay (100);
+
+   };
+*/
 
   // Reset Z80
   pinMode(Z80_REST, OUTPUT);
@@ -207,10 +242,12 @@ void loop() {
 
   }
 
+if (isOledConnected()) {
   file.getName(fileName, 15);
   oled.clear();
   oled.print(F("Loading:\n"));
   oled.println(fileName);
+}
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
@@ -255,9 +292,11 @@ void loop() {
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
 
+if (isOledConnected()) {
   oled.clear();
   oled.print("running:\n");
   oled.println(fileName);
+}
 
   while (1) {
     processJoystick();
@@ -273,7 +312,10 @@ void loop() {
 void sendBytes(byte *data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = MathUtils::reverseBits(data[bufferIndex]);
+//    PORTD = MathUtils::reverseBits(data[bufferIndex]);
+
+        PORTD = data[bufferIndex];
+
     bitClear(PORTC, DDC0);
     bitSet(PORTC, DDC0);
     while ((bitRead(PINB, PINB0) == LOW)) {};
@@ -301,7 +343,9 @@ inline void swap(byte &a, byte &b) {
   b = temp;
 }
 */
+
 void updateFileName() {
+  if (isOledConnected()) {
   if (openFileByIndex(currentIndex)) {
     uint8_t a = file.getName7(fileName, 41);
     if (a == 0) { a = file.getSFN(fileName, 40); }
@@ -313,9 +357,19 @@ void updateFileName() {
   } else {
     // TODO : ERROR HERE
   }
+  }
+}
+
+
+#include <Wire.h>
+bool isOledConnected() {
+  return false;
+  //  Wire.beginTransmission(I2C_ADDRESS);
+   //return (Wire.endTransmission() == 0);  // Returns true if the device at I2C_ADDRESS responds
 }
 
 void setupOled() {
+  if (isOledConnected()){
   oled.begin(&Adafruit128x32, I2C_ADDRESS);
   delay(1);
   // some hardware is slow to initialise, first call does not work.
@@ -325,6 +379,7 @@ void setupOled() {
   oled.clear();
   oled.print(F("ver"));
   oled.println(F(VERSION));
+  }
 }
 
 /*
@@ -362,8 +417,17 @@ byte readButtons() {
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = 0;
   int but = analogRead(21);
-  uint8_t joy = MathUtils::reverseBits( readJoystick() );
+  //uint8_t joy = MathUtils::reverseBits( readJoystick() );
+
+  uint8_t joy = readJoystick() ;
   //"00FUDLR" bit pattern
+  
+
+//    oled.setCursor(0, 0);
+//        oled.print(joy, BIN);
+//    oled.print("      ");
+
+
 
   if (getAnalogButton(but) || (joy&B00111100) ) {
      unsigned long currentMillis = millis();  // Get the current time
@@ -575,6 +639,7 @@ uint8_t getAnalogButton(int but) {
     } else if (but < (100 + 510)) {
       buttonPressed = BUTTON_DOWN;
     }
+
     return buttonPressed;
 }
 
@@ -607,8 +672,17 @@ uint8_t readJoystick() {
   }
   bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
 
-  return MathUtils::reverseBits(data);  // H/W error in prototype!
- 
+
+// oooooooopppppsssssssss, another H/W mistake
+    byte bit1 = (data >> 1) & 1;  
+    byte bit2 = (data >> 2) & 1;  
+    if (bit1 != bit2) {
+        data ^= (1 << 1);  
+        data ^= (1 << 2);  
+    }
+
+ // return MathUtils::reverseBits(data);  // H/W error in prototype!
+   return data;
 }
 
 void debugFlash(int flashspeed) {
