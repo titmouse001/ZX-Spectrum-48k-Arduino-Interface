@@ -5,5 +5,8 @@ The ZX Spectrum screen will display a list of 24 games per page, which can be sc
 Pressing the play button in-game will return you to the game selection screen.  
 Currently games must be in .sna format on the root of a FAT32 SD card.
 
-<img src="/Documents/ZX-Spectrum-Interface_2024-09-05.png" alt="Description" width="35%" height="35%">
-<img src="/Documents/Schematic_ZX-Spectrum-Interface_2024-09-05.png" alt="Description" width="65%" height="65%">
+
+<img src="/Documents/Font3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Front" width="35%" height="35%">
+<img src="/Documents/Back3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Bavk" width="35%" height="35%">
+<img src="/Documents/ZX-Spectrum-Interface_2024-09-05.png" alt="Photo view" width="35%" height="35%">
+<img src="/Documents/Schematic_ZX-Spectrum-Interface_2024-09-05.png" alt="Circuit Diagram" width="65%" height="65%">
