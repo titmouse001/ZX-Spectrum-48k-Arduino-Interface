@@ -1,8 +1,12 @@
 
 #include <Arduino.h>
 #include "utils.h"
+#include "SdFat.h" 
 
-namespace MathUtils {
+extern FatFile file;
+extern FatFile root;
+
+namespace Utils {
 
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
   int byteIndex = bitPosition / 8;
@@ -27,5 +31,46 @@ void swap(byte &a, byte &b) {
   a = b;
   b = temp;
 }
+
+uint16_t getSnaFileCount() {
+  uint16_t totalFiles = 0;
+  root.rewind();
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        totalFiles++;
+      }
+    }
+    file.close();
+  }
+  return totalFiles;
+}
+
+uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
+  // Base screen address in ZX Spectrum
+  uint16_t base_address = 0x4000;
+
+  // Calculate section offset based on the Y coordinate
+  uint16_t section_offset;
+  if (y < 64) {
+    section_offset = 0;  // First section
+  } else if (y < 128) {
+    section_offset = 0x0800;  // Second section
+  } else {
+    section_offset = 0x1000;  // Third section
+  }
+
+  // Calculate the correct interleaved line address
+  uint8_t block_in_section = (y & 0b00111000) >> 3;  // Extract bits 3-5 (block number)
+  uint8_t line_in_block = y & 0b00000111;            // Extract bits 0-2 (line within block)
+  uint16_t row_within_section = (line_in_block * 256) + (block_in_section * 32);
+
+  // Calculate the horizontal byte index (each byte represents 8 pixels)
+  uint8_t x_byte_index = x >> 3;
+
+  // Calculate and return the final screen address
+  return base_address + section_offset + row_within_section + x_byte_index;
+}
+
 
 }
