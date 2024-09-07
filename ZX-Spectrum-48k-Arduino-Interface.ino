@@ -102,7 +102,8 @@ static const uint8_t _FONT_BUFFER_SIZE = 32;
 byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
 //uint16_t bitPosition[_FONT_HEIGHT] = { 0 };
 
-char fileName[42];
+char fileName[65];
+
 
 #define WINDOW_SIZE 24  // Number of items visible at a time
 uint16_t oldHighlightAddress= 0; 
@@ -116,9 +117,9 @@ bool haveOled = false;
 
 void setup() {
 
-//  Serial.begin(9600);
-//  while (! Serial) {};
-//  Serial.println("STARTING");
+  //  Serial.begin(9600);
+  //  while (! Serial) {};
+  //  Serial.println("STARTING");
 
 
   Wire.beginTransmission(I2C_ADDRESS);
@@ -161,18 +162,26 @@ void setup() {
   //-------------
 
   // Initialize SD card
-  if (!sd.begin()) {}
-  if (!root.open("/")) {
- //   oled.print(F("SD CARD MISSING\n")); 
-//TODO use zx spectrums screen to disaply error messages
-  }
 
-  totalFiles = Utils::getSnaFileCount();
-  if (totalFiles==0) {
- //   oled.print(F("No files Found"));
+  while (1) {
+    if (!sd.begin()) {}
+
+    if (root.open("/")) {
+      totalFiles = Utils::getSnaFileCount();
+      if (totalFiles > 0) {
+        break;
+      } else {
+        DrawText(80, 100, "No files Found");
+      }
+    } else {
+      clearScreenAttributes();
+      DrawText(80, 80, "SD CARD MISSING");
+      root.close();
+      sd.end();
+      delay(2000);
+    }
   }
 }
-
 
 const unsigned long maxButtonInputLoopTime = 10; // in ms
 
@@ -419,16 +428,18 @@ void DrawText(int xpos, int ypos, char *message) {
     }
     sendBytes(buffer, SIZE_OF_HEADER + amount);
 
-    uint16_t clr = 32 - amount;
-    currentAddress += amount;
-    buffer[0] = 'F';                          // Fill mode
-    buffer[1] = 'L';
-    buffer[2] = (clr >> 8) & 0xFF;         // high byte
-    buffer[3] =  clr & 0xFF;               // low byte
-    buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-    buffer[5] = currentAddress & 0xFF;        // low byte
-    buffer[6] = B00000000;  
-    sendBytes(buffer, 7 );
+    int8_t clr = 32 - amount;
+    if (clr>0) {
+      currentAddress += amount;
+      buffer[0] = 'F';                          // Fill mode
+      buffer[1] = 'L';
+      buffer[2] = (clr >> 8) & 0xFF;         // high byte
+      buffer[3] =  clr & 0xFF;               // low byte
+      buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+      buffer[5] = currentAddress & 0xFF;        // low byte
+      buffer[6] = B00000000;  
+      sendBytes(buffer, 7 );
+    }
 
   }
 }
@@ -455,8 +466,15 @@ void refreshFileList() {
       if (file.fileSize() == 49179) {
 
         if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-          int len = file.getName7(fileName, 41);
-          if (len== 0) { file.getSFN(fileName, 41); }
+          int len = file.getName7(fileName, 64);
+          if (len== 0) { file.getSFN(fileName, 20); }
+
+          if (len>42) {
+            fileName[40] = '.';
+            fileName[41] = '.';
+            fileName[42] = '\0';
+          }
+
           DrawText(0, ((count - startIndex) * 8), fileName);
           clr++;
         }
@@ -470,7 +488,7 @@ void refreshFileList() {
   }
 
   // REST AS BLANKS
-  fileName[0] = '-';
+  fileName[0] = ' ';
   fileName[1] = '\0';
   for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
     DrawText(0, (i * 8), fileName);
