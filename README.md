@@ -32,7 +32,7 @@ The setup uses a duplicated Spectrum ROM to address issues caused by returning t
 ## Next Step - The ROM
 <img src="/Documents/Next step - The ROM.jpg" width="60%" height="60%">
 
-## No EPROMs Were Harmed
+### Warning: No EPROMs were harmed in the making of this project… but they were definitely burned a few times!
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Setup with ROM prototype.jpg" width="32%" height="32%">
 <img src="/Documents/No EPROMs Were Harmed.jpg" width="32%" height="32%">
