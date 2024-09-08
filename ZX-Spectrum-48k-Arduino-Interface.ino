@@ -105,9 +105,6 @@ void setup() {
   //  Serial.println("STARTING");
 
 
-  Wire.beginTransmission(I2C_ADDRESS);
-  haveOled = (Wire.endTransmission() == 0);
-
   // Reset Z80
   pinMode(Z80_REST, OUTPUT);
   bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
@@ -139,12 +136,13 @@ void setup() {
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
 
-  setupOled();  // Using a mono OLED with 128x32 pixels
+  haveOled = setupOled();  // Using a mono OLED with 128x32 pixels
 }
 
 void loop() {
 
   clearScreenAttributes();
+
   InitializeSDcard();
   refreshFileList();
   HighLightFile();
@@ -577,8 +575,16 @@ void updateFileName() {
   }
 }
 
-void setupOled() {
-  if (haveOled) {
+bool setupOled() {
+
+  // First check that we have an OLED installed
+  Wire.begin();
+  Wire.beginTransmission(I2C_ADDRESS);
+  bool result = (Wire.endTransmission() == 0); 
+  Wire.end();
+
+  // Initialise OLED
+  if (result) {
     oled.begin(&Adafruit128x32, I2C_ADDRESS);
     delay(1);
     // some hardware is slow to initialise, first call does not work.
@@ -589,6 +595,8 @@ void setupOled() {
     oled.print(F("ver"));
     oled.println(F(VERSION));
   }
+
+  return result;
 }
 
 //-------------------------------------------------
