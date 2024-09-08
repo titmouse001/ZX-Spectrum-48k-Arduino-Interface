@@ -7,7 +7,15 @@ extern FatFile file;
 extern FatFile root;
 
 namespace Utils {
+  
+__attribute__((optimize("-Ofast"))) 
+void memsetZero(byte* b, unsigned int len){
+	for (; len != 0; len--) {
+		*b++ = 0;
+  }
+}
 
+__attribute__((optimize("-Ofast"))) 
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
   int byteIndex = bitPosition / 8;
   int bitIndex = bitPosition % 8;
@@ -19,6 +27,7 @@ void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPositi
   }
 }
 
+__attribute__((optimize("-Ofast"))) 
 byte reverseBits(byte data) {
   data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
   data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
@@ -26,26 +35,14 @@ byte reverseBits(byte data) {
   return data;
 }
 
+__attribute__((optimize("-Ofast"))) 
 void swap(byte &a, byte &b) {
   byte temp = a;
   a = b;
   b = temp;
 }
 
-uint16_t getSnaFileCount() {
-  uint16_t totalFiles = 0;
-  root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        totalFiles++;
-      }
-    }
-    file.close();
-  }
-  return totalFiles;
-}
-
+__attribute__((optimize("-Ofast"))) 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   // Base screen address in ZX Spectrum
   uint16_t base_address = 0x4000;
@@ -72,5 +69,41 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   return base_address + section_offset + row_within_section + x_byte_index;
 }
 
+
+//-------------------------------------------------
+// SD Card - File loading Support Section 
+//-------------------------------------------------
+
+__attribute__((optimize("-Ofast"))) 
+void openFileByIndex(uint8_t searchIndex) {
+  root.rewind();
+  uint8_t index = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        if (index == searchIndex) {
+          break;
+        }
+        index++;
+      }
+    }
+    file.close();
+  }
+}
+
+__attribute__((optimize("-Ofast"))) 
+uint16_t getSnaFileCount() {
+  uint16_t totalFiles = 0;
+  root.rewind();
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+        totalFiles++;
+      }
+    }
+    file.close();
+  }
+  return totalFiles;
+}
 
 }

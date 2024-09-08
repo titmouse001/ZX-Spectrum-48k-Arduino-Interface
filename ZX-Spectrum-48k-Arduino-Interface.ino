@@ -76,19 +76,6 @@ uint16_t totalFiles;
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
 
-//void debugFlash(int flashSpeed);
-//inline void swap(byte &a, byte &b);
-//uint8_t reverseBits(uint8_t byte);
-//void setupOled();
-//void DrawText(int xpos, int ypos, char *message) ;
-//void refreshFileList();
-//void moveUp();
-//void moveDown();
-//uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
-//void clear();
-//void HighLightFile();
-//uint8_t getAnalogButton( int but) ;
-
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
 unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
 unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
@@ -100,16 +87,12 @@ static const uint8_t _FONT_GAP = 1;
 static const uint8_t _FONT_BUFFER_SIZE = 32;
 
 byte finalOutput[_FONT_BUFFER_SIZE * _FONT_HEIGHT] = { 0 };
-//uint16_t bitPosition[_FONT_HEIGHT] = { 0 };
-
 char fileName[65];
-
 
 #define WINDOW_SIZE 24  // Number of items visible at a time
 uint16_t oldHighlightAddress= 0; 
 uint16_t currentIndex = 0;  // The currently selected index in the list
 uint16_t startIndex = 0;    // The start index of the current viewing window
-
 
 enum { BUTTON_NONE, BUTTON_DOWN, BUTTON_SELECT, BUTTON_UP };
 
@@ -156,48 +139,24 @@ void setup() {
   pinMode(Z80_D7Pin, OUTPUT);
   pinMode(Z80_HALT, INPUT);
 
-
   setupOled();  // Using a mono OLED with 128x32 pixels
-
-  //-------------
-
-  // Initialize SD card
-
-  while (1) {
-    if (!sd.begin()) {}
-
-    if (root.open("/")) {
-      totalFiles = Utils::getSnaFileCount();
-      if (totalFiles > 0) {
-        break;
-      } else {
-        DrawText(80, 100, "No files Found");
-      }
-    } else {
-      clearScreenAttributes();
-      DrawText(80, 80, "SD CARD MISSING");
-      root.close();
-      sd.end();
-      delay(2000);
-    }
-  }
 }
-
-const unsigned long maxButtonInputLoopTime = 10; // in ms
 
 void loop() {
 
   clearScreenAttributes();
+  InitializeSDcard();
   refreshFileList();
   HighLightFile();
 
   uint16_t oldIndex = -1;
+  const unsigned long maxButtonInputLoopTime = 1000 / 50;  // in ms
 
   while (1) {
-    unsigned long startTime = millis();  
+    unsigned long startTime = millis();
     byte sg = readButtons();
     if (sg == BUTTON_SELECT) {
-      openFileByIndex(currentIndex);
+      Utils::openFileByIndex(currentIndex);
       resetSpeccy();
       break;
     } else if (sg == BUTTON_DOWN || sg == BUTTON_UP) {
@@ -208,10 +167,10 @@ void loop() {
         oldIndex = currentIndex;
       }
     }
-    
+
     unsigned long timeSpent = millis() - startTime;
     if (timeSpent < maxButtonInputLoopTime) {
-      delay(maxButtonInputLoopTime - timeSpent); // mainly to stop button bounce
+      delay(maxButtonInputLoopTime - timeSpent);  // mainly to stop button bounce
     }
   }
 
@@ -257,7 +216,7 @@ void loop() {
   // The Spectrum does a 2nd halt so we can tell it's started executing the final launch code.
   waitHalt();  // 2nd halt - trigger by maskable interrupt
 
-  //delayMicroseconds(7);  // needed to get some games to work
+//  delayMicroseconds(7);  // needed to get some games to work
 
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
@@ -271,19 +230,22 @@ void loop() {
   }
 
   while (1) {
-     unsigned long startTime = millis();  
-    PORTD =  readJoystick();      // output to z80 data lines
+    unsigned long startTime = millis();
+    PORTD = readJoystick();  // output to z80 data lines
     if (getAnalogButton(analogRead(21)) == 2) {
       resetSpeccy();
       break;
     }
     unsigned long timeSpent = millis() - startTime;
     if (timeSpent < maxButtonInputLoopTime) {
-     delay(maxButtonInputLoopTime - timeSpent);
+      delay(maxButtonInputLoopTime - timeSpent);
     }
-   
   }
 }
+
+//-------------------------------------------------
+// Section: Z80 Data Transfer and Control Routines
+//-------------------------------------------------
 
 void sendBytes(byte *data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
@@ -296,7 +258,7 @@ void sendBytes(byte *data, byte size) {
 }
 
 void waitHalt() {
-  // Here we are waiting for the speccy to release the hault, it does this every 50fps.
+  // Here we are waiting for the speccy to release the halt, it does this every 50fps.
   while ((bitRead(PINB, PINB0) == HIGH)) {};
   while ((bitRead(PINB, PINB0) == LOW)) {};
 }
@@ -309,191 +271,16 @@ void waitReleaseHalt() {
   while ((bitRead(PINB, PINB0) == LOW)) {};   // (3) Wait for halt line to go HIGH again.
 }
 
-void updateFileName() {
-  if (haveOled) {
-    openFileByIndex(currentIndex);
-    uint8_t a = file.getName7(fileName, 41);
-    if (a == 0) { a = file.getSFN(fileName, 40); }
-    oled.setCursor(0, 0);
-    oled.print(F("Select:\n"));
-    oled.print(fileName);
-    oled.print("      ");
-    file.close();
-  }
+void resetSpeccy(){
+  bitClear(PORTC, DDC3);  // reset-line "LOW" to speccy
+  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch over to the lower part of the ROM.
+  delay(10);
+  bitSet(PORTC, DDC3);    // reset-line "HIGH" allow speccy to startup
 }
 
-void setupOled() {
-  if (haveOled){
-  oled.begin(&Adafruit128x32, I2C_ADDRESS);
-  delay(1);
-  // some hardware is slow to initialise, first call does not work.
-  oled.begin(&Adafruit128x32, I2C_ADDRESS);
-  // original Adafruit5x7 font with tweeks at start for VU meter
-  oled.setFont(fudged_Adafruit5x7);
-  oled.clear();
-  oled.print(F("ver"));
-  oled.println(F(VERSION));
-  }
-}
-
-void openFileByIndex(uint8_t searchIndex) {
-  root.rewind();
-  uint8_t index = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        if (index == searchIndex) {
-          break;
-        }
-        index++;
-      }
-    }
-    file.close();
-  }
-}
-
-byte readButtons() {
-
-  // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
-  byte ret = 0;
-  int but = analogRead(21);
-  uint8_t joy = readJoystick();   //"000FUDLR" bit pattern
-  
-  if (getAnalogButton(but) || (joy&B00011100) ) {
-     unsigned long currentMillis = millis();  // Get the current time
-    if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-      // Minimum delay of 50ms, decrease by 20ms each time
-      buttonDelay = max(40, buttonDelay - 20);
-      lastButtonHoldTime = currentMillis;
-    }
-
-    if ((!buttonHeld) || (currentMillis - lastButtonPress >= buttonDelay)) {
-      if (but < (100 + 22) || (joy&B00000100)) {  // 1st button
-        moveDown();
-        ret = BUTTON_UP;
-      } else if (but < (100 + 324) || (joy&B00010000) ) {  // 2nd button
-        ret = BUTTON_SELECT;
-      } else if (but < (100 + 510) || (joy&B00001000) ) {  // 3rd button
-        moveUp();
-        ret = BUTTON_DOWN;
-      }
-
-      buttonHeld = true;
-      lastButtonPress = currentMillis;
-      lastButtonHoldTime = currentMillis;
-    }
-  } else {
-    // If no button is pressed, reset the button-held status and delay
-    buttonHeld = false;
-    buttonDelay = 300;  // Reset to the initial delay
-  }
-  return ret;
-}
-
-void DrawText(int xpos, int ypos, char *message) {
-
-  buffer[0] = 'G';
-  buffer[1] = 'O';
-  memset(&finalOutput[0], 0, _FONT_BUFFER_SIZE * _FONT_HEIGHT);
-
-  uint16_t bitPosition = 0;
-  uint8_t amount=0;
-  for (uint8_t i = 0; message[i] != '\0'; i++) {
-    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
-    for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
-      uint8_t transposedRow = 0;
-      for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
-        byte value = pgm_read_byte(&ptr[col]);
-        transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
-      }
-      bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
-      Utils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
-    }
-    amount++;
-  }
-
-  //memset(&buffer[SIZE_OF_HEADER], 0, 32);
-  amount = ((amount * 6) + 7 ) / 8;
-  for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
-    uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
-    uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    
-    buffer[HEADER_START_G] = 'G';
-    buffer[HEADER_START_O] = 'O';
-    buffer[HEADER_PAYLOADSIZE] = amount;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    for (int i = 0; i < amount; i++) {  // copy gfx
-      buffer[SIZE_OF_HEADER + i] = ptr[i];
-    }
-    sendBytes(buffer, SIZE_OF_HEADER + amount);
-
-    int8_t clr = 32 - amount;
-    if (clr>0) {
-      currentAddress += amount;
-      buffer[0] = 'F';                          // Fill mode
-      buffer[1] = 'L';
-      buffer[2] = (clr >> 8) & 0xFF;         // high byte
-      buffer[3] =  clr & 0xFF;               // low byte
-      buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-      buffer[5] = currentAddress & 0xFF;        // low byte
-      buffer[6] = B00000000;  
-      sendBytes(buffer, 7 );
-    }
-
-  }
-}
-
-void clearScreenAttributes() {
-  uint16_t amount = 768;
-  uint16_t currentAddress = 0x5800;
-  buffer[0] = 'F';                          // Fill mode
-  buffer[1] = 'L';
-  buffer[2] = (amount >> 8) & 0xFF;         // high byte
-  buffer[3] =  amount & 0xFF;               // low byte
-  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-  buffer[5] = currentAddress & 0xFF;        // low byte
-  buffer[6] = B01000111;  // FBPPPIII;  
-  sendBytes(buffer, 7 );  // Send clear command for z80 to process
-}
-
-void refreshFileList() {
-  root.rewind();
-  uint8_t clr = 0;
-  uint8_t count = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-
-        if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
-          int len = file.getName7(fileName, 64);
-          if (len== 0) { file.getSFN(fileName, 20); }
-
-          if (len>42) {
-            fileName[40] = '.';
-            fileName[41] = '.';
-            fileName[42] = '\0';
-          }
-
-          DrawText(0, ((count - startIndex) * 8), fileName);
-          clr++;
-        }
-        count++;
-      }
-    }
-    file.close();
-    if (clr==WINDOW_SIZE) {
-      break;
-    }
-  }
-
-  // REST AS BLANKS
-  fileName[0] = ' ';
-  fileName[1] = '\0';
-  for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
-    DrawText(0, (i * 8), fileName);
-  }
-}
+//-------------------------------------------------
+// Section: File Selector
+//-------------------------------------------------
 
 void moveUp() {
   if (currentIndex > startIndex) {
@@ -513,6 +300,105 @@ void moveDown() {
     currentIndex = startIndex;
     refreshFileList();
   }
+}
+
+//-------------------------------------------------
+// Section: Arduino User Input Support
+//-------------------------------------------------
+
+uint8_t getAnalogButton(int but) {
+  byte buttonPressed = 0;
+  if (but < (100 + 22)) {
+    buttonPressed = BUTTON_UP;
+  } else if (but < (100 + 324)) {
+    buttonPressed = BUTTON_SELECT;
+  } else if (but < (100 + 510)) {
+    buttonPressed = BUTTON_DOWN;
+  }
+  return buttonPressed;
+}
+
+uint8_t readJoystick() {
+  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
+  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
+
+  byte data = 0;
+  // Read the data byte using shiftIn replacement with direct port manipulation
+  for (uint8_t i = 0; i < 8; i++) {  // only need first 5 bits "000FUDLR"
+    data <<= 1;
+    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
+      bitSet(data, 0);
+    }
+    // Toggle clock pin low to high to read the next bit
+    bitClear(PORTC, DDC2);  // Clock low
+    delayMicroseconds(1);   // Short delay to ensure stable clocking
+    bitSet(PORTC, DDC2);    // Clock high
+  }
+  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+
+  // TODO - CODE PATCH - REMOVE FOR NEW v0.14 PCB
+  byte bit1 = (data >> 1) & 1;
+  byte bit2 = (data >> 2) & 1;
+  if (bit1 != bit2) {
+    data ^= (1 << 1);
+    data ^= (1 << 2);
+  }
+  return data;
+}
+
+byte readButtons() {
+
+  // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
+  byte ret = 0;
+  int but = analogRead(21);
+  uint8_t joy = readJoystick();  //"000FUDLR" bit pattern
+
+  if (getAnalogButton(but) || (joy & B00011100)) {
+    unsigned long currentMillis = millis();  // Get the current time
+    if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
+      // Minimum delay of 50ms, decrease by 20ms each time
+      buttonDelay = max(40, buttonDelay - 20);
+      lastButtonHoldTime = currentMillis;
+    }
+
+    if ((!buttonHeld) || (currentMillis - lastButtonPress >= buttonDelay)) {
+      if (but < (100 + 22) || (joy & B00000100)) {  // 1st button
+        moveDown();
+        ret = BUTTON_UP;
+      } else if (but < (100 + 324) || (joy & B00010000)) {  // 2nd button
+        ret = BUTTON_SELECT;
+      } else if (but < (100 + 510) || (joy & B00001000)) {  // 3rd button
+        moveUp();
+        ret = BUTTON_DOWN;
+      }
+
+      buttonHeld = true;
+      lastButtonPress = currentMillis;
+      lastButtonHoldTime = currentMillis;
+    }
+  } else {
+    // If no button is pressed, reset the button-held status and delay
+    buttonHeld = false;
+    buttonDelay = 300;  // Reset to the initial delay
+  }
+  return ret;
+}
+
+//-------------------------------------------------
+// Section: Graphics Support for Zx Spectrum Screen
+//-------------------------------------------------
+
+void clearScreenAttributes() {
+  uint16_t amount = 768;
+  uint16_t currentAddress = 0x5800;
+  buffer[0] = 'F';                          // Fill mode
+  buffer[1] = 'L';
+  buffer[2] = (amount >> 8) & 0xFF;         // high byte
+  buffer[3] =  amount & 0xFF;               // low byte
+  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+  buffer[5] = currentAddress & 0xFF;        // low byte
+  buffer[6] = B01000111;  // FBPPPIII;  
+  sendBytes(buffer, 7 );  // Send clear command for z80 to process
 }
 
 void HighLightFile() {
@@ -540,52 +426,204 @@ void HighLightFile() {
   }
 }
 
-uint8_t getAnalogButton(int but) {
-    byte buttonPressed = 0;
-    if (but < (100 + 22)) {
-      buttonPressed = BUTTON_UP;
-    } else if (but < (100 + 324)) {
-      buttonPressed = BUTTON_SELECT;
-    } else if (but < (100 + 510)) {
-      buttonPressed = BUTTON_DOWN;
+__attribute__((optimize("-Ofast"))) 
+void refreshFileList() {
+  root.rewind();
+  uint8_t clr = 0;
+  uint8_t count = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 49179) {
+
+        if ((count >= startIndex) && (count < startIndex + WINDOW_SIZE)) {
+          int len = file.getName7(fileName, 64);
+          if (len== 0) { file.getSFN(fileName, 20); }
+
+          if (len>42) {
+            fileName[40] = '.';
+            fileName[41] = '.';
+            fileName[42] = '\0';
+          }
+
+          DrawTextClr(0, ((count - startIndex) * 8), fileName);
+          clr++;
+        }
+        count++;
+      }
     }
-    return buttonPressed;
-}
-
-void resetSpeccy(){
-  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch to low part of the ROM.
-  delay(10);
-  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
-}
-
-uint8_t readJoystick() {
-  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
-  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
-
-  byte data = 0;
-  // Read the data byte using shiftIn replacement with direct port manipulation
-  for (uint8_t i = 0; i < 8; i++) {  // only need first 5 bits "000FUDLR"
-    data <<= 1;
-    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
-      bitSet(data, 0);
+    file.close();
+    if (clr==WINDOW_SIZE) {
+      break;
     }
-    // Toggle clock pin low to high to read the next bit
-    bitClear(PORTC, DDC2);  // Clock low
-    delayMicroseconds(1);   // Short delay to ensure stable clocking
-    bitSet(PORTC, DDC2);    // Clock high
   }
-  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
 
-  // TODO - CODE PATCH - REMOVE FOR NEW v0.14 PCB
-    byte bit1 = (data >> 1) & 1;  
-    byte bit2 = (data >> 2) & 1;  
-    if (bit1 != bit2) {
-        data ^= (1 << 1);  
-        data ^= (1 << 2);  
-    }
-   return data;
+  fileName[0] = ' ';  // Empty file selector slots
+  fileName[1] = '\0';
+  for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
+    DrawTextClr(0, (i * 8), fileName);
+  }
 }
+
+//TODO:  DrawTextClr & DrawText - need to rework repeated code
+
+__attribute__((optimize("-Ofast"))) 
+void DrawTextClr(int xpos, int ypos, const char *message) {
+
+  buffer[0] = 'G';
+  buffer[1] = 'O';
+  Utils::memsetZero(&finalOutput[0], _FONT_BUFFER_SIZE * _FONT_HEIGHT);
+
+  uint16_t bitPosition = 0;
+  uint8_t amount=0;
+  for (uint8_t i = 0; message[i] != '\0'; i++) {
+    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
+    for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
+      uint8_t transposedRow = 0;
+      for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
+        byte value = pgm_read_byte(&ptr[col]);
+        transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+      }
+      bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
+      Utils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
+    }
+    amount++;
+  }
+
+  amount = ((amount * 6) + 7 ) / 8;
+  for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
+    uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+    uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
+    
+    buffer[HEADER_START_G] = 'G';
+    buffer[HEADER_START_O] = 'O';
+    buffer[HEADER_PAYLOADSIZE] = amount;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+    for (int i = 0; i < amount; i++) {  // copy gfx
+      buffer[SIZE_OF_HEADER + i] = ptr[i];
+    }
+    sendBytes(buffer, SIZE_OF_HEADER + amount);
+
+    int8_t clr = 32 - amount;
+    if (clr>0) {
+      currentAddress += amount;
+      buffer[0] = 'F';                          // Fill mode
+      buffer[1] = 'L';
+      buffer[2] = (clr >> 8) & 0xFF;         // high byte
+      buffer[3] =  clr & 0xFF;               // low byte
+      buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
+      buffer[5] = currentAddress & 0xFF;        // low byte
+      buffer[6] = B00000000;  
+      sendBytes(buffer, 7 );
+    }
+  }
+}
+
+
+__attribute__((optimize("-Ofast"))) 
+void DrawText(int xpos, int ypos, const char *message) {
+
+  buffer[0] = 'G';
+  buffer[1] = 'O';
+  Utils::memsetZero(&finalOutput[0], _FONT_BUFFER_SIZE * _FONT_HEIGHT);
+
+  uint16_t bitPosition = 0;
+  uint8_t amount=0;
+  for (uint8_t i = 0; message[i] != '\0'; i++) {
+    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
+    for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
+      uint8_t transposedRow = 0;
+      for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
+        byte value = pgm_read_byte(&ptr[col]);
+        transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
+      }
+      bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
+      Utils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
+    }
+    amount++;
+  }
+
+  amount = ((amount * 6) + 7 ) / 8;
+  for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
+    uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+    uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
+    
+    buffer[HEADER_START_G] = 'G';
+    buffer[HEADER_START_O] = 'O';
+    buffer[HEADER_PAYLOADSIZE] = amount;
+    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+    for (int i = 0; i < amount; i++) {  // copy gfx
+      buffer[SIZE_OF_HEADER + i] = ptr[i];
+    }
+    sendBytes(buffer, SIZE_OF_HEADER + amount);
+  }
+}
+
+//-------------------------------------------------
+// Section: OLED Support 
+//-------------------------------------------------
+
+void updateFileName() {
+  if (haveOled) {
+    Utils::openFileByIndex(currentIndex);
+    uint8_t a = file.getName7(fileName, 41);
+    if (a == 0) { a = file.getSFN(fileName, 40); }
+    oled.setCursor(0, 0);
+    oled.print(F("Select:\n"));
+    oled.print(fileName);
+    oled.print("      ");
+    file.close();
+  }
+}
+
+void setupOled() {
+  if (haveOled) {
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);
+    delay(1);
+    // some hardware is slow to initialise, first call does not work.
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);
+    // original Adafruit5x7 font with tweeks at start for VU meter
+    oled.setFont(fudged_Adafruit5x7);
+    oled.clear();
+    oled.print(F("ver"));
+    oled.println(F(VERSION));
+  }
+}
+
+//-------------------------------------------------
+// Section: SD Card
+//-------------------------------------------------
+
+void InitializeSDcard() {
+  
+  if (totalFiles > 0) {
+    root.close();
+    sd.end();
+  }
+
+  while (1) {
+    if (!sd.begin()) {}
+
+    if (root.open("/")) {
+      totalFiles = Utils::getSnaFileCount();
+      if (totalFiles > 0) {
+        break;
+      } else {
+        DrawText(80, 100, "NO FILES FOUND");
+      }
+    } else {
+      DrawText(80, 80, "INSERT SD CARD");
+      root.close();
+      sd.end();
+    }
+    delay(1000/50);
+  }
+}
+
+//-------------------------------------------------
+// Section: Debug Supprt
+//-------------------------------------------------
 
 void debugFlash(int flashspeed) {
   // If we get here it's faital
