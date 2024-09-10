@@ -65,38 +65,8 @@ L0000:
 
 	ld SP,WORKING_STACK
 	jp ClearScreen
-mainloop: 
-
-;******************************************************************************
-; For each incoming data transfer, the header (first 2 bytes) are 'action' indicators.
-;  # Transfer data = "GO"   (normally this is screen/program code all-in-one )
-;  # Execute code = "EX" 	(after reading and restoring z80 registers)
-;
-check_initial:   		; Main loop for checking 'GO' or 'EX' (or 'SN' in future)
-	READ_ACC_WITH_HALT
-    cp 'G'            
-    jr z, check_GO     	; If 'G', jump to check_G
-    cp 'E'            
-    jr z, check_EX     	; If 'E', jump to check_E
-    cp 'F'            
-    jr z, check_FL     	; If 'F', jump to check_F
-    jr check_initial   	; Otherwise, keep checking
-check_GO:  				; Subroutine to handle 'GO' command
-	READ_ACC_WITH_HALT
-    cp 'O'            	; Compare input with 'O'
-    jr nz, check_initial ; If not 'O', go back to initial check
-    jp command_GO     	; If 'O', jump to command_GO
-check_EX:  				; Subroutine to handle 'EX' command
-	READ_ACC_WITH_HALT
-    cp 'X'            
-    jr nz, check_initial ; If not 'X', go back to initial check
-	JP command_EX
-check_FL:  				; Subroutine to handle 'FL' command
-	READ_ACC_WITH_HALT
-    cp 'L'            
-    jr nz, check_initial 
-	JP command_FL
-
+	jp mainloop
+ 
 ;******************************************************************************
 ; MASKABLE INTERRUPT - (EI HAS TO BE CALLED BEFORE RETN - SO PLAYING IT SAFE)
 ORG $0038
@@ -110,66 +80,118 @@ L0066:
 		RETN
 ;******************************************************************************
 
+mainloop:
 
-command_FL: 
+;******************************************************************************
+; For each incoming data transfer, the header (first 2 bytes) are 'action' indicators.
+;  # Transfer data = "GO"   (normally this is screen/program code all-in-one )
+;  # Execute code = "EX" 	(after reading and restoring z80 registers)
+;
+check_initial:   		; Main loop for checking two letter command
+	READ_ACC_WITH_HALT
+
+    cp 'C'            
+    jr z, command_CP  
+	cp 'F'            
+    jr z, command_FL     
+    cp 'G'            
+    jr z, command_GO     
+    cp 'E'            
+    jr z, command_EX     
+   
+    jr check_initial 
+
+;check_GO:  				
+;	READ_ACC_WITH_HALT
+;    cp 'O'            
+;    jr nz, check_initial 
+;    jp command_GO    
+;
+;check_EX:  				
+;	READ_ACC_WITH_HALT
+;    cp 'X'            
+;    jr nz, check_initial 
+;	JP command_EX
+;
+;check_FL:  				
+;	READ_ACC_WITH_HALT
+;    cp 'L'            
+;    jr nz, check_initial 
+;	JP command_FL
+;
+;check_CP:  				
+;	READ_ACC_WITH_HALT
+;    cp 'P'            
+;    jr nz, check_initial 
+;	JP command_CP
+
+;------------------------------------------------------
+command_FL:  ; "FL - "FILL COMMAND
+;------------------------------------------------------
 	
-	ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
-
+	ld C,$1F  				 ; setup for pair read
 	READ_PAIR_WITH_HALT d,e  ; Fill amount 16bit value, little-endian
-
 	; Set HL with the 'destination' address (reading 2 bytes)
 	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
 	; NOTE: Most of the snapshot 16bit data processed later on is big-endian, 
 	;		so you will see things like "READ_PAIR_WITH_HALT l,h" (so l,h not h,l)
-
 	halt		 
 	in a,($1f)   ; Read a byte as "clear to" value
-
 	ld c,a
-
 fillLoop:
 	ld (hl),c	 ; write to memory
     inc hl		
-
     DEC DE      
     LD A, D      
     OR E         
     Jr NZ, fillLoop   
-
     jr mainloop ; done - go back and wait for the next transfer action
 
-
-command_GO:  ; FIRST STAGE - TRANSFER DATA
+;------------------------------------------------------
+command_GO:  ; "GO" COPY DATA / TRANSFER DATA (includes flashing border)
+;------------------------------------------------------
 	
-	ld C,$1F  	; Initial setup for use with the IN command, i.e. "IN <REG>,(c)" 
-
+	ld C,$1F  	; setup for pair read
 	; Transfers are typically sequential, but any destination location can be targeted.
     ; The data transfer size is limited to around 250 bytes due to the inclusion of metadata like 'GO'.
     ; (Border color changes during transfers for useful visual feedback)
-
 	halt
 	in b,(c)  ; The transfer size is guaranteed to fit within a single byte.
-
 	; Set HL with the 'destination' address (reading 2 bytes)
 	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
 	; NOTE: Most of the snapshot 16bit data processed later on is big-endian, 
 	;		so you will see things like "READ_PAIR_WITH_HALT l,h" (so l,h not h,l)
-
 readDataLoop:
 	halt		 ; As we need to halt each time around we can't use 'ini' we have to use 'in'
 	in a,($1f)   ; Read a byte from the z80 I/O port
 	ld (hl),a	 ; write to memory
     inc hl		
-
 	AND LOADING_COLOUR_MASK  
 	out ($fe), a   ; Flash border - fed from actual data while loading
-
 	djnz readDataLoop  ; read loop
-
     jp mainloop ; done - go back and wait for the next transfer action
 
-command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump point from the stack
-	
+;------------------------------------------------------
+command_CP:  ; "CP" COPY DATA / TRANSFER DATA
+;------------------------------------------------------
+	ld C,$1F  	 ; setup for pair read
+	halt
+	in b,(c)  
+	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
+CopyLoop:
+	halt		 ; As we need to halt each time around we can't use 'ini' we have to use 'in'
+	in a,($1f)   ; Read a byte from the z80 I/O port
+	ld (hl),a	 ; write to memory
+    inc hl		
+	djnz CopyLoop  ; read loop
+    jp mainloop ; done - go back and wait for the next transfer action
+
+
+;------------------------------------------------------
+command_EX:  ; "EX" EXECUTE CODE / RESTORE & LAUNCH 
+; Restore snapshot states & execute stored jump point from the stack
+;------------------------------------------------------
+
 	;-------------------------------------------------------------------------------------------
  	; Setup - put copy of ROM routine 'relocate' (final launch code) into Screen memory	
 	LD HL,relocate
@@ -186,7 +208,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	
 	;-------------------------------------------------------------------------------------------
 	; Restore HL',DE',BC',AF'
-	ld c,$1f  
+	ld c,$1f  				 ; setup for pair read
 	READ_PAIR_WITH_HALT L,H  ; store HL'
 	READ_PAIR_WITH_HALT e,d  ; store DE'
 	READ_PAIR_WITH_HALT e,d  ; Get BC' (temporarily in DE)
@@ -194,7 +216,7 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
     pop bc                   ; BC' restored
 	exx						 ; Alternates registers restored
 	; registers are free again, just AF' left to restore
-	ld c,$1f  
+	ld c,$1f  				 ; setup for pair read
 	READ_PAIR_WITH_HALT e,d  ; spare to read AF' - save flags last
 	push de					 ; store AF'
 	pop af					 ; Restore AF'
@@ -202,29 +224,35 @@ command_EX:  ; SECOND STAGE - Restore snapshot states & execute stored jump poin
 	;-------------------------------------------------------------------------------------------
 	
 	;-------------------------------------------------------------------------------------------
-	ld c,$1f  
+	ld c,$1f  				  ; setup for pair read
 	; Restore HL,DE,BC,IY,IX	
 	READ_PAIR_WITH_HALT l,h   ; restore HL
-	
 	READ_PAIR_WITH_HALT e,d;  ;  TO VOID -  read DE		  			 
 	READ_PAIR_WITH_HALT e,d;  ;  TO VOID -  read BC	  
-
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
 	READ_PAIR_WITH_HALT e,d;  ; read IX
 	push de
 	pop IX					  ; restore IX
-	;-------------------------------------------------------------------------------------------
+	;------------------------------------------------------------------------
 
-	READ_ACC_WITH_HALT		 ; read IFF
+	;------------------------------------------------------------------------
+	; read IFF
+	READ_ACC_WITH_HALT		 
 	jp RestoreIFFState
 RestoreIFFStateComplete:
+	;------------------------------------------------------------------------
 
-	; R REG ... TODO  
-	READ_ACC_WITH_HALT ; currently goes to the void
+	;------------------------------------------------------------------------
+	; R regester
+	READ_ACC_WITH_HALT ;  R REG ... TODO currently goes to the void
+	;------------------------------------------------------------------------
 
+	;------------------------------------------------------------------------
+	; SKIP AF here ... will read again later
 	READ_PAIR_WITH_HALT e,d;  ; TO VOID - using spare to restore AF
+	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
 	; Store Stack Pointer
@@ -259,7 +287,7 @@ RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore AF creatively using only register A.
+	; Restore AF (creatively using only register A)
 	READ_ACC_WITH_HALT     		; 'F' is now in A
 	ld (SCREEN_START+(TempVar-relocate)),a 
 
@@ -282,7 +310,8 @@ RestoreInterruptModeComplete:
 	EI					 ; Need to re-enable as our maskable does not.
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
-	
+; END - "command_EX:"
+
 ;-----------------------------------------------------------------------	
 ; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 7F 7F 7F"
 ; This means 12 bytes of screen memory will be destored

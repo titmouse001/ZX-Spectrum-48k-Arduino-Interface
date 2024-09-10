@@ -54,17 +54,18 @@ const byte Z80_REST = 17;
 
 // Transfer structure
 const byte HEADER_START_G = 0;      // Index for first byte of header
-const byte HEADER_START_O = 1;      // Index for second byte of header
-const byte HEADER_PAYLOADSIZE = 2;  // Index for payload as bytes
-const byte HEADER_HIGH_BYTE = 3;    // Index for high byte of address
-const byte HEADER_LOW_BYTE = 4;     // Index for low byte of address
+//const byte HEADER_START_O = 1;      // Index for second byte of header
+const byte HEADER_PAYLOADSIZE = 1;  // Index for payload as bytes
+const byte HEADER_HIGH_BYTE = 2;    // Index for high byte of address
+const byte HEADER_LOW_BYTE = 3;     // Index for low byte of address
 const byte SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
-const byte PAYLOAD_BUFFER_SIZE = 250;
+const byte PAYLOAD_BUFFER_SIZE = 251;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-static byte buffer[BUFFER_SIZE] = { 'G', 'O' };  // Load program "GO"
+static byte packetBuffer[BUFFER_SIZE] ; //= { 'G', 'O' };  // Load program "GO"
 
-static byte head27_2[27 + 2] = { 'E', 'X' };  // Execute command "EX"
+//static byte head27_2[27 + 2]; // = { 'E', 'X' };  // Execute command "EX"
+static byte head27_2[27 + 1] = { 'E' };  // Execute command "EX"
 
 SdFat32 sd;
 FatFile root;
@@ -137,6 +138,47 @@ void setup() {
   pinMode(Z80_HALT, INPUT);
 
   haveOled = setupOled();  // Using a mono OLED with 128x32 pixels
+
+  int but = getAnalogButton(analogRead(21));
+  if (but == BUTTON_SELECT) {
+    bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+  }
+
+  if (but == BUTTON_SELECT) {
+    bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+  }
+
+  if (but == BUTTON_DOWN) {
+  InitializeSDcard();
+
+  // TEST SECTION ... loads .SCR files as a slide show
+  while(1) {
+  root.rewind();
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (file.fileSize() == 6912) {
+        uint16_t currentAddress = 0x4000;  // screen start
+        while (file.available()) {
+          byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+          packetBuffer[0] = 'C';
+       //   packetBuffer[1] = 'P';
+          packetBuffer[HEADER_PAYLOADSIZE] = bytesRead;
+          packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+          packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+          sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
+          currentAddress +=bytesRead;
+        }
+            delay(2000);
+      }
+    }
+    file.close();
+
+  }  
+  }
+  }
+
+
+
 }
 
 void loop() {
@@ -181,20 +223,21 @@ void loop() {
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
-    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
+    //byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
+    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 1], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
-  buffer[0] = 'G';
-  buffer[1] = 'O';
+  packetBuffer[0] = 'G';
+//  packetBuffer[1] = 'O';
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
   while (file.available()) {
-    byte bytesRead = (byte)file.read(&buffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-    buffer[HEADER_PAYLOADSIZE] = bytesRead;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-    sendBytes(buffer, SIZE_OF_HEADER + bytesRead);
-    currentAddress += buffer[HEADER_PAYLOADSIZE];
+    byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+    packetBuffer[HEADER_PAYLOADSIZE] = bytesRead;
+    packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+    packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+    sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
+    currentAddress += packetBuffer[HEADER_PAYLOADSIZE];
   }
 
   file.close();
@@ -203,9 +246,9 @@ void loop() {
   sendBytes(head27_2, sizeof(head27_2));  // Send entire header
 
   // Resend DE,BC & AF in that order - Z80 ignored them in the previous send
-  sendBytes(&head27_2[2 + 11], 2);  // Send DE
-  sendBytes(&head27_2[2 + 13], 2);  // Send BC
-  sendBytes(&head27_2[2 + 21], 2);  // Send AF
+  sendBytes(&head27_2[1 + 11], 2);  // Send DE
+  sendBytes(&head27_2[1 + 13], 2);  // Send BC
+  sendBytes(&head27_2[1 + 21], 2);  // Send AF
 
   // Wait for the Z80 to halt. The Spectrum's maskable interrupt will release it during the 50FPS screen refresh.
   waitHalt();  // 1st halt - trigger by maskable interrupt
@@ -214,7 +257,9 @@ void loop() {
   // The Spectrum does a 2nd halt so we can tell it's started executing the final launch code.
   waitHalt();  // 2nd halt - trigger by maskable interrupt
 
-//  delayMicroseconds(7);  // needed to get some games to work
+  // delayMicroseconds(7) seems to fix same odd timing issues, though the exact reason is unclear.
+  // In "FireFly" two minor clicks at the start of the music happen without this delay.
+  delayMicroseconds(7);
 
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
@@ -245,6 +290,7 @@ void loop() {
 // Section: Z80 Data Transfer and Control Routines
 //-------------------------------------------------
 
+//__attribute__((optimize("-Ofast"))) 
 void sendBytes(byte *data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
@@ -389,14 +435,14 @@ byte readButtons() {
 void clearScreenAttributes() {
   uint16_t amount = 768;
   uint16_t currentAddress = 0x5800;
-  buffer[0] = 'F';                          // Fill mode
-  buffer[1] = 'L';
-  buffer[2] = (amount >> 8) & 0xFF;         // high byte
-  buffer[3] =  amount & 0xFF;               // low byte
-  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-  buffer[5] = currentAddress & 0xFF;        // low byte
-  buffer[6] = B01000111;  // FBPPPIII;  
-  sendBytes(buffer, 7 );  // Send clear command for z80 to process
+  packetBuffer[0] = 'F';                          // Fill mode
+//  packetBuffer[1] = 'L';
+  packetBuffer[1] = (amount >> 8) & 0xFF;         // high byte
+  packetBuffer[2] =  amount & 0xFF;               // low byte
+  packetBuffer[3] = (currentAddress >> 8) & 0xFF; // high byte
+  packetBuffer[4] = currentAddress & 0xFF;        // low byte
+  packetBuffer[5] = B01000111;  // FBPPPIII;  
+  sendBytes(packetBuffer, 6 );  // Send clear command for z80 to process
 }
 
 void HighLightFile() {
@@ -405,21 +451,21 @@ void HighLightFile() {
   // Draw selector bar - blue with white text
   uint16_t amount = 32;
   uint16_t currentAddress = 0x5800 + ((currentIndex - startIndex) * 32);
-  buffer[0] = 'F';                          // Fill mode
-  buffer[1] = 'L';
-  buffer[2] = (amount >> 8) & 0xFF;         // high byte
-  buffer[3] =  amount & 0xFF;               // low byte
-  buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-  buffer[5] = currentAddress & 0xFF;        // low byte
-  buffer[6] = B00101000;  // FBPPPIII; background colour
-  sendBytes(buffer, 7 );
+  packetBuffer[0] = 'F';                          // Fill mode
+//  packetBuffer[1] = 'L';
+  packetBuffer[1] = (amount >> 8) & 0xFF;         // high byte
+  packetBuffer[2] =  amount & 0xFF;               // low byte
+  packetBuffer[3] = (currentAddress >> 8) & 0xFF; // high byte
+  packetBuffer[4] = currentAddress & 0xFF;        // low byte
+  packetBuffer[5] = B00101000;  // FBPPPIII; background colour
+  sendBytes(packetBuffer, 6 );
 
   // clear away old selector bar
   if (oldHighlightAddress != currentAddress) {
-    buffer[4] = (oldHighlightAddress >> 8) & 0xFF;
-    buffer[5] = oldHighlightAddress & 0xFF;
-    buffer[6] = B01000111;  // FBPPPIII
-    sendBytes(buffer, 7);
+    packetBuffer[3] = (oldHighlightAddress >> 8) & 0xFF;
+    packetBuffer[4] = oldHighlightAddress & 0xFF;
+    packetBuffer[5] = B01000111;  // FBPPPIII
+    sendBytes(packetBuffer, 6);
     oldHighlightAddress = currentAddress;
   }
 }
@@ -443,7 +489,7 @@ void refreshFileList() {
             fileName[42] = '\0';
           }
 
-          DrawTextClr(0, ((count - startIndex) * 8), fileName);
+          DrawSelectorText(0, ((count - startIndex) * 8), fileName);
           clr++;
         }
         count++;
@@ -458,21 +504,17 @@ void refreshFileList() {
   fileName[0] = ' ';  // Empty file selector slots
   fileName[1] = '\0';
   for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
-    DrawTextClr(0, (i * 8), fileName);
+    DrawSelectorText(0, (i * 8), fileName);
   }
 }
 
-//TODO:  DrawTextClr & DrawText - need to rework repeated code
 
-__attribute__((optimize("-Ofast"))) 
-void DrawTextClr(int xpos, int ypos, const char *message) {
+__attribute__((optimize("-Ofast")))
+uint8_t prepareTextGraphics(const char *message) {
 
-  buffer[0] = 'G';
-  buffer[1] = 'O';
   Utils::memsetZero(&finalOutput[0], _FONT_BUFFER_SIZE * _FONT_HEIGHT);
-
   uint16_t bitPosition = 0;
-  uint8_t amount=0;
+  uint8_t charCount = 0;
   for (uint8_t i = 0; message[i] != '\0'; i++) {
     const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
     for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
@@ -484,77 +526,69 @@ void DrawTextClr(int xpos, int ypos, const char *message) {
       bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
       Utils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
     }
-    amount++;
+    charCount++;
   }
+  return charCount;
+}
 
-  amount = ((amount * 6) + 7 ) / 8;
+__attribute__((optimize("-Ofast"))) 
+void DrawSelectorText(int xpos, int ypos, const char *message) {
+
+  uint8_t charCount = prepareTextGraphics(message);
+  uint8_t byteCount = ((charCount * 6) + 7) / 8;      // to byte count with byte alignment
+  int8_t clr = 32 - byteCount;    // bytes to clear screen after the text
+
+  // Setup fill mode command for clearing space after text.
+  // The packetBuffer[64] offset is used to share with the text buffer
+  packetBuffer[64+0] = 'F';  // Fill mode
+  //packetBuffer[64+1] = 'L';
+  packetBuffer[64+1] = (clr >> 8) & 0xFF;             // high byte
+  packetBuffer[64+2] = clr & 0xFF;                    // low byte
+  packetBuffer[64+5] = B00000000; // Fill pattern
+
+  // Packet for sending text data
+  packetBuffer[HEADER_START_G] = 'C';  // copy data
+//  packetBuffer[HEADER_START_O] = 'P';
+  packetBuffer[HEADER_PAYLOADSIZE] = byteCount;
+
   for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
-    uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
+    uint8_t *rowBufferPtr = &finalOutput[y * _FONT_BUFFER_SIZE];
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    
-    buffer[HEADER_START_G] = 'G';
-    buffer[HEADER_START_O] = 'O';
-    buffer[HEADER_PAYLOADSIZE] = amount;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    for (int i = 0; i < amount; i++) {  // copy gfx
-      buffer[SIZE_OF_HEADER + i] = ptr[i];
-    }
-    sendBytes(buffer, SIZE_OF_HEADER + amount);
 
-    int8_t clr = 32 - amount;
-    if (clr>0) {
-      currentAddress += amount;
-      buffer[0] = 'F';                          // Fill mode
-      buffer[1] = 'L';
-      buffer[2] = (clr >> 8) & 0xFF;         // high byte
-      buffer[3] =  clr & 0xFF;               // low byte
-      buffer[4] = (currentAddress >> 8) & 0xFF; // high byte
-      buffer[5] = currentAddress & 0xFF;        // low byte
-      buffer[6] = B00000000;  
-      sendBytes(buffer, 7 );
+    packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+    packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+    // Copy the text graphic data into the packet buffer
+    for (int i = 0; i < byteCount; i++) {
+      packetBuffer[SIZE_OF_HEADER + i] = rowBufferPtr[i];
+    }
+    sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
+
+    // Clear space after the text
+    if (clr > 0) {
+      currentAddress += byteCount;
+      packetBuffer[64+3] = (currentAddress >> 8) & 0xFF;  // high byte
+      packetBuffer[64+4] = currentAddress & 0xFF;         // low byte
+      sendBytes(&packetBuffer[64], 6);     // Send the fill command
     }
   }
 }
 
-
-__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Os")))
 void DrawText(int xpos, int ypos, const char *message) {
-
-  buffer[0] = 'G';
-  buffer[1] = 'O';
-  Utils::memsetZero(&finalOutput[0], _FONT_BUFFER_SIZE * _FONT_HEIGHT);
-
-  uint16_t bitPosition = 0;
-  uint8_t amount=0;
-  for (uint8_t i = 0; message[i] != '\0'; i++) {
-    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * 5) + 0 + 6];
-    for (uint8_t row = 0; row < _FONT_HEIGHT; row++) {
-      uint8_t transposedRow = 0;
-      for (uint8_t col = 0; col < _FONT_WIDTH; col++) {
-        byte value = pgm_read_byte(&ptr[col]);
-        transposedRow |= ((value >> row) & 0x01) << (_FONT_WIDTH - 1 - col);
-      }
-      bitPosition = (_FONT_BUFFER_SIZE * row) * 8 + (i * (_FONT_WIDTH + _FONT_GAP));
-      Utils::joinBits(finalOutput, transposedRow, _FONT_WIDTH + _FONT_GAP, bitPosition);
-    }
-    amount++;
-  }
-
-  amount = ((amount * 6) + 7 ) / 8;
+  uint8_t byteCount = prepareTextGraphics(message);
+  byteCount = ((byteCount * (_FONT_WIDTH + _FONT_GAP)) + 7) / 8;  // byte alignment
+  packetBuffer[HEADER_START_G] = 'C';
+//  packetBuffer[HEADER_START_O] = 'P';
+  packetBuffer[HEADER_PAYLOADSIZE] = byteCount;
   for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
     uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
-    uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    
-    buffer[HEADER_START_G] = 'G';
-    buffer[HEADER_START_O] = 'O';
-    buffer[HEADER_PAYLOADSIZE] = amount;
-    buffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
-    buffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    for (int i = 0; i < amount; i++) {  // copy gfx
-      buffer[SIZE_OF_HEADER + i] = ptr[i];
+    uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y); 
+    packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
+    packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
+    for (int i = 0; i < byteCount; i++) {  // copy gfx
+      packetBuffer[SIZE_OF_HEADER + i] = ptr[i];
     }
-    sendBytes(buffer, SIZE_OF_HEADER + amount);
+    sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
   }
 }
 
