@@ -149,36 +149,32 @@ void setup() {
   }
 
   if (but == BUTTON_DOWN) {
-  InitializeSDcard();
+    InitializeSDcard();
 
-  // TEST SECTION ... loads .SCR files as a slide show
-  while(1) {
-  root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 6912) {
-        uint16_t currentAddress = 0x4000;  // screen start
-        while (file.available()) {
-          byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-          packetBuffer[0] = 'C';
-       //   packetBuffer[1] = 'P';
-          packetBuffer[HEADER_PAYLOADSIZE] = bytesRead;
-          packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
-          packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
-          sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
-          currentAddress +=bytesRead;
-        }
+    // TEST SECTION ... loads .SCR files as a slide show
+    while (1) {
+      root.rewind();
+      while (file.openNext(&root, O_RDONLY)) {
+        if (file.isFile()) {
+          if (file.fileSize() == 6912) {
+            uint16_t currentAddress = 0x4000;  // screen start
+            while (file.available()) {
+              byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+              packetBuffer[0] = 'C';
+              //   packetBuffer[1] = 'P';
+              packetBuffer[HEADER_PAYLOADSIZE] = bytesRead;
+              packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
+              packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
+              sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
+              currentAddress += bytesRead;
+            }
             delay(2000);
+          }
+        }
+        file.close();
       }
     }
-    file.close();
-
-  }  
   }
-  }
-
-
-
 }
 
 void loop() {
@@ -250,12 +246,14 @@ void loop() {
   sendBytes(&head27_2[1 + 13], 2);  // Send BC
   sendBytes(&head27_2[1 + 21], 2);  // Send AF
 
-  // Wait for the Z80 to halt. The Spectrum's maskable interrupt will release it during the 50FPS screen refresh.
-  waitHalt();  // 1st halt - trigger by maskable interrupt
+  // Wait for the Z80 processor to halt.
+  // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) 
+  // will release the CPU from halt mode during the vertical blanking period.
+  waitHalt();  // First halt - triggered by the 50Hz maskable interrupt
 
-  // At this point the Spectrum is resorting running code in screen memory to safely swap ROM banks.
-  // The Spectrum does a 2nd halt so we can tell it's started executing the final launch code.
-  waitHalt();  // 2nd halt - trigger by maskable interrupt
+  // At this point the Spectrum is running code in screen memory to safely swap ROM banks.
+  // The Spectrum runs a 2nd halt so we can tell it's started executing the final launch code.
+  waitHalt();  // 2nd halt - triggered by the 50FPS maskable interrupt
 
   // delayMicroseconds(7) seems to fix same odd timing issues, though the exact reason is unclear.
   // In "FireFly" two minor clicks at the start of the music happen without this delay.

@@ -255,7 +255,7 @@ RestoreIFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Store Stack Pointer
+	; Restore Program's Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
 	ld (SCREEN_START+(spare-relocate)),de 	
 	ld SP,(SCREEN_START+(spare-relocate))
@@ -278,6 +278,8 @@ RestoreInterruptModeComplete:
 	out ($fe),a			 ; set border
 	;------------------------------------------------------------------------
 
+	; Arduino will now resend DE,BC & AF we IGNORED earlier.
+
 	;------------------------------------------------------------------------
 	; Restore DE & BC
     READ_PAIR_WITH_HALT e, d   ; Restore DE directly
@@ -287,24 +289,41 @@ RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore AF (creatively using only register A)
+
+	; Spare is available - Clear 2nd spare to reduce screen impact.
+	ld a,0
+	ld (SCREEN_START+((spare+1)-relocate)),a
+
+	; Restore AF - but we can ONLY use register A, hence the odd looking code!
 	READ_ACC_WITH_HALT     		; 'F' is now in A
-	ld (SCREEN_START+(TempVar-relocate)),a 
+	ld (SCREEN_START+(spare-relocate)),a 
 
 	READ_ACC_WITH_HALT     		; 'A' is now in A (will cause PUSH/POP)
 	ld (WORKING_STACK-1),a    	; Store A 
 
-	ld a,(SCREEN_START+(TempVar-relocate))
+	ld a,(SCREEN_START+(spare-relocate))
 	ld (WORKING_STACK-2),a     	; Store F 
 
+	ld a,0 	; minimise leftover junk on screen 
+	ld (SCREEN_START+(spare-relocate)),a
+
+	; NOTE: 'READ_ACC_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
 	pop af                 		; restore AF
+	; need re-aim stack we just borrowed
 	dec sp
-	dec sp						; need re-aim stack we just borrowed
-	; NOTE: 'READ_PAIR_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
+	dec sp						
+	; Note: We need to continue using the stack because the 'HALT' instruction relies on it.
+	; Fortunately, the program’s actual stack has exactly 2 bytes of spare space.
+	; This conveniently holds the snapshot's return address, which we are now using 
+	; as a temporary 1-level deep stack, since we have already saved it in the 
+	; "JumpInstruction: jp 0000h " self-modifying code.
+
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Arduio just waits for the halt line - masable used this time
+	; Arduio just waits for the halt line - masable used this time.
+	; Note: During HALT, the interrupt service routine will use the stack.
+    ;!!! At this point, we are using the real restored program's stack space !!!
 	EI
 	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
 	EI					 ; Need to re-enable as our maskable does not.
@@ -313,34 +332,33 @@ RestoreInterruptModeComplete:
 ; END - "command_EX:"
 
 ;-----------------------------------------------------------------------	
-; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 7F 7F 7F"
-; This means 12 bytes of screen memory will be destored
+; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 FF FF"
+; This means 11 bytes of screen memory will be destored
 
-; This gets placed in screen memory (called via JP SCREEN_START)
+; This gets placed in screen memory (called via "JP SCREEN_START")
 ;-----------------------------------------------------------------------	
 ; FINAL STEP - Start-up the restored program 
 relocate:
-  	HALT  ; Here we just wait for a maskable interrupt.
-		  ; Arduino switches to 'Upper ROM' upon detecting this halt.
-          ; Note: During HALT, the interrupt service routine will use the stack.
-          ; At this point, we are using the real restored program's stack space.
-IM_LABLE:
-	; "IM_LABLE" here self-modifying code is used here to dynamically adjust the 
-	; interrupt mode and jump location based on runtime data.
-	IM 0				; Self-modifying code - 'IM <n>'
-NOP_LABLE:
-	NOP 				; Self-modifying code - To 'EI' if flagged from snapshot
-	
-	inc sp  ; Snapshot file provides RETN/jump location here, but we have used/destroyed this location
-	inc sp  ; as a temporary 1-deep stack. We previously saved its value and stored it just below.
+  	HALT    ; Here we just wait for a maskable interrupt.
+		    ; Arduino switches to 'Upper ROM' upon detecting this halt.
+         
+IM_LABLE: 
+	IM 0    ; Interrupt Mode: Self-modifying code - 'IM <n>'
+NOP_LABLE:  
+	NOP    	; jump location: Self-modifying code - 'EI' or stays as 'NOP'
+
+	inc sp  ; Snapshot file provides RETN/jump location here, but we have already
+	inc sp  ; saved it's value and stored it just below.
 
 JumpInstruction: 	; Self-modifying code - JP location will be modified 	
     jp 0000h        ; !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
+
 spare:				; Used to keep real stacks starting pointer
-	db $7f,$7f		; Double perpose, see top & bottom comments (both labels reflect usage intent)
+	db $FF,$FF		; Double purpose, see top & bottom comments
 TempStack:			; Used at startup until real stack is restored
-TempVar:
-	db $7f
+
+;;;;;;;;;;;TempVar:
+;;;;;;;;;;;	db $7f			; used to help resotre stack
 relocateEnd:
 ;-----------------------------------------------------------------------	
 

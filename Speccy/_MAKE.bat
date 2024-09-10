@@ -1,10 +1,8 @@
-
-
-
 REM del /Q *.tap 
 del /Q .\output\*.bin 
-pasmo-0.5.4.beta2\pasmo --bin SnaLauncher.asm .\output\SnaLauncher.bin
+if not exist .\output mkdir .\output
 
+pasmo-0.5.4.beta2\pasmo --bin SnaLauncher.asm .\output\SnaLauncher.bin
 
 @echo off
 REM Check if the .bin file was created
