@@ -253,9 +253,13 @@ void loop() {
 
   // At this point the Spectrum is running code in screen memory to safely swap ROM banks.
   // The Spectrum runs a 2nd halt so we can tell it's started executing the final launch code.
-  waitHalt();  // 2nd halt - triggered by the 50FPS maskable interrupt
+  waitRelease_NMI();  // 2nd halt - Arduini will release signaling the NMI line
 
-  // delayMicroseconds(7) seems to fix same odd timing issues, though the exact reason is unclear.
+  //Push PC onto Stack: This takes 10 T-states.
+  //Execute Interrupt Routine with RETN Instruction: 14 T-states.
+  //(24 T-states / 3,500,000Hz) * 1000 = 0.0068571 milliseconds, 7 microseconds
+  //(T-state has a duration of 0.285714 ms, 286 ns)
+
   // In "FireFly" two minor clicks at the start of the music happen without this delay.
   delayMicroseconds(7);
 
@@ -288,7 +292,7 @@ void loop() {
 // Section: Z80 Data Transfer and Control Routines
 //-------------------------------------------------
 
-//__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Ofast"))) 
 void sendBytes(byte *data, byte size) {
   for (byte bufferIndex = 0; bufferIndex < size; bufferIndex++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
@@ -305,7 +309,7 @@ void waitHalt() {
   while ((bitRead(PINB, PINB0) == LOW)) {};
 }
 
-void waitReleaseHalt() {
+void waitRelease_NMI() {
   // Here we MUST release the z80 for it's HALT state.
   while ((bitRead(PINB, PINB0) == HIGH)) {};  // (1) Wait for Halt line to go LOW.
   bitClear(PORTC, DDC0);                      // (2) A0 (pin-8) signals the Z80 /NMI line,

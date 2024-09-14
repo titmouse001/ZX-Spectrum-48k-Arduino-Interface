@@ -90,52 +90,31 @@ mainloop:
 check_initial:   		; Main loop for checking two letter command
 	READ_ACC_WITH_HALT
 
-    cp 'C'            
-    jr z, command_CP  
+	 ; These compares are in ordered in frequency of use
+    cp 'C'           
+    jr z, command_CP ; Transfer/copy (things like drawing Text, displying .scr files)
 	cp 'F'            
-    jr z, command_FL     
+    jr z, command_FL ; Fill (clearing screen areas, selector bar)   
     cp 'G'            
-    jr z, command_GO     
+    jr z, command_GO ; Transfer/copy with flashing boarder (loading .sna files)
     cp 'E'            
-    jr z, command_EX     
+    jr z, command_EX ; execute program (includes restoring 27 byte header)
    
     jr check_initial 
 
-;check_GO:  				
-;	READ_ACC_WITH_HALT
-;    cp 'O'            
-;    jr nz, check_initial 
-;    jp command_GO    
-;
-;check_EX:  				
-;	READ_ACC_WITH_HALT
-;    cp 'X'            
-;    jr nz, check_initial 
-;	JP command_EX
-;
-;check_FL:  				
-;	READ_ACC_WITH_HALT
-;    cp 'L'            
-;    jr nz, check_initial 
-;	JP command_FL
-;
-;check_CP:  				
-;	READ_ACC_WITH_HALT
-;    cp 'P'            
-;    jr nz, check_initial 
-;	JP command_CP
-
 ;------------------------------------------------------
-command_FL:  ; "FL - "FILL COMMAND
+command_FL:  ; "F" - FILL COMMAND
 ;------------------------------------------------------
 	
 	ld C,$1F  				 ; setup for pair read
 	READ_PAIR_WITH_HALT d,e  ; Fill amount 16bit value, little-endian
+
 	; Set HL with the 'destination' address (reading 2 bytes)
 	READ_PAIR_WITH_HALT h,l  ; Arduino has formatted this address as little-endian, HOWEVER...
 	; NOTE: Most of the snapshot 16bit data processed later on is big-endian, 
 	;		so you will see things like "READ_PAIR_WITH_HALT l,h" (so l,h not h,l)
-	halt		 
+
+	halt		 ; Notifies Arduino to refresh data/send a NMI to continue
 	in a,($1f)   ; Read a byte as "clear to" value
 	ld c,a
 fillLoop:
@@ -148,7 +127,7 @@ fillLoop:
     jr mainloop ; done - go back and wait for the next transfer action
 
 ;------------------------------------------------------
-command_GO:  ; "GO" COPY DATA / TRANSFER DATA (includes flashing border)
+command_GO:  ; "G" COPY DATA / TRANSFER DATA (includes flashing border)
 ;------------------------------------------------------
 	
 	ld C,$1F  	; setup for pair read
@@ -172,7 +151,7 @@ readDataLoop:
     jp mainloop ; done - go back and wait for the next transfer action
 
 ;------------------------------------------------------
-command_CP:  ; "CP" COPY DATA / TRANSFER DATA
+command_CP:  ; "C" COPY DATA / TRANSFER DATA
 ;------------------------------------------------------
 	ld C,$1F  	 ; setup for pair read
 	halt
@@ -188,7 +167,7 @@ CopyLoop:
 
 
 ;------------------------------------------------------
-command_EX:  ; "EX" EXECUTE CODE / RESTORE & LAUNCH 
+command_EX:  ; "E" EXECUTE CODE / RESTORE & LAUNCH 
 ; Restore snapshot states & execute stored jump point from the stack
 ;------------------------------------------------------
 
@@ -288,12 +267,13 @@ RestoreInterruptModeComplete:
     pop bc                     ; BC restored
 	;------------------------------------------------------------------------
 
-	;------------------------------------------------------------------------
-
-	; Spare is available - Clear 2nd spare to reduce screen impact.
+	;-----------------------------------------
+	; Spare is now available - Clear 2nd spare to reduce screen impact.
 	ld a,0
 	ld (SCREEN_START+((spare+1)-relocate)),a
+	;-----------------------------------------
 
+	;------------------------------------------------------------------------
 	; Restore AF - but we can ONLY use register A, hence the odd looking code!
 	READ_ACC_WITH_HALT     		; 'F' is now in A
 	ld (SCREEN_START+(spare-relocate)),a 
@@ -304,8 +284,10 @@ RestoreInterruptModeComplete:
 	ld a,(SCREEN_START+(spare-relocate))
 	ld (WORKING_STACK-2),a     	; Store F 
 
+	;-----------------------------------------
 	ld a,0 	; minimise leftover junk on screen 
 	ld (SCREEN_START+(spare-relocate)),a
+	;-----------------------------------------
 
 	; NOTE: 'READ_ACC_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
 	pop af                 		; restore AF
@@ -324,32 +306,45 @@ RestoreInterruptModeComplete:
 	; Arduio just waits for the halt line - masable used this time.
 	; Note: During HALT, the interrupt service routine will use the stack.
     ;!!! At this point, we are using the real restored program's stack space !!!
+	IM 1
 	EI
+
+	; The idea behind using HALT here is to give a 20ns gap, we really don't
+	; want the speccy firing it's maskalbe interrupt while we are restoring the 
+	; final step.
 	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
-	EI					 ; Need to re-enable as our maskable does not.
+
+;;;;;;;;;;;;;;;;;;	EI					 ; Need to re-enable as our maskable does not.
+
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
 ; END - "command_EX:"
 
 ;-----------------------------------------------------------------------	
 ; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 FF FF"
-; This means 11 bytes of screen memory will be destored
+; This means 11 bytes of screen memory will be corrupted.
 
 ; This gets placed in screen memory (called via "JP SCREEN_START")
 ;-----------------------------------------------------------------------	
 ; FINAL STEP - Start-up the restored program 
 relocate:
-  	HALT    ; Here we just wait for a maskable interrupt.
-		    ; Arduino switches to 'Upper ROM' upon detecting this halt.
-         
-IM_LABLE: 
-	IM 0    ; Interrupt Mode: Self-modifying code - 'IM <n>'
+
+ 	HALT    ; 1/ Arduino detects this HALT and signals the 'NMI' line to resume z80.
+			; 2/ Arduino will wait 10+14 t-states (as NMI will cause a 'PUSH' & 'RETN')
+		    ; 3/ Arduino switches from loader rom to original rom kept in the 2nd half.
+
+      		; At this point, the original ROM should be active again!
+            ; Technically, it can be delayed a bit, but it cannot be too early.
+IM_LABLE: 	
+	IM 0    ; Interrupt Mode: self-modifying code - 'IM <n>'
 NOP_LABLE:  
-	NOP    	; jump location: Self-modifying code - 'EI' or stays as 'NOP'
+	NOP    	; Placeholder for self-modifying code - 'EI' or stays as 'NOP'
 
-	inc sp  ; Snapshot file provides RETN/jump location here, but we have already
-	inc sp  ; saved it's value and stored it just below.
+    inc sp  ; Restore the stack to its original state, we used the 'RETN'
+	inc sp  ; 			   location was used as a temporary 1-deep stack.
 
+	; note: The loaded Snapshot file provides RETN/jump, but we have already
+	; saved it's value and stored it just below.
 JumpInstruction: 	; Self-modifying code - JP location will be modified 	
     jp 0000h        ; !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
 
@@ -357,8 +352,6 @@ spare:				; Used to keep real stacks starting pointer
 	db $FF,$FF		; Double purpose, see top & bottom comments
 TempStack:			; Used at startup until real stack is restored
 
-;;;;;;;;;;;TempVar:
-;;;;;;;;;;;	db $7f			; used to help resotre stack
 relocateEnd:
 ;-----------------------------------------------------------------------	
 
@@ -430,14 +423,14 @@ DS  16384 - last
 
 ;******************************************************
 ; todo - future extra support for 2-byte "header"
-; 1/ renaming 'GO' to 'GD' (Get Data).
-; 2/ Add SCR loading/viewing "SC"
+; 1/ Shorten commands i.e. 'GO' to 'G' [DONE] 
+; 2/ Add SCR loading/viewing "SC" [DONE]
 ; 3/ Add PSG Files - AY Player  "PS" 
 ; 4/ Add GIF Files - Gif Viewer/Player "GI"
-; 5/ TO VOID - reorder incoming snapshot header
+; 5/ TO VOID - reorder incoming snapshot header  
 ; 6/ Options to change loading boarder (off, colour choice)
 ; 7/ Options to slow down loading, mimic tapes
-; 8/ load binary TAP files "TP"
+; 8/ load binary TAP files (add command "T")
 ; 9/ load TZX files
 ; 10/ Load Z80 Files
 ; 11/ Load PNG file
