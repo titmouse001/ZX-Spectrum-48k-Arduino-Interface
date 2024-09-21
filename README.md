@@ -8,6 +8,11 @@ This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost h
 <div>
 
 ## PCB Created With EasyEDA
+<div style="float:left;margin:0 10px 10px 0" markdown="1">
+<img align="right"  src="/Documents/Version0.14/Back3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Back" width="18%" >
+<img align="right"  src="/Documents/Version0.14/ZX-Spectrum-Interface_2024-09-05.png" alt="Photo view" width="20%" >
+<img align="right"  src="/Documents/Version0.14/Font3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Front" width="25%">
+<div>
 The ZX Spectrum screen will display a list of 24 games per page, which can be scrolled through using the joystick or the buttons on the unit. The interface can load a full game in around one half seconds.  The Unit has file selector buttons with forward, backward, and play. 
 Pressing the play button in-game will return you to the game selection screen.  
 Currently games must be in .sna format on the root of a FAT32 SD card.
@@ -16,11 +21,7 @@ Currently games must be in .sna format on the root of a FAT32 SD card.
 <img src="/Documents/Version0.14/setupview1_Version0_14.jpg" width="32%" height="32%">
 <img src="/Documents/Version0.14/UnitView1_Version0_14.jpg" width="37%" height="37%">
 -->
-<div style="float:left;margin:0 10px 10px 0" markdown="1">
-<img src="/Documents/Version0.14/Font3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Front" width="34%" height="34%">
-<img src="/Documents/Version0.14/Back3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Bavk" width="25%" height="25%">
-<img src="/Documents/Version0.14/ZX-Spectrum-Interface_2024-09-05.png" alt="Photo view" width="27%" height="27%">
-<div>
+
   
 ## Hardware Design (Ver 0.14)
 <img align="right" src="Documents/Schematic/Schematic_ZX-Spectrum-Interface-v0.14.png" alt="Circuit Diagram" width="50%" height="50%">
