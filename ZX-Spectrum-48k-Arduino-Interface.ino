@@ -24,7 +24,6 @@
 #include "SSD1306AsciiAvrI2c.h"
 #include "fudgefont.h"  // Based on the Adafruit5x7 font, with '!' to '(' changed to work as a VU BAR (8 chars)
 #include "utils.h"
-
 #include <Wire.h> 
 
 #define VERSION ("0.14")
@@ -62,10 +61,8 @@ const byte SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
 const byte PAYLOAD_BUFFER_SIZE = 251;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-static byte packetBuffer[BUFFER_SIZE] ; //= { 'G', 'O' };  // Load program "GO"
-
-//static byte head27_2[27 + 2]; // = { 'E', 'X' };  // Execute command "EX"
-static byte head27_2[27 + 1] = { 'E' };  // Execute command "EX"
+static byte packetBuffer[BUFFER_SIZE] ;  // Load program "G"
+static byte head27_2[27 + 1] = { 'E' };  // Execute command "E"
 
 SdFat32 sd;
 FatFile root;
@@ -161,7 +158,6 @@ void setup() {
             while (file.available()) {
               byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
               packetBuffer[0] = 'C';
-              //   packetBuffer[1] = 'P';
               packetBuffer[HEADER_PAYLOADSIZE] = bytesRead;
               packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;  // high byte
               packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;          // low byte
@@ -219,13 +215,11 @@ void loop() {
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
-    //byte bytesReadHeader = (byte)file.read(&head27_2[0 + 2], 27);
     byte bytesReadHeader = (byte)file.read(&head27_2[0 + 1], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
   packetBuffer[0] = 'G';
-//  packetBuffer[1] = 'O';
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
   while (file.available()) {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
@@ -239,9 +233,10 @@ void loop() {
   file.close();
 
   // *** Send Snapshot Header Section ***
-  sendBytes(head27_2, sizeof(head27_2));  // Send entire header
+  // head27_2 starts with the letter "E", which informs the ZX Spectrum that this packet is an execute command.
+  sendBytes(head27_2, sizeof(head27_2));  // Send the entire header.
 
-  // Resend DE,BC & AF in that order - Z80 ignored them in the previous send
+  // To avoid reordering the snapshot, resend registers DE,BC and AF that will be ignored in the above 27.
   sendBytes(&head27_2[1 + 11], 2);  // Send DE
   sendBytes(&head27_2[1 + 13], 2);  // Send BC
   sendBytes(&head27_2[1 + 21], 2);  // Send AF
@@ -258,7 +253,9 @@ void loop() {
   //Push PC onto Stack: This takes 10 T-states.
   //Execute Interrupt Routine with RETN Instruction: 14 T-states.
   //(24 T-states / 3,500,000Hz) * 1000 = 0.0068571 milliseconds, 7 microseconds
-  //(T-state has a duration of 0.285714 ms, 286 ns)
+  //(T-state has a duration of 0.285714ms)
+
+  // 69888 T-states per frame, 69888/20ms = 3494.4 T-states per ms
 
   // In "FireFly" two minor clicks at the start of the music happen without this delay.
   delayMicroseconds(7);
@@ -383,12 +380,12 @@ uint8_t readJoystick() {
   bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
 
   // TODO - CODE PATCH - REMOVE FOR NEW v0.14 PCB
-  byte bit1 = (data >> 1) & 1;
-  byte bit2 = (data >> 2) & 1;
-  if (bit1 != bit2) {
-    data ^= (1 << 1);
-    data ^= (1 << 2);
-  }
+//  byte bit1 = (data >> 1) & 1;
+//  byte bit2 = (data >> 2) & 1;
+//  if (bit1 != bit2) {
+//    data ^= (1 << 1);
+//    data ^= (1 << 2);
+//  }
   return data;
 }
 

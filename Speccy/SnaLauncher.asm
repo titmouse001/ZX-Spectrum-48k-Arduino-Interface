@@ -74,7 +74,7 @@ L0038:
 		; Leaving out 'EI' to ensure minimal delay, and is simple for us to EI outside
 		RET
 ;******************************************************************************
-; NON MASKABLE INTERRUPT - USED TO UN-HALT 
+; NON MASKABLE INTERRUPT - used to release z80 HALT state
 ORG $0066
 L0066:
 		RETN
@@ -190,9 +190,15 @@ command_EX:  ; "E" EXECUTE CODE / RESTORE & LAUNCH
 	ld c,$1f  				 ; setup for pair read
 	READ_PAIR_WITH_HALT L,H  ; store HL'
 	READ_PAIR_WITH_HALT e,d  ; store DE'
-	READ_PAIR_WITH_HALT e,d  ; Get BC' (temporarily in DE)
-    push de                  ; Save DE (holds BC')
-    pop bc                   ; BC' restored
+;;;	READ_PAIR_WITH_HALT e,d  ; Get BC' (temporarily in DE)
+;;;    push de                  ; Save DE (holds BC')
+;;;    pop bc                   ; BC' restored
+
+	READ_ACC_WITH_HALT	; C
+	ld c,a
+	READ_ACC_WITH_HALT	; B
+	ld b,a
+
 	exx						 ; Alternates registers restored
 	; registers are free again, just AF' left to restore
 	ld c,$1f  				 ; setup for pair read
@@ -225,7 +231,9 @@ RestoreIFFStateComplete:
 
 	;------------------------------------------------------------------------
 	; R regester
-	READ_ACC_WITH_HALT ;  R REG ... TODO currently goes to the void
+	READ_ACC_WITH_HALT ;  R
+	ld a, $5F-$2c	; take away instructions to get R's true startup value
+	ld r,a
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -243,6 +251,8 @@ RestoreIFFStateComplete:
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
 	dec sp
 	dec sp
+	; Now, rather than using RETN to start the .SNA program, we have the starting
+	; location stored (as above).  This give us a limitted but usefull 1-deep stack.
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -261,10 +271,17 @@ RestoreInterruptModeComplete:
 
 	;------------------------------------------------------------------------
 	; Restore DE & BC
-    READ_PAIR_WITH_HALT e, d   ; Restore DE directly
-    READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
-    push de                    ; Save DE (holds BC)
-    pop bc                     ; BC restored
+ ;MISTAKE HERE !!!!!!   will fix by restoring BC the long way after this with READ_ACC_WITH_HALT
+ 	READ_PAIR_WITH_HALT e, d   ; Restore DE directly 
+;;;	READ_PAIR_WITH_HALT e, d   ; Get BC (temporarily in DE)
+;;; push de                    ; Save DE (holds BC)
+;;; pop bc                     ; BC restored
+
+	; Restore BC - To restore BC we can only use 'READ_ACC_WITH_HALT'
+	READ_ACC_WITH_HALT	; C
+	ld c,a
+	READ_ACC_WITH_HALT	; B
+	ld b,a
 	;------------------------------------------------------------------------
 
 	;-----------------------------------------
@@ -275,25 +292,20 @@ RestoreInterruptModeComplete:
 
 	;------------------------------------------------------------------------
 	; Restore AF - but we can ONLY use register A, hence the odd looking code!
-	READ_ACC_WITH_HALT     		; 'F' is now in A
-	ld (SCREEN_START+(spare-relocate)),a 
-
-	READ_ACC_WITH_HALT     		; 'A' is now in A (will cause PUSH/POP)
-	ld (WORKING_STACK-1),a    	; Store A 
-
-	ld a,(SCREEN_START+(spare-relocate))
-	ld (WORKING_STACK-2),a     	; Store F 
+	READ_ACC_WITH_HALT		; F
+	; Jiggle things on stack to put A into F
+	push af
+	inc sp					
+	pop af
+	dec sp
+	; now we just resotre A - hopefully we have a complete AF with flags intact
+	READ_ACC_WITH_HALT		; A
 
 	;-----------------------------------------
 	ld a,0 	; minimise leftover junk on screen 
 	ld (SCREEN_START+(spare-relocate)),a
 	;-----------------------------------------
 
-	; NOTE: 'READ_ACC_WITH_HALT' will alter the flags (uses 'IN'), so we restore AF last.
-	pop af                 		; restore AF
-	; need re-aim stack we just borrowed
-	dec sp
-	dec sp						
 	; Note: We need to continue using the stack because the 'HALT' instruction relies on it.
 	; Fortunately, the program’s actual stack has exactly 2 bytes of spare space.
 	; This conveniently holds the snapshot's return address, which we are now using 
@@ -309,12 +321,16 @@ RestoreInterruptModeComplete:
 	IM 1
 	EI
 
-	; The idea behind using HALT here is to give a 20ns gap, we really don't
+	; The idea behind using HALT here is to give a 20ms gap, we really don't
 	; want the speccy firing it's maskalbe interrupt while we are restoring the 
 	; final step.
 	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
 
-;;;;;;;;;;;;;;;;;;	EI					 ; Need to re-enable as our maskable does not.
+	; 69888 t-states until next from or 17,472 NOP's
+	; seeing odd behaviour from Dan Dare III, will this pause help?
+	;NO EFFECT GAME STILL CRASHES INTO BASIC 
+;;;;;	JP pause
+;;;;pauseReturn:
 
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
@@ -334,14 +350,14 @@ relocate:
 		    ; 3/ Arduino switches from loader rom to original rom kept in the 2nd half.
 
       		; At this point, the original ROM should be active again!
-            ; Technically, it can be delayed a bit, but it cannot be too early.
+
+    inc sp  ; Restore the stack to its original state, we used the 'RETN'
+	inc sp  ; 			   location was used as a temporary 1-deep stack.
+
 IM_LABLE: 	
 	IM 0    ; Interrupt Mode: self-modifying code - 'IM <n>'
 NOP_LABLE:  
 	NOP    	; Placeholder for self-modifying code - 'EI' or stays as 'NOP'
-
-    inc sp  ; Restore the stack to its original state, we used the 'RETN'
-	inc sp  ; 			   location was used as a temporary 1-deep stack.
 
 	; note: The loaded Snapshot file provides RETN/jump, but we have already
 	; saved it's value and stored it just below.
@@ -410,12 +426,30 @@ skip_EI:
 	jp RestoreIFFStateComplete
 ;------------------------------------------------------------------------
 
+; Need to wait around for half of 69888 (t-states per screen update)
+; This will wait for 32,768+74 t-states, being over with extra logic is fine
+pause:
+    push bc            
+    ld c, 15
+outer_loop:
+    ld b, 0   
+inner_loop:
+    nop           ; 4 t-states     
+    nop               
+    nop
+    nop
+    djnz inner_loop   
+    dec c
+    jr nz, outer_loop   
+    pop bc             
+	jp pauseReturn
+
+
 org $3ff0
 debug:   			; debug trap
 	SET_BORDER a
 	inc a
 	jr debug
-
 
 last:
 DS  16384 - last
