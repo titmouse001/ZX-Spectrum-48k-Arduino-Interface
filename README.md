@@ -16,12 +16,7 @@ Currently games must be in .sna format on the root of a FAT32 SD card.
 <img src="/Documents/Version0.14/ZX-Spectrum-Interface_2024-09-05.png" alt="Photo view" width="20%" >
 <img src="/Documents/Version0.14/Font3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Front" width="25%">
 
-<!-- 
-<img src="/Documents/Version0.14/setupview1_Version0_14.jpg" width="32%" height="32%">
-<img src="/Documents/Version0.14/UnitView1_Version0_14.jpg" width="37%" height="37%">
--->
-
-I've been using jlcpcb with EasyEDA for my PCB design and fabrication as EasyEDA is free and simple to use circuit designer.
+I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
 
 ## Hardware Design (Ver 0.14)
 <img align="right" src="Documents/Schematic/Schematic_ZX-Spectrum-Interface-v0.14.png" alt="Circuit Diagram" width="50%" height="50%">
