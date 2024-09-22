@@ -1,22 +1,32 @@
-# ZX Spectrum 48k Arduino Interface - 48k .sna Loader
+# ZX Spectrum 48k Arduino Interface - 48k .sna Game Loader
 
-This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost hardware interface built around an Arduino.
+#### This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost hardware interface built around an Arduino.
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Pictures0.14/setupview3_Version0_14.jpg" width="32%" height="32%">
 <img src="/Documents/Pictures0.14/UnitView2_Version0_14.jpg" width="28%" height="28%">
 <img src="/Documents/Pictures0.14/setupView2_Version0_14.jpg" width="33%" height="33%">
 <div>
-
+  
+### Interface Features
+  
 <img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="36%" >
 
 The Snapshot Game Interface for the ZX Spectrum 48K includes an SD card slot (hidden at the back) for loading .SNA snapshots directly from an SD card. An OLED display provides basic status information, while the game list is shown on the ZX Spectrum's screen. It also features a port for a Kempston joystick.
 
-The ZX Spectrum screen displays a list of 24 games per page, which can be scrolled using the joystick or the buttons on the interface. The interface loads a full game in around half a second. It is equipped with file selector buttons for forward, backward, and play.
+The ZX Spectrum display shows 24 games per page, scrollable via the joystick or interface buttons, with full game loading taking about half a second using the forward, backward, and play file selector buttons.
 
 Pressing the play button during a game will return you to the game selection screen.
 
 Currently, games must be in .sna format and placed in the root directory of a FAT32-formatted SD card.
-<img  src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="30%" >
+
+<img align="right" src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="30%" >
+
+The interface offers some additional features. If you hold down the left button on power-up, it will display all the .SCR files on the SD card. (.SCR files are screen dumps from the ZX Spectrum)
+
+.SNA files, on the other hand, are snapshot files that capture the entire state of the ZX Spectrum’s memory and registers at a specific moment allowing you to resume a game from the exact point it was saved. Currently, the interface cannot save to .SNA files.
+
+Additionally, the interface can start up in the standard Spectrum ROM if you hold down the middle play button during power-up.
+
 
 
 ## PCB Created With EasyEDA
