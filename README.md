@@ -9,7 +9,10 @@ This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost h
 The ZX Spectrum screen will display a list of 24 games per page, which can be scrolled through using the joystick or the buttons on the unit. The interface can load a full game in around one half seconds.  The Unit has file selector buttons with forward, backward, and play. 
 Pressing the play button in-game will return you to the game selection screen.  
 Currently games must be in .sna format on the root of a FAT32 SD card.
-  
+
+<img src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="38%" >
+<img src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="28%">
+    
 ## PCB Created With EasyEDA
 
 <img src="/Documents/Pictures0.14/Back3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Back" width="18%" >
