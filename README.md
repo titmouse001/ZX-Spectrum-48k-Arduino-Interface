@@ -21,6 +21,7 @@ Currently, games must be in .sna format and placed in the root directory of a FA
 
 <img align="right" src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="30%" >
 
+### Additional Features
 The interface offers some additional features. If you hold down the left button on power-up, it will display all the .SCR files on the SD card. (.SCR files are screen dumps from the ZX Spectrum)
 
 .SNA files, on the other hand, are snapshot files that capture the entire state of the ZX Spectrum’s memory and registers at a specific moment allowing you to resume a game from the exact point it was saved. Currently, the interface cannot save to .SNA files.
