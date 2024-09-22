@@ -428,21 +428,21 @@ skip_EI:
 
 ; Need to wait around for half of 69888 (t-states per screen update)
 ; This will wait for 32,768+74 t-states, being over with extra logic is fine
-pause:
-    push bc            
-    ld c, 15
-outer_loop:
-    ld b, 0   
-inner_loop:
-    nop           ; 4 t-states     
-    nop               
-    nop
-    nop
-    djnz inner_loop   
-    dec c
-    jr nz, outer_loop   
-    pop bc             
-	jp pauseReturn
+;pause:
+;    push bc            
+;    ld c, 15
+;outer_loop:
+;    ld b, 0   
+;inner_loop:
+;    nop           ; 4 t-states     
+;    nop               
+;    nop
+;    nop
+;    djnz inner_loop   
+;    dec c
+;    jr nz, outer_loop   
+;    pop bc             
+;	jp pauseReturn
 
 
 org $3ff0
