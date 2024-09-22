@@ -8,6 +8,7 @@ This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost h
 <div>
 
 <img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="36%" >
+
 The Snapshot Game Interface for the ZX Spectrum 48K includes an SD card slot (hidden at the back) for loading .SNA snapshots directly from an SD card. An OLED display provides basic status information, while the game list is shown on the ZX Spectrum's screen. It also features a port for a Kempston joystick.
 
 The ZX Spectrum screen displays a list of 24 games per page, which can be scrolled using the joystick or the buttons on the interface. The interface loads a full game in around half a second. It is equipped with file selector buttons for forward, backward, and play.
@@ -15,6 +16,8 @@ The ZX Spectrum screen displays a list of 24 games per page, which can be scroll
 Pressing the play button during a game will return you to the game selection screen.
 
 Currently, games must be in .sna format and placed in the root directory of a FAT32-formatted SD card.
+<img  src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="30%" >
+
 
 ## PCB Created With EasyEDA
 
