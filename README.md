@@ -24,7 +24,7 @@ Currently, games must be in .sna format and placed in the root directory of a FA
 ### Additional Features
 The interface offers some additional features. If you hold down the left button on power-up, it will display all the .SCR files on the SD card. (.SCR files are screen dumps from the ZX Spectrum)
 
-.SNA files, on the other hand, are snapshot files that capture the entire state of the ZX Spectrum’s memory and registers at a specific moment allowing you to resume a game from the exact point it was saved. Currently, the interface cannot save to .SNA files.
+_.SNA files, on the other hand, are snapshot files that capture the entire state of the ZX Spectrum’s memory and registers at a specific moment allowing you to resume a game from the exact point it was saved. Currently, the interface cannot save to .SNA files._
 
 Additionally, the interface can start up in the standard Spectrum ROM if you hold down the middle play button during power-up.
 
