@@ -29,9 +29,9 @@ I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyED
 
 ## Hardware Design (Ver 0.14)
 <img align="right" src="Documents/Schematic/Schematic_ZX-Spectrum-Interface-v0.14.png" alt="Circuit Diagram" width="50%" height="50%">
-The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which holds the Z80 machine code for accepting data and restoring the snapshot state. The Arduino manages data transfer to the ZX Spectrum, coordinating the interface. The interface mainly uses the data bus, using glue logic to enable the external ROM’s role.
-The setup uses a duplicated Spectrum ROM to address issues caused by returning to the original internal ROM at game start. To work around this, the first half of the external EPROM contains the .SNA loading and launch code, allowing the ZX Spectrum to use the external ROM during startup. Once a game is loaded, the second half of the EPROM provides the stock ROM for normal operation. The Arduino Nano, with its limited pin count, uses a 74HC165D shift register to allow for a joystick. The 74HC245D transceiver allows the interface to enter a high-impedance (Z) state to avoid conflicts with Arduino and the data bus. The 74HC32 provides the necessary glue logic to manage and monitor I/O signals.
-<br>
+The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which holds the Z80 machine code for accepting data and restoring the snapshot state. The Arduino manages data transfer to the ZX Spectrum, coordinating the interface. The interface primarily utilizes the data bus, with glue logic enabling the external ROM’s function.
+
+To address issues caused by returning to the original internal ROM at game start, the setup uses a duplicated Spectrum ROM. The first half of the external EPROM contains the .SNA loading and launch code, allowing the ZX Spectrum to use the external ROM during startup. Once a game is loaded, the second half of the EPROM provides the stock ROM for normal operation. The Arduino Nano, with its limited pin count, employs a 74HC165D shift register to support a joystick. The 74HC245D transceiver allows the interface to enter a high-impedance (Z) state to avoid conflicts between the Arduino and the data bus. The 74HC32 provides the necessary glue logic to manage and monitor I/O signals.
 
 ## Initial Prototypes...
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
@@ -64,4 +64,3 @@ The setup uses a duplicated Spectrum ROM to address issues caused by returning t
 ## First PCB - Mistakes Were Made!
 <img src="/Documents/First PCB - mistakes were made - Back View.jpg" width="48%" height="48%">
 <img src="/Documents/First PCB - mistakes were made - Front View.jpg" width="48%" height="48%">
-
