@@ -44,6 +44,8 @@ The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which
 
 To address issues caused by returning to the original internal ROM at game start, the setup uses a duplicated Spectrum ROM. The first half of the external EPROM contains the .SNA loading and launch code, allowing the ZX Spectrum to use the external ROM during startup. Once a game is loaded, the second half of the EPROM provides the stock ROM for normal operation. The Arduino Nano, with its limited pin count, employs a 74HC165D shift register to support a joystick. The 74HC245D transceiver allows the interface to enter a high-impedance (Z) state to avoid conflicts between the Arduino and the data bus. The 74HC32 provides the necessary glue logic to manage and monitor I/O signals.
 
+https://oshwlab.com/titmouse001/zx-spectrum-interface
+
 ## Initial Prototypes...
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Initial Prototype.jpg" width="32%" height="32%">
