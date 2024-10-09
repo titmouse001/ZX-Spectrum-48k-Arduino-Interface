@@ -1,7 +1,10 @@
 FontTester.sln
 
-This project is designed as a test rig for displaying text on the 48k ZX Spectrum.
+This project renders a font on a PC, serving as a proof of concept for displaying text on the 48k ZX Spectrum. With this, 
+I can now implement the same approach on an Arduino and directly on a real Spectrum, without too much head-scratching.
 
-The objective is to adapt the Arduino font, originally used for OLED display code, for use on the Spectrum. This will enable formatted text to be sent one scan line at a time. This code serves as a proof of concept for that.
+(The font is taken from the Arduino OLED display library and neededs to be rotated 90 degrees and packed
+into a 6-pixel-wide character format across bytes)
 
-The font used for the OLED needs to be rotated 90 degrees, and a text formatting routine must be implemented to pack each character across bytes, as each character is only 6 pixels wide.
+I've use the OneLoneCoder pixel library for this:-
+https://github.com/OneLoneCoder/olcPixelGameEngine
