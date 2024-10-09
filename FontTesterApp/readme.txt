@@ -5,3 +5,7 @@ I can now implement the same approach on an Arduino and directly on a real Spect
 
 (The font is taken from the Arduino OLED display library and neededs to be rotated 90 degrees and packed
 into a 6-pixel-wide character format across bytes)
+
+I've use the OneLoneCoder library for this:-
+
+This code uses the pixel lbrary [olcPixelGameEngine](https://github.com/OneLoneCoder/olcPixelGameEngine).
