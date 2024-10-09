@@ -3,7 +3,7 @@
 
 #include "font.h"
 
-
+/* debug
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c\n"
 #define BYTE_TO_BINARY(byte)  \
   ((byte) & 0x80 ? '#' : '.'), \
@@ -14,7 +14,7 @@
   ((byte) & 0x04 ? '#' : '.'), \
   ((byte) & 0x02 ? '#' : '.'), \
   ((byte) & 0x01 ? '#' : '.') 
-
+*/
 
 static const int FONT_WIDTH = 5;
 static const int FONT_HEIGHT = 7;
@@ -106,7 +106,7 @@ int main() {
 }
 
 
-/*
+/* DEBUG - moved out , keeping here
 
 for (int i = 0; i < strlen(tx); i++) {
 	for (int k = 0; k < FONT_HEIGHT; k++) {
