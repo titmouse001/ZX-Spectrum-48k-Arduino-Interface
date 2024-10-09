@@ -8,4 +8,4 @@ into a 6-pixel-wide character format across bytes)
 
 I've use the OneLoneCoder library for this:-
 
-This code uses the pixel lbrary [olcPixelGameEngine](https://github.com/OneLoneCoder/olcPixelGameEngine).
+This code uses the pixel lbrary: https://github.com/OneLoneCoder/olcPixelGameEngine
