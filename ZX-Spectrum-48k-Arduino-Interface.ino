@@ -61,13 +61,13 @@ const byte SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
 const byte PAYLOAD_BUFFER_SIZE = 251;
 const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-static byte packetBuffer[BUFFER_SIZE] ;  // Load program "G"
-static byte head27_2[27 + 1] = { 'E' };  // Execute command "E"
+static byte packetBuffer[BUFFER_SIZE] ;  
+static byte head27_1[27 + 1] = { 'E' };  // pre-fill with Execute ("E") command 
 
 SdFat32 sd;
 FatFile root;
 FatFile file;
-File statusFile;
+//File statusFile;
 
 uint16_t totalFiles;
 
@@ -141,9 +141,9 @@ void setup() {
     bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
   }
 
-  if (but == BUTTON_SELECT) {
-    bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
-  }
+//  if (but == BUTTON_SELECT) {
+//    bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+//  }
 
   if (but == BUTTON_DOWN) {
     InitializeSDcard();
@@ -207,7 +207,7 @@ void loop() {
   }
 
   if (haveOled) {
-    file.getName(fileName, 15);
+    file.getName(fileName, 15);c:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\Speccy\SnaLauncher.asm
     oled.clear();
     oled.print(F("Loading:\n"));
     oled.println(fileName);
@@ -215,7 +215,7 @@ void loop() {
 
   // Read the Snapshots 27-byte header
   if (file.available()) {
-    byte bytesReadHeader = (byte)file.read(&head27_2[0 + 1], 27);
+    byte bytesReadHeader = (byte)file.read(&head27_1[0 + 1], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
   }
 
@@ -234,12 +234,12 @@ void loop() {
 
   // *** Send Snapshot Header Section ***
   // head27_2 starts with the letter "E", which informs the ZX Spectrum that this packet is an execute command.
-  sendBytes(head27_2, sizeof(head27_2));  // Send the entire header.
+  sendBytes(head27_1, sizeof(head27_1));  // Send the entire header.
 
   // To avoid reordering the snapshot, resend registers DE,BC and AF that will be ignored in the above 27.
-  sendBytes(&head27_2[1 + 11], 2);  // Send DE
-  sendBytes(&head27_2[1 + 13], 2);  // Send BC
-  sendBytes(&head27_2[1 + 21], 2);  // Send AF
+  sendBytes(&head27_1[1 + 11], 2);  // Send DE
+  sendBytes(&head27_1[1 + 13], 2);  // Send BC
+  sendBytes(&head27_1[1 + 21], 2);  // Send AF
 
   // Wait for the Z80 processor to halt.
   // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) 
@@ -349,6 +349,21 @@ void moveDown() {
 // Section: Arduino User Input Support
 //-------------------------------------------------
 
+#define BUTTON_UP_THRESHOLD    122
+#define BUTTON_SELECT_THRESHOLD 424
+#define BUTTON_DOWN_THRESHOLD   610
+
+uint8_t getAnalogButton(int but) {
+  if (but < BUTTON_UP_THRESHOLD) {
+    return BUTTON_UP;
+  } else if (but < BUTTON_SELECT_THRESHOLD) {
+    return BUTTON_SELECT;
+  } else if (but < BUTTON_DOWN_THRESHOLD) {
+    return BUTTON_DOWN;
+  }
+  return BUTTON_NONE;
+}
+/*
 uint8_t getAnalogButton(int but) {
   byte buttonPressed = 0;
   if (but < (100 + 22)) {
@@ -360,7 +375,7 @@ uint8_t getAnalogButton(int but) {
   }
   return buttonPressed;
 }
-
+*/
 uint8_t readJoystick() {
   bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
   bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
@@ -430,6 +445,11 @@ byte readButtons() {
 //-------------------------------------------------
 // Section: Graphics Support for Zx Spectrum Screen
 //-------------------------------------------------
+// [F|B|P2|P1|P0|I2|I1|I0]
+//bit F sets the attribute FLASH mode
+//bit B sets the attribute BRIGHTNESS mode
+//bits P2 to P0 is the PAPER colour
+//bits I2 to I0 is the INK colour
 
 void clearScreenAttributes() {
   uint16_t amount = 768;
