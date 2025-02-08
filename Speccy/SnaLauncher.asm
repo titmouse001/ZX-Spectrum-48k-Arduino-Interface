@@ -257,10 +257,6 @@ RestoreIFFStateComplete:
 	; Store programs start address, uses self-modifying code into screen memory
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
 
-	;;;; BUG FIX - REMOVED THESE x2 DECREMENTS  (d'oah above POP is SP+=2 )
-	;;;; dec sp
-	;;;; dec sp
-
     ;-----------------------------------------------
 	; Final Stack Usage:
 	; Instead of using RETN to start the .SNA program, we jump directly to the 
@@ -297,8 +293,8 @@ RestoreInterruptModeComplete:
 
 	;-----------------------------------------
 	; Spare is now available - Clear 2nd spare to reduce screen impact.
-	ld a,0
-	ld (SCREEN_START+((spare+1)-relocate)),a
+;	ld a,0
+;	ld (SCREEN_START+((spare+1)-relocate)),a
 	;-----------------------------------------
 
 	;------------------------------------------------------------------------
@@ -314,13 +310,6 @@ RestoreInterruptModeComplete:
 	dec sp                   ; Restore SP to its original position
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) – AF is now fully restored
 
-	;-----------------------------------------
-;;;;BUG FIX - REMOVED - NOTHING REALLY CARES ABOUT A-REG - HOWEVER SOMETHING WILL SO LETS NO DO THIS
-;;;;;WTF AM I DOING - NO DON'T DO THIS - 'A' was just restored!
-;;;;;	ld a,0 	; minimise leftover junk on screen   
-;;;;;	ld (SCREEN_START+(spare-relocate)),a
-	;-----------------------------------------
-
 	;------------------------------------------------------------------------
 	; Arduio just waits for the halt line - masable used this time.
 	; Note: During HALT, the interrupt service routine will use the stack.
@@ -330,52 +319,36 @@ RestoreInterruptModeComplete:
 
 	; The idea behind using HALT here is to give a 20ms gap, we really don't
 	; want the speccy firing it's maskalbe interrupt while we are restoring the 
-	; final step.
-	HALT 				 ; Maskable 50FPS Interupt routine ($0038) forgoes 'EI',
-
-	; 69888 t-states until next from or 17,472 NOP's
-	; seeing odd behaviour from Dan Dare III, will this pause help?
-	;NO EFFECT GAME STILL CRASHES INTO BASIC 
-;;;;;	JP pause
-;;;;pauseReturn:
+	; final step. (our Maskable routine forgoes 'EI')
+	HALT 	; Released by Maskable 50FPS Interupt routine ($0038)
 
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
 ; END - "command_EX:"
 
 ;-----------------------------------------------------------------------	
-; SCREEN MEMORY USAGE - "76 ED 46 00 33 33 C3 00 00 FF FF"
-; This means 11 bytes of screen memory will be corrupted.
-
-; This gets placed in screen memory (called via "JP SCREEN_START")
+; 'relocate': SCREEN MEMORY USAGE - "76 XX xx XX C3 00 00 FF FF"  (template values will chage)
+; This means 9 bytes of screen memory will be corrupted.
+; 'relocate' section in ROK gets copied into screen memory to run so the ROM can be swapped out.
 ;-----------------------------------------------------------------------	
 ; FINAL STEP - Start-up the restored program 
+; STACK has already been moved/freed of the snapshot's 'RETN' value.
 relocate:
-
- 	HALT    ; 1/ Arduino detects this HALT and signals the 'NMI' line to resume z80.
-			; 2/ Arduino will wait 10+14 t-states (as NMI will cause a 'PUSH' & 'RETN')
-		    ; 3/ Arduino switches from loader rom to original rom kept in the 2nd half.
-      		; At this point, the original ROM should be active again!
-
-
-; 2ND BUG FIX - WAS "INC SP" HERE BEFORE!, SENDING STACK IN WRONG DIRECTION (OUT OF ALL THE GAMES I TESTED, ONLY DAN DARE 3 CRASHED)
-	dec sp  ; Position stack as if we had restored from snapshot with a "RETN"
-	dec sp	; (we can do this only now as the last HALT has use used the tiny stack for the last time)
-
+	; 1/ Arduino detects this HALT and signals the 'NMI' line to resume z80.
+	; 2/ Arduino will waits 7 Microseconds (as NMI will cause a 'PUSH' & 'RETN')
+	; 3/ Arduino switches from loader rom to original rom kept in the 2nd half.
+	HALT ; 	[opcode:76] - After halt the original ROM should be active again!
 IM_LABLE: 	
 	IM 0    ; Interrupt Mode: self-modifying code - 'IM <n>'
 NOP_LABLE:  
 	NOP    	; Placeholder for self-modifying code - 'EI' or stays as 'NOP'
-
 	; note: The loaded Snapshot file provides RETN/jump, but we have already
 	; saved it's value and stored it just below.
 JumpInstruction: 	; Self-modifying code - JP location will be modified 	
-    jp 0000h        ; !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
-
+    jp 0000h        ; [opcode:C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
 spare:				; a) Keeps real stacks starting pointer
 	db $FF,$FF		; 			(^ Double purpose v)
 TempStack:			; b) Used at startup until real stack is restored
-
 relocateEnd:
 
 ; TO DO - optimise: remove db x2 bytes and just use the jp address bytes. ?!!!?!?

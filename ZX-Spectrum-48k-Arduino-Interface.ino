@@ -207,7 +207,7 @@ void loop() {
   }
 
   if (haveOled) {
-    file.getName(fileName, 15);c:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\Speccy\SnaLauncher.asm
+    file.getName(fileName, 15);
     oled.clear();
     oled.print(F("Loading:\n"));
     oled.println(fileName);
@@ -248,7 +248,7 @@ void loop() {
 
   // At this point the Spectrum is running code in screen memory to safely swap ROM banks.
   // The Spectrum runs a 2nd halt so we can tell it's started executing the final launch code.
-  waitRelease_NMI();  // 2nd halt - Arduini will release signaling the NMI line
+  waitRelease_NMI();  // 2nd halt - signal NMI line for the Z80 to continue
 
   //Push PC onto Stack: This takes 10 T-states.
   //Execute Interrupt Routine with RETN Instruction: 14 T-states.
