@@ -63,6 +63,8 @@ const byte BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
 static byte packetBuffer[BUFFER_SIZE] ;  
 static byte head27_1[27 + 1] = { 'E' };  // pre-fill with Execute ("E") command 
+static byte waitCommand[1] = { 'W' };  
+
 
 SdFat32 sd;
 FatFile root;
@@ -232,6 +234,15 @@ void loop() {
 
   file.close();
 
+
+  //-----------------------------------------
+  sendBytes(waitCommand, sizeof(waitCommand));  // Command Speccy to wait for the next screen frefresh
+  // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) will self release
+  // the CPU from halt mode during the vertical blanking period.
+  waitHalt();  // wait for speccy to triggered the 50Hz maskable interrupt
+  //-----------------------------------------
+
+
   // *** Send Snapshot Header Section ***
   // head27_2 starts with the letter "E", which informs the ZX Spectrum that this packet is an execute command.
   sendBytes(head27_1, sizeof(head27_1));  // Send the entire header.
@@ -241,24 +252,20 @@ void loop() {
   sendBytes(&head27_1[1 + 13], 2);  // Send BC
   sendBytes(&head27_1[1 + 21], 2);  // Send AF
 
-  // Wait for the Z80 processor to halt.
-  // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) 
-  // will release the CPU from halt mode during the vertical blanking period.
-  waitHalt();  // First halt - triggered by the 50Hz maskable interrupt
+  // At this point the speccy is running code in screen memory to safely swap ROM banks.
+  // A final HALT is given just before jumping back to the real snapshot code/game.
+  waitRelease_NMI();  // signal NMI line for the speccy to resume
 
-  // At this point the Spectrum is running code in screen memory to safely swap ROM banks.
-  // The Spectrum runs a 2nd halt so we can tell it's started executing the final launch code.
-  waitRelease_NMI();  // 2nd halt - signal NMI line for the Z80 to continue
+  // T-state duration:  1/3.5MHz = 0.2857μs 
+  // NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
+  //                    RETN Instruction:    14 T-states.
+  //                    Total:              ~24 T-states 
+  delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-  //Push PC onto Stack: This takes 10 T-states.
-  //Execute Interrupt Routine with RETN Instruction: 14 T-states.
-  //(24 T-states / 3,500,000Hz) * 1000 = 0.0068571 milliseconds, 7 microseconds
-  //(T-state has a duration of 0.285714ms)
+// TO DO - new value need here - to cold/lazy to go into the garage to test this change now ...
+// (Cold as in I need to hit the Arduino interface with a heat gun for this to work in what is basically the outside temperature)
+// (Odd the speccy works fines at even lower temperatures... reacon is the Arduinos Crystal) 
 
-  // 69888 T-states per frame, 69888/20ms = 3494.4 T-states per ms
-
-  // In "FireFly" two minor clicks at the start of the music happen without this delay.
-  delayMicroseconds(7);
 
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.

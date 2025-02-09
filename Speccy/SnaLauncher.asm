@@ -10,6 +10,7 @@ SCREEN_START				EQU $4000  ; [6144]
 SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
 SCREEN_ATTRIBUTES_END   	EQU $5AFF  
+
 WORKING_STACK				EQU  (SCREEN_START+(TempStack-relocate))
 ; Note: Setting the stack to the attributes area allows a visual debugging of the stack
 WORKING_STACK_DEBUG			EQU SCREEN_ATTRIBUTES_END+1  ; DEBUG STACK
@@ -82,19 +83,17 @@ L0000:
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
-; MASKABLE INTERRUPT - 0x0038
-; Note: Leaves out 'EI' to ensure minimal delay, and is simple for us to EI outside
+; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
+; Note: 'EI' is intentionally omitted - we don't use IM1 in the usual way.  
 ORG $0038
 L0038:   
 	RET 	; 10 t-states
 ;----------------------------------------------------------------------------------
 
 ;----------------------------------------------------------------------------------
-; NON-MASKABLE INTERRUPT (NMI) - 0x0066
-; This code relies on the NMI for synchronization with the Arduino.
-; The Z80 enters a blocking state (`HALT`), pausing execution until the Arduino triggers an NMI.
-; When the Arduino sends a request on the NMI line, it releases the Z80 from HALT, in turn the Arduino 
-; can read the state of the Z80 halt line.
+; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
+; The HALT instruction and this NMI are used for synchronization with the Arduino.  
+; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
 ORG $0066
 L0066:
 	RETN	; 14 t-states
@@ -118,6 +117,8 @@ check_initial:   	 ; command checking loop
     jr z, command_GO ; Transfer/copy with flashing boarder (loading .sna files)
     cp 'E'            
     jr z, command_EX ; execute program (includes restoring 27 byte header) 
+    cp 'W'            
+    jr z, command_WT ; Wait for 50Hz maskable interrupt
     jr check_initial 
 
 ;------------------------------------------------------
@@ -174,6 +175,23 @@ CopyLoop:
 	djnz CopyLoop  	; read loop
     jp mainloop 	; done - back for next transfer command
 
+;--------------------------------------------------------
+command_WT:  ; "W" - Wait for the 50Hz maskable interrupt
+;--------------------------------------------------------
+    ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
+    ; This will trigger an interrupt at 50Hz (every 20ms). 
+	; Once an interrupt occurs, execution resumes at address $0038 (default ISR).
+    ; Our ISR does not re-enable interrupts, so no further interrupts will occur after this.
+    IM 1    ; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
+    EI 
+    ; We use HALT to pause execution until the next interrupt occurs. Giving us a 20ms delay 
+	; before continuing. The goal is to prevent an interrupt from interfering while
+	; restoring the final state.  The Arduino monitors this HALT as special case and will wait 
+	; for the z80 to resume.  The Arduino give the "W" command and so knows when this code resumes.
+    HALT 			; enables z80's halt line
+    jp mainloop 	; done - back for next transfer command
+;-----------------------------------------------------
+
 ;-------------------------------------------------------------------------------------------
 command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
 ; Restore snapshot states & execute stored jump point from the stack
@@ -228,9 +246,9 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 
 	;------------------------------------------------------------------------
 	; read IFF
-	READ_ACC_WITH_HALT	; reads the IFF flag states
-	jp RestoreIFFState	; jump used - avoiding stack use
-RestoreIFFStateComplete:
+	READ_ACC_WITH_HALT		; reads the IFF flag states
+	jp RestoreEI_IFFState	; jump used - avoiding stack use
+RestoreEI_IFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -249,23 +267,22 @@ RestoreIFFStateComplete:
 	
 	; ************* TODO - REWORK THE REGISTERS IN ARDUINO CODE, UPDATE THIS FILE AND REPLACE DE WITH HL HERE
 
+    ;-----------------------------------------------
+	; Final Stack Usage:
+	; Instead of using RETN to start the .SNA program, we jump directly to the starting address. 
+	; This frees up 2 bytes of stack space, allowing for a minimal but useful 1-deep stack. 
+	; The HALT instruction requires an active stack for synchronization. The 2 freed bytes, 
+	; originally holding the snapshot’s return address now serve as a temporary single-level 
+	; stack - just enough for our needs.
+    ;-----------------------------------------------
+
 	; Restore Program's Stack Pointer
 	READ_PAIR_WITH_HALT e,d;  ; get Stack
-	ld (SCREEN_START+(spare-relocate)),de 	
-	ld SP,(SCREEN_START+(spare-relocate))
+	ld (WORKING_STACK-2),de 	; repurposing old startup stack to use temp storage
+	ld sp,(WORKING_STACK-2) 	; to load the 'SNAPSHOT_SP'
 	pop de	; results in SP+=2 - SP is now ready to be used as a tiny stack.
 	; Store programs start address, uses self-modifying code into screen memory
 	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
-
-    ;-----------------------------------------------
-	; Final Stack Usage:
-	; Instead of using RETN to start the .SNA program, we jump directly to the 
-	; starting address. This frees up 2 bytes of stack space, allowing for a 
-	; minimal but useful 1-deep stack. The HALT instruction requires an active 
-	; stack for synchronization. The 2 freed bytes, originally holding the 
-	; snapshot’s return address, now serve as a temporary single-level 
-	; stack - just enough for our needs.
-    ;-----------------------------------------------
 
 	;------------------------------------------------------------------------
 	READ_ACC_WITH_HALT  		; gets value of IM into reg-A
@@ -291,12 +308,6 @@ RestoreInterruptModeComplete:
 	ld b,a
 	;------------------------------------------------------------------------
 
-	;-----------------------------------------
-	; Spare is now available - Clear 2nd spare to reduce screen impact.
-;	ld a,0
-;	ld (SCREEN_START+((spare+1)-relocate)),a
-	;-----------------------------------------
-
 	;------------------------------------------------------------------------
 	;
 	; *************************************************
@@ -311,50 +322,28 @@ RestoreInterruptModeComplete:
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) – AF is now fully restored
 
 	;------------------------------------------------------------------------
-	; Arduio just waits for the halt line - masable used this time.
-	; Note: During HALT, the interrupt service routine will use the stack.
-    ;!!! At this point, we are using the real restored program's stack space !!!
-	IM 1
-	EI
-
-	; The idea behind using HALT here is to give a 20ms gap, we really don't
-	; want the speccy firing it's maskalbe interrupt while we are restoring the 
-	; final step. (our Maskable routine forgoes 'EI')
-	HALT 	; Released by Maskable 50FPS Interupt routine ($0038)
-
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	;------------------------------------------------------------------------
 ; END - "command_EX:"
 
 ;-----------------------------------------------------------------------	
-; 'relocate': SCREEN MEMORY USAGE - "76 XX xx XX C3 00 00 FF FF"  (template values will chage)
-; This means 9 bytes of screen memory will be corrupted.
-; 'relocate' section in ROK gets copied into screen memory to run so the ROM can be swapped out.
+; 'relocate': 4 bytes of screen memory will be corrupted. Gets copied 
+; into screen memory and run so the ROM can be swapped out.
 ;-----------------------------------------------------------------------	
 ; FINAL STEP - Start-up the restored program 
-; STACK has already been moved/freed of the snapshot's 'RETN' value.
+; STACK has already been moved/freed from the snapshot's 'RETN' value.
 relocate:
 	; 1/ Arduino detects this HALT and signals the 'NMI' line to resume z80.
 	; 2/ Arduino will waits 7 Microseconds (as NMI will cause a 'PUSH' & 'RETN')
-	; 3/ Arduino switches from loader rom to original rom kept in the 2nd half.
+; TO DO ********  THIS 7 WAS A LAST WAIT FOR THIS SECTION (THINGS HAVE CHANGED) 
+; TO DO ******** FORGOT TO UPDATE THE NEW VALUE ON ARDUINO SIDE - FOR NOW BETTER MORE THAN LESS 
+	; 3/ Arduino switches from loader rom to original rom (same external rom but using it's 2nd half)
 	HALT ; 	[opcode:76] - After halt the original ROM should be active again!
-IM_LABLE: 	
-	IM 0    ; Interrupt Mode: self-modifying code - 'IM <n>'
-NOP_LABLE:  
-	NOP    	; Placeholder for self-modifying code - 'EI' or stays as 'NOP'
-	; note: The loaded Snapshot file provides RETN/jump, but we have already
-	; saved it's value and stored it just below.
-JumpInstruction: 	; Self-modifying code - JP location will be modified 	
-    jp 0000h        ; [opcode:C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
-spare:				; a) Keeps real stacks starting pointer
-	db $FF,$FF		; 			(^ Double purpose v)
-TempStack:			; b) Used at startup until real stack is restored
-relocateEnd:
 
-; TO DO - optimise: remove db x2 bytes and just use the jp address bytes. ?!!!?!?
-; Will need to aim stack at a JumpInstruction+1 as the code uses TempStack at startup 
-; switching to the final stack before launch. Might be easy, removing "spare: db $ff,$ff" 
-; as the stack is restored in the same place as the JumpInstruction address.
+JumpInstruction: 	
+    jp 0000h        ; [opcode:C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
+TempStack:			; at startup this location is the real stack for a while until the real one is restored
+relocateEnd:
 
 ;-----------------------------------------------------------------------	
 
@@ -375,42 +364,47 @@ ClearScreen:
 
 ;-----------------------------------------------------------------------	
 ; IN: Acc must be 0,1 or 2
+; Destroys D register
 RestoreInterruptMode:   
 	; Restore IM0, IM1 or IM2  
 	ld d,a
 	or	a
 	jr	nz,not_im0
-	ld a,$46  ;im	0  (ED 46)
-	ld (SCREEN_START+(IM_LABLE-relocate)+1),a    
+;;;	ld a,$46  ;im	0  (ED 46)
+;;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a    
+	IM 0
 	jr	IMset
 not_im0:	
 	ld a,d
 	dec	a
 	jr	nz,not_im1
-	ld a,$56  ;im	1 (ED 56)
-	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
+;;;	ld a,$56  ;im	1 (ED 56)
+;;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
+	IM 1
 	jr	IMset
 not_im1:	
-	ld a,$5E  ; im	2 (ED 5E)
-	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
+	IM 2
+;;	ld a,$5E  ; im	2 (ED 5E)
+;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
 IMset:
 	jp RestoreInterruptModeComplete
 ;------------------------------------------------------------------------
 
 ;------------------------------------------------------------------------
 ; IN: Acc this holds byte-19 of the SNA header
-RestoreIFFState:  
+RestoreEI_IFFState:
 	; Restore interrupt enable flip-flop (IFF) 
-	AND	%00000100   		 ; get bit 2
-	jr	z,skip_EI
+	AND	%00000100   		 		; get bit 2
+	jp	z,RestoreEI_IFFStateComplete  	; disabled - skip 'EI'
+	EI
 	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
-	ld a,$FB
-	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
-	jp RestoreIFFStateComplete
-skip_EI:
-	LD A,0
-	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; NOP
-	jp RestoreIFFStateComplete
+;;	ld a,$FB
+;;	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
+	jp RestoreEI_IFFStateComplete
+;;skip_EI:
+;;	LD A,0
+;;ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; NOP
+;;	jp RestoreIFFStateComplete
 ;------------------------------------------------------------------------
 
 ; Need to wait around for half of 69888 (t-states per screen update)
