@@ -244,13 +244,16 @@ void loop() {
 
 
   // *** Send Snapshot Header Section ***
-  // head27_2 starts with the letter "E", which informs the ZX Spectrum that this packet is an execute command.
-  sendBytes(head27_1, sizeof(head27_1));  // Send the entire header.
-
-  // To avoid reordering the snapshot, resend registers DE,BC and AF that will be ignored in the above 27.
-  sendBytes(&head27_1[1 + 11], 2);  // Send DE
-  sendBytes(&head27_1[1 + 13], 2);  // Send BC
-  sendBytes(&head27_1[1 + 21], 2);  // Send AF
+  // head27_2[0] contains "E" which informs the speccy this packets a execute command.
+  sendBytes(head27_1, (1/*"E"*/) + 1+2+2+2+2 );  // Send command "E" then I,HL',DE',BC',AF'
+  sendBytes(&head27_1[1 + 15], 2+2+1+1 );   // Send IY,IX,IFF2,R (packet data continued)
+  sendBytes(&head27_1[1 + 23], 2);          // Send SP                     "
+  sendBytes(&head27_1[1 +  9], 2);          // Send HL                     "
+  sendBytes(&head27_1[1 + 25], 1);          // Send IM                     "
+  sendBytes(&head27_1[1 + 26], 1);          // Send BorderColour           "
+  sendBytes(&head27_1[1 + 11], 2);          // Send DE                     "
+  sendBytes(&head27_1[1 + 13], 2);          // Send BC                     "
+  sendBytes(&head27_1[1 + 21], 2);          // Send AF                     "
 
   // At this point the speccy is running code in screen memory to safely swap ROM banks.
   // A final HALT is given just before jumping back to the real snapshot code/game.

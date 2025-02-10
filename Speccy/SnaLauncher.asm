@@ -242,9 +242,9 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;-------------------------------------------------------------------------------------------
 	; Restore HL,DE,BC,IY,IX	
 	ld c,$1f  				  ; setup for pair read
-	READ_PAIR_WITH_HALT l,h   ; restore HL
-	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads DE, we get this again later
-	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads BC, we get this again later
+;;;;;;;;;;;;	READ_PAIR_WITH_HALT l,h   ; restore HL
+;;;;;;	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads DE, we get this again later
+;;;;;;	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads BC, we get this again later
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -269,7 +269,7 @@ RestoreEI_IFFStateComplete:
 
 	;------------------------------------------------------------------------
 	; 'AF' pair 
-	READ_PAIR_WITH_HALT e,d		; TO VOID - we get AF again later
+;;;;;;;	READ_PAIR_WITH_HALT e,d		; TO VOID - we get AF again later
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -286,12 +286,20 @@ RestoreEI_IFFStateComplete:
     ;-----------------------------------------------
 
 	; Restore Program's Stack Pointer
-	READ_PAIR_WITH_HALT e,d;  ; get Stack
-	ld (WORKING_STACK-2),de 	; repurposing old startup stack to use temp storage
-	ld sp,(WORKING_STACK-2) 	; to load the 'SNAPSHOT_SP'
-	pop de	; results in SP+=2 - SP is now ready to be used as a tiny stack.
+	
+	READ_PAIR_WITH_HALT l,h  	; get Stack
+;;	ld (WORKING_STACK-2),de 	; repurposing old startup stack to use temp storage
+;;	ld sp,(WORKING_STACK-2) 	; to load the 'SNAPSHOT_SP'
+	ld sp,hl
+;;	pop de	; results in SP+=2 - SP is now ready to be used as a tiny stack.
+	pop hl
 	; Store programs start address, uses self-modifying code into screen memory
-	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
+;;	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
+	ld (SCREEN_START + (JumpInstruction - relocate) +1),hl
+
+	;------------------------------------------------------------------------
+	READ_PAIR_WITH_HALT l,h  	; restore HL
+	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
 	READ_ACC_WITH_HALT  		; gets value of IM into reg-A
@@ -465,24 +473,32 @@ DS  16384 - last
 ; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
 
-;******************************************************
+;*****************************
+; 27 bytes SNA Header Example
+; [0 ] I            = 0x3F       
+; [1 ] HL_          = 0x2758     
+; [3 ] DE_          = 0xB462     
+; [5 ] BC_          = 0x3F62     
+; [7 ] AF_          = 0x12A8     
+; [9 ] HL           = 0xFC0B   // READ LAST   
+; [11] DE           = 0x98B2   // READ 3rd LAST  
+; [13] BC           = 0x0012   // READ 2nd LAST  
+; [15] IY           = 0x5C3A     
+; [17] IX           = 0xDB59     
+; [19] IFF2         = 0x00       
+; [20] R            = 0x5F       
+; [21] AF           = 0x4040     
+; [23] SP           = 0x6188     
+; [25] IM           = 0x01       
+; [26] BorderColour = 0x00       
 
-;******************************************************
-;  SNA Header (27 bytes) - read via IN commands
-;  REG_I	00
-;  REG_HL1	01	;HL'
-;  REG_DE1	03	;DE'
-;  REG_BC1	05	;BC'
-;  REG_AF1	07	;AF'
-;  REG_HL	09
-;  REG_DE	11
-;  REG_BC	13
-;  REG_IY	15
-;  REG_IX	17
-;  REG_IFF  19 
-;  REG_R	20 
-;  REG_AF	21
-;  REG_SP	23
-;  REG_IM	25 
-;  REG_BDR	26	 
-;******************************************************
+; This order is used Arduino end - it's better suited for restoring Z80 states.
+;  sendBytes(head27_1, (1/*"E"*/) + 1+2+2+2+2 );  // Send command "E" then I,HL',DE',BC',AF'
+;  sendBytes(&head27_1[1 + 15], 2+2+1+1 );   // Send IY,IX,IFF2,R (packet data continued)
+;  sendBytes(&head27_1[1 + 23], 2);          // Send SP                     "
+;  sendBytes(&head27_1[1 +  9], 2);          // Send HL                     "
+;  sendBytes(&head27_1[1 + 25], 1);          // Send IM                     "
+;  sendBytes(&head27_1[1 + 26], 1);          // Send BorderColour           "
+;  sendBytes(&head27_1[1 + 11], 2);          // Send DE                     "
+;  sendBytes(&head27_1[1 + 13], 2);          // Send BC                     "
+;  sendBytes(&head27_1[1 + 21], 2);          // Send AF                     "
