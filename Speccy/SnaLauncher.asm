@@ -80,6 +80,7 @@ L0000:
 	ld SP,WORKING_STACK
 	;-----------------------------------------------------------------------------------	
 	jp ClearScreen
+	ld c,$1F  				 ; setup for pair reads
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
@@ -94,18 +95,22 @@ L0038:
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
 ; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
+; After NMI line signals for the speccy to resume, the Arduino waits for 7μs to allow time for the ISR to complete.
+; NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
+;                    RETN Instruction:    14 T-states.
+; 					 24×0.2857=6.857μs (1/3.5MHz = 0.2857μs)
 ORG $0066
 L0066:
-	RETN	; 14 t-states
+	RETN
 ;----------------------------------------------------------------------------------
 
 ;******************
 ; *** MAIN LOOP ***
 ;******************
 mainloop:
-; For each incoming data transfer the header's first byte provides the request command ["C,"F","G","E"].
+; For each incoming data transfer the header's first byte provides the request command ["C,"F","G","E","W"].
 ; NOTE: Most of the snapshot 16-bit data later on is big-endian. The sending Arduino pre-chewes this
-; byte pair header information as little-endian.
+; byte pair 'command header' information as little-endian.
 check_initial:   	 ; command checking loop
 	READ_ACC_WITH_HALT
 	; These compares are in ordered in frequency of use
@@ -124,14 +129,16 @@ check_initial:   	 ; command checking loop
 ;------------------------------------------------------
 command_FL:  ; "F" - FILL COMMAND
 ;------------------------------------------------------
-	ld C,$1F  				 ; setup for pair read
+;;;	ld C,$1F  				 ; setup for pair read
 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
 	READ_PAIR_WITH_HALT h,l  ; HL = 'destination' address: 2 bytes
 	halt		 	; Synchronizes with Arduino (NMI to continue)
-	in a,($1f)   	; Read fill value from the z80 I/O port
-	ld c,a
+;;	in a,($1f)   	; Read fill value from the z80 I/O port
+;;	ld c,a
+	in b,(c)
 fillLoop:
-	ld (hl),c	 	; Write to memory
+;;	ld (hl),c	 	; Write to memory
+	ld (hl),b	 	; Write to memory
     inc hl		
     DEC DE      
     LD A, D      
@@ -145,17 +152,19 @@ command_GO:  ; "G" - TRANSFER DATA (flashes border)
 	; Transfers are typically sequential, but any destination location can be targeted.
     ; The data transfer is limited to 255 bytes this INCLUDES THE HEADER.
 	; Due to the synchronizing 'halt' we can't use 'INI'
-	ld C,$1F  					; setup for pair read
-	halt
-	in b,(c)  					; The transfer size: 1 byte
-	READ_PAIR_WITH_HALT h,l   	; HL = 'destination' address: 2 bytes
+;;;	ld C,$1F  				; setup for pair read
+	halt					; Synchronizes with Arduino (NMI to continue)
+	in b,(c)  				; The transfer size: 1 byte
+	READ_PAIR_WITH_HALT h,l ; HL = 'destination' address: 2 bytes
 readDataLoop:
 	halt		 		; Synchronizes with Arduino (NMI to continue)
 	in a,($1f)   		; Read a byte from the z80 I/O port
 	ld (hl),a	 		; write to memory
     inc hl		
+	
 	AND LOADING_COLOUR_MASK  
 	out ($fe), a   		; Flash border - from actual data while loading
+
 	djnz readDataLoop  	; read loop
     jp mainloop			; done - back for next transfer command
 
@@ -163,9 +172,9 @@ readDataLoop:
 command_CP:  ; "C" - COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
-	ld C,$1F  				; setup for pair read
-	halt
-	in b,(c)  
+;;;	ld C,$1F  				; setup for pair read
+	halt					; Synchronizes with Arduino (NMI to continue)
+	in b,(c)  				; The transfer size: 1 byte
 	READ_PAIR_WITH_HALT h,l	; HL = 'destination' address: 2 bytes
 CopyLoop:
 	halt		 	; Synchronizes with Arduino (NMI to continue)
@@ -326,24 +335,24 @@ RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 ; END - "command_EX:"
 
-;-----------------------------------------------------------------------	
-; 'relocate': 4 bytes of screen memory will be corrupted. Gets copied 
-; into screen memory and run so the ROM can be swapped out.
-;-----------------------------------------------------------------------	
-; FINAL STEP - Start-up the restored program 
-; STACK has already been moved/freed from the snapshot's 'RETN' value.
+;-----------------------------------------------------------------------    
+; 'relocate': For this to work a small 4-byte section of screen memory must be overwritten. 
+; This code is copied into screen memory and executed to allow ROM swapping.
+;-----------------------------------------------------------------------    
+; FINAL STEP - Start the restored program. 
+; The stack has already been relocated, freeing it from the snapshot's 'RETN' value.
 relocate:
-	; 1/ Arduino detects this HALT and signals the 'NMI' line to resume z80.
-	; 2/ Arduino will waits 7 Microseconds (as NMI will cause a 'PUSH' & 'RETN')
-; TO DO ********  THIS 7 WAS A LAST WAIT FOR THIS SECTION (THINGS HAVE CHANGED) 
-; TO DO ******** FORGOT TO UPDATE THE NEW VALUE ON ARDUINO SIDE - FOR NOW BETTER MORE THAN LESS 
-	; 3/ Arduino switches from loader rom to original rom (same external rom but using it's 2nd half)
-	HALT ; 	[opcode:76] - After halt the original ROM should be active again!
+    ; 1/ The Arduino detects this HALT and triggers the 'NMI' line to resume the Z80.
+    ; 2/ The Arduino waits 7 microseconds (since NMI will cause a 'PUSH' & 'RETN').
+    ; 3/ The Arduino switches from the loader ROM to the original ROM 
+    ;    (same external ROM, but using its second half).
+    HALT            ; [opcode: 76] - After HALT, the original ROM should be active again!
 
-JumpInstruction: 	
-    jp 0000h        ; [opcode:C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORE PROGRAM !!!
-TempStack:			; at startup this location is the real stack for a while until the real one is restored
-relocateEnd:
+JumpInstruction:     
+    jp 0000h        ; [opcode: C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORED PROGRAM !!!
+
+TempStack:          ; At startup, this location acts as a temporary stack until the real one is restored.
+relocateEnd: 
 
 ;-----------------------------------------------------------------------	
 

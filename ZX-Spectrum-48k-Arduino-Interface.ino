@@ -262,11 +262,6 @@ void loop() {
   //                    Total:              ~24 T-states 
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-// TO DO - new value need here - to cold/lazy to go into the garage to test this change now ...
-// (Cold as in I need to hit the Arduino interface with a heat gun for this to work in what is basically the outside temperature)
-// (Odd the speccy works fines at even lower temperatures... reacon is the Arduinos Crystal) 
-
-
   bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
 
