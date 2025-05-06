@@ -42,11 +42,11 @@ ENDM
 ;   push de                   ; Save DE (holds BC)
 ;   pop bc                    ; Restore BC from DE
 ;
-MACRO READ_PAIR_WITH_HALT  ,reg1,reg2  
+MACRO READ_PAIR_WITH_HALT ,reg_low,reg_high  
     halt
-    in reg1, (c)  ; Read lower byte
+    in reg_low, (c)  ; Read lower byte
     halt
-    in reg2, (c)  ; Read higher byte
+    in reg_high, (c)  ; Read higher byte
 ENDM
 
 ;--------------------------------
@@ -58,7 +58,7 @@ ENDM
 ;
 MACRO SET_BORDER ,colour 
     ld a, colour 
-    AND %00000111	;  only the lower 3 bits are used (0-7)
+    AND %00000111	;  only lower 3 bits are used
     out ($FE), a  
 ENDM
 ;--------------------------------
@@ -131,7 +131,7 @@ command_FL:  ; "F" - FILL COMMAND
 ;------------------------------------------------------
 ;;;	ld C,$1F  				 ; setup for pair read
 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
-	READ_PAIR_WITH_HALT h,l  ; HL = 'destination' address: 2 bytes
+	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
 	halt		 	; Synchronizes with Arduino (NMI to continue)
 ;;	in a,($1f)   	; Read fill value from the z80 I/O port
 ;;	ld c,a
@@ -155,7 +155,7 @@ command_GO:  ; "G" - TRANSFER DATA (flashes border)
 ;;;	ld C,$1F  				; setup for pair read
 	halt					; Synchronizes with Arduino (NMI to continue)
 	in b,(c)  				; The transfer size: 1 byte
-	READ_PAIR_WITH_HALT h,l ; HL = 'destination' address: 2 bytes
+	READ_PAIR_WITH_HALT h,l ; HL = Destination address
 readDataLoop:
 	halt		 		; Synchronizes with Arduino (NMI to continue)
 	in a,($1f)   		; Read a byte from the z80 I/O port
@@ -175,7 +175,7 @@ command_CP:  ; "C" - COPY DATA
 ;;;	ld C,$1F  				; setup for pair read
 	halt					; Synchronizes with Arduino (NMI to continue)
 	in b,(c)  				; The transfer size: 1 byte
-	READ_PAIR_WITH_HALT h,l	; HL = 'destination' address: 2 bytes
+	READ_PAIR_WITH_HALT h,l	; HL = Destination address
 CopyLoop:
 	halt		 	; Synchronizes with Arduino (NMI to continue)
 	in a,($1f)   	; Read a byte from the z80 I/O port
@@ -222,7 +222,7 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;-------------------------------------------------------------------------------------------
 	
 	;-------------------------------------------------------------------------------------------
-	; Restore HL',DE',BC',AF'
+	; -- Restore Alternate Registers HL',DE',BC',AF --'
 	ld c,$1f  				 ; setup for pair read
 	READ_PAIR_WITH_HALT L,H  ; future HL'
 	READ_PAIR_WITH_HALT e,d  ; future DE'
@@ -240,11 +240,8 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;-------------------------------------------------------------------------------------------
 	
 	;-------------------------------------------------------------------------------------------
-	; Restore HL,DE,BC,IY,IX	
+	; Restore IY,IX	
 	ld c,$1f  				  ; setup for pair read
-;;;;;;;;;;;;	READ_PAIR_WITH_HALT l,h   ; restore HL
-;;;;;;	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads DE, we get this again later
-;;;;;;	READ_PAIR_WITH_HALT e,d;  ; TO VOID - reads BC, we get this again later
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -254,48 +251,35 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; read IFF
+	; Read IFF
 	READ_ACC_WITH_HALT		; reads the IFF flag states
 	jp RestoreEI_IFFState	; jump used - avoiding stack use
 RestoreEI_IFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; R regester
-	READ_ACC_WITH_HALT 	; reads R
-	ld a, $5F-$2c		; take away instructions to get R's true startup value - DANDARE-3 HACK FOR NOW
-	ld r,a
+	; Read R (refresh) register
+	READ_ACC_WITH_HALT      ; read R
+	ld r, a                 ; Sets R, but this won't match the original start value,
+	                        ; since we're restoring the state now, not at true game start.
+	                        ; Note: this could cause issues if a game uses R as part of a protection check.
+	                        ; So far, no known games are confirmed to use R this way???
 	;------------------------------------------------------------------------
 
-	;------------------------------------------------------------------------
-	; 'AF' pair 
-;;;;;;;	READ_PAIR_WITH_HALT e,d		; TO VOID - we get AF again later
-	;------------------------------------------------------------------------
-
-	;------------------------------------------------------------------------
-	
-	; ************* TODO - REWORK THE REGISTERS IN ARDUINO CODE, UPDATE THIS FILE AND REPLACE DE WITH HL HERE
-
-    ;-----------------------------------------------
+	;-----------------------------------------------
 	; Final Stack Usage:
 	; Instead of using RETN to start the .SNA program, we jump directly to the starting address. 
 	; This frees up 2 bytes of stack space, allowing for a minimal but useful 1-deep stack. 
 	; The HALT instruction requires an active stack for synchronization. The 2 freed bytes, 
-	; originally holding the snapshot’s return address now serve as a temporary single-level 
-	; stack - just enough for our needs.
-    ;-----------------------------------------------
-
-	; Restore Program's Stack Pointer
-	
-	READ_PAIR_WITH_HALT l,h  	; get Stack
-;;	ld (WORKING_STACK-2),de 	; repurposing old startup stack to use temp storage
-;;	ld sp,(WORKING_STACK-2) 	; to load the 'SNAPSHOT_SP'
-	ld sp,hl
-;;	pop de	; results in SP+=2 - SP is now ready to be used as a tiny stack.
-	pop hl
-	; Store programs start address, uses self-modifying code into screen memory
-;;	ld (SCREEN_START + (JumpInstruction - relocate) +1),de  ; set jump to address
-	ld (SCREEN_START + (JumpInstruction - relocate) +1),hl
+	; originally holding the snapshot's return address, now serve as a temporary single-level 
+	; stack—just enough for our needs in the final "resource-critical" restore stages.
+	;
+	; Restore Program's Stack Pointer - the SNA format allows some magic here
+	READ_PAIR_WITH_HALT l, h  ; Read stack
+	ld sp, hl                 ; 'Snapshots_SP' restored (the normal 'RET' location)
+	pop hl                    ; SP += 2, move past 'RET' location - ready as a tiny stack!
+	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; patching "JP xxxx" starup-up address
+	;-----------------------------------------------
 
 	;------------------------------------------------------------------------
 	READ_PAIR_WITH_HALT l,h  	; restore HL
@@ -313,8 +297,6 @@ RestoreInterruptModeComplete:
 	out ($fe),a			 ; set border
 	;------------------------------------------------------------------------
 
-	; Arduino will now resend DE,BC & AF we IGNORED earlier.
-
 	;------------------------------------------------------------------------
 	; Restore DE & BC (we are now resource-poor)
  	READ_PAIR_WITH_HALT e, d   ; Restore DE directly 
@@ -325,11 +307,11 @@ RestoreInterruptModeComplete:
 	ld b,a
 	;------------------------------------------------------------------------
 
-	;------------------------------------------------------------------------
-	;
 	; *************************************************
 	; *** We are now extremely resource-constrained ***
 	; *************************************************
+
+	;------------------------------------------------------------------------
 	; Restore AF using only register A and SP.
 	READ_ACC_WITH_HALT       ; Load original F (flags) into A
 	push af                  ; Save F_original (A) and current flags (F) to stack
@@ -344,113 +326,93 @@ RestoreInterruptModeComplete:
 ; END - "command_EX:"
 
 ;-----------------------------------------------------------------------    
-; 'relocate': For this to work a small 4-byte section of screen memory must be overwritten. 
-; This code is copied into screen memory and executed to allow ROM swapping.
+; 'relocate' - The interface ROM has to give way to the original ROM for most games to work.
+; For this to happen, a small 4-byte section of screen memory must be overwritten.
+; At the "Execute Code Stage," this 'relocate' section is copied into screen memory and executed.
+; Since we can't execute code during a ROM swap, it must run from screen memory (only memory we can spoil)
+; allowing the second half of the ROM (a copy of the original Speccy 48K ROM) to be swapped in.
+; (I found switching back to the internal ROM just gave me issues :(, so I used the second
+;  half of the ROM which worked perfectly.) 
 ;-----------------------------------------------------------------------    
 ; FINAL STEP - Start the restored program. 
-; The stack has already been relocated, freeing it from the snapshot's 'RETN' value.
 relocate:
     ; 1/ The Arduino detects this HALT and triggers the 'NMI' line to resume the Z80.
     ; 2/ The Arduino waits 7 microseconds (since NMI will cause a 'PUSH' & 'RETN').
     ; 3/ The Arduino switches from the loader ROM to the original ROM 
     ;    (same external ROM, but using its second half).
-    HALT            ; [opcode: 76] - After HALT, the original ROM should be active again!
+    HALT       		; [opcode: 76] - After HALT, the original ROM should be active again!
 
 JumpInstruction:     
-    jp 0000h        ; [opcode: C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORED PROGRAM !!!
+    jp 0000h 		; [opcode: C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORED PROGRAM !!!
 
-TempStack:          ; At startup, this location acts as a temporary stack until the real one is restored.
+TempStack:        	; Address of above "jp" acts as temporary stack until the SNAPSHOT_SP is restored.
 relocateEnd: 
-
 ;-----------------------------------------------------------------------	
 
-;-----------------------------------------------------------------------	
+;-----------------------------------------------------------------------
+; Not speed critical (used at startup)	
+; NOT optimising away 17 t-states, sepuration for future colour changes.
 ClearScreen:
 	SET_BORDER 0
    	ld a, 0              
     ld hl, 16384       
     ld de, 16385        
     ld bc, 6144       
-    ld (hl), a           ;setup
+    ld (hl), a    	; Screen bitmap locations
     ldir                
+	; continue HL into attributes 
     ld bc, 768-1
-    ld (hl), a  
+    ld (hl), a  	; Screen attribute locations
     ldir        
-    jp mainloop  		 ; avoiding stack based calls
+    jp mainloop  	; avoiding stack based calls
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
-; IN: Acc must be 0,1 or 2
-; Destroys D register
-RestoreInterruptMode:   
-	; Restore IM0, IM1 or IM2  
-	ld d,a
-	or	a
-	jr	nz,not_im0
-;;;	ld a,$46  ;im	0  (ED 46)
-;;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a    
-	IM 0
-	jr	IMset
-not_im0:	
-	ld a,d
-	dec	a
-	jr	nz,not_im1
-;;;	ld a,$56  ;im	1 (ED 56)
-;;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
-	IM 1
-	jr	IMset
-not_im1:	
-	IM 2
-;;	ld a,$5E  ; im	2 (ED 5E)
-;;	ld (SCREEN_START+(IM_LABLE-relocate)+1),a  
-IMset:
-	jp RestoreInterruptModeComplete
+; RestoreInterruptMode
+;	IN: A, IM0=0, IM1=1, IM2=2
+; 	Sets: IM0, IM1 or IM2  
+; 	Destroys D register
+;	NOTE: JP back not RET as subroutine calls due to the one‐level stack constraint
+RestoreInterruptMode:
+    cp 0
+    jr z, setIM0
+    cp 1
+    jr z, setIM1
+setIM2:
+    IM 2
+    jp RestoreInterruptModeComplete  ; used only to avoid stack use
+setIM1:
+    IM 1
+    jp RestoreInterruptModeComplete  ; used only to avoid stack use
+setIM0:
+    IM 0
+    jp RestoreInterruptModeComplete  ; used only to avoid stack use
 ;------------------------------------------------------------------------
 
 ;------------------------------------------------------------------------
-; IN: Acc this holds byte-19 of the SNA header
+; RestoreEI_IFFState
+; 	Sets: 'EI' - Enable Interrupt, flip-flop (IFF) 
+; 	IN: A, enable = bit 2 set
+;	NOTE: JP back not RET as subroutine calls due to the one‐level stack constraint
 RestoreEI_IFFState:
-	; Restore interrupt enable flip-flop (IFF) 
-	AND	%00000100   		 		; get bit 2
+	AND	%00000100   		 			; get bit 2
 	jp	z,RestoreEI_IFFStateComplete  	; disabled - skip 'EI'
 	EI
-	; If bit 2 is 1, modify instruction NOP to EI (opcode $FB)
-;;	ld a,$FB
-;;	ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; EI Opcode = $FB
-	jp RestoreEI_IFFStateComplete
-;;skip_EI:
-;;	LD A,0
-;;ld (SCREEN_START+(NOP_LABLE-relocate)),a  ; NOP
-;;	jp RestoreIFFStateComplete
+	jp RestoreEI_IFFStateComplete		 ; avoiding stack based calls
 ;------------------------------------------------------------------------
 
-; Need to wait around for half of 69888 (t-states per screen update)
-; This will wait for 32,768+74 t-states, being over with extra logic is fine
-;pause:
-;    push bc            
-;    ld c, 15
-;outer_loop:
-;    ld b, 0   
-;inner_loop:
-;    nop           ; 4 t-states     
-;    nop               
-;    nop
-;    nop
-;    djnz inner_loop   
-;    dec c
-;    jr nz, outer_loop   
-;    pop bc             
-;	jp pauseReturn
-
-
-org $3ff0
-debug:   			; debug trap
+;------------------------------------------------------------------------
+org $3ff0	  		; Locate near the end of ROM
+debug_trap:  		; If we see border lines, we probably hit this trap.
 	SET_BORDER a
 	inc a
-	jr debug
+	jr debug_trap
+;------------------------------------------------------------------------
 
+;------------------------------------------------------------------------
 last:
-DS  16384 - last
+DS  16384 - last	; leave rest of rom blank
+;------------------------------------------------------------------------
 
 
 ;******************************************************
