@@ -6,10 +6,10 @@
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
-SCREEN_START				EQU $4000  ; [6144]
+SCREEN_START				EQU $4000  ; [6144 bytes]
 SCREEN_END					EQU $57FF
-SCREEN_ATTRIBUTES_START   	EQU $5800  ; [768]
-SCREEN_ATTRIBUTES_END   	EQU $5AFF  
+SCREEN_ATTRIBUTES_START		EQU $5800  ; [768 bytes]
+SCREEN_ATTRIBUTES_END		EQU $5AFF  
 
 WORKING_STACK				EQU  (SCREEN_START+(TempStack-relocate))
 ; Note: Setting the stack to the attributes area allows a visual debugging of the stack
@@ -24,23 +24,23 @@ LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 ;--------------------------------
 ; READ_ACC_WITH_HALT - Reads an 8-bit value from Arduino into the Accumulator (A)
 ;
-; **Usage Example:**
+; Usage Example:
 ;   READ_ACC_WITH_HALT  ; Read a byte into A
 ;
 MACRO READ_ACC_WITH_HALT 
-	halt
+	halt  				;   HALT pauses Z80 until NMI (from Arduino) resumes execution.
     in a, ($1f)  
 ENDM
 
 ;--------------------------------
-; READ_PAIR_WITH_HALT - Reads a 16-bit value sent from Arduino in a register pair
-; **DO NOT USE BC** - This macro internally uses reg-C for the port value
-;
-; **Usage Example (showing workaround for reading 'BC') :** 
-;   ld C, $1F                 ; Set up input port
-;   READ_PAIR_WITH_HALT e, d  ; Read 16-bit value (temporarily in DE)
-;   push de                   ; Save DE (holds BC)
-;   pop bc                    ; Restore BC from DE
+
+; READ_PAIR_WITH_HALT - Reads a 16-bit value sent from Arduino into a register pair
+; **DO NOT USE BC AS DESTINATION** - Macro uses C for I/O port ($1F)
+;   - If you need BC, use workaround:
+;       ld C, $1F				  ; Setup needed for this macro
+;       READ_PAIR_WITH_HALT e, d  ; Read into DE first
+;       push de                   ; 
+;       pop bc                    ; Now in BC
 ;
 MACRO READ_PAIR_WITH_HALT ,reg_low,reg_high  
     halt
@@ -129,22 +129,18 @@ check_initial:   	 ; command checking loop
 ;------------------------------------------------------
 command_FL:  ; "F" - FILL COMMAND
 ;------------------------------------------------------
-;;;	ld C,$1F  				 ; setup for pair read
 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
 	halt		 	; Synchronizes with Arduino (NMI to continue)
-;;	in a,($1f)   	; Read fill value from the z80 I/O port
-;;	ld c,a
-	in b,(c)
+	in b,(c)		; Read fill value from the z80 I/O port
 fillLoop:
-;;	ld (hl),c	 	; Write to memory
 	ld (hl),b	 	; Write to memory
     inc hl		
     DEC DE      
     LD A, D      
     OR E         
-    Jr NZ, fillLoop   
-    jr mainloop 	; done - back for next transfer command
+    JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)
+    JR mainloop 	; Return back for next transfer command
 
 ;---------------------------------------------------
 command_GO:  ; "G" - TRANSFER DATA (flashes border)
@@ -152,7 +148,6 @@ command_GO:  ; "G" - TRANSFER DATA (flashes border)
 	; Transfers are typically sequential, but any destination location can be targeted.
     ; The data transfer is limited to 255 bytes this INCLUDES THE HEADER.
 	; Due to the synchronizing 'halt' we can't use 'INI'
-;;;	ld C,$1F  				; setup for pair read
 	halt					; Synchronizes with Arduino (NMI to continue)
 	in b,(c)  				; The transfer size: 1 byte
 	READ_PAIR_WITH_HALT h,l ; HL = Destination address
@@ -172,16 +167,20 @@ readDataLoop:
 command_CP:  ; "C" - COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
-;;;	ld C,$1F  				; setup for pair read
 	halt					; Synchronizes with Arduino (NMI to continue)
-	in b,(c)  				; The transfer size: 1 byte
+	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
 CopyLoop:
 	halt		 	; Synchronizes with Arduino (NMI to continue)
-	in a,($1f)   	; Read a byte from the z80 I/O port
-	ld (hl),a	 	; write to memory
-    inc hl		
-	djnz CopyLoop  	; read loop
+
+;	in a,($1f)   	; Read a byte from the z80 I/O port [11]
+;	ld (hl),a	 	; write to memory					[7]
+;   inc hl			;									[6]	
+;	djnz CopyLoop  	; read loop							[13]
+
+	ini   			; (HL)<-(C), B<-B–1, HL<-HL+1		[16]
+	JP nz,CopyLoop	;									[10]
+
     jp mainloop 	; done - back for next transfer command
 
 ;--------------------------------------------------------
@@ -207,8 +206,9 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 ;-------------------------------------------------------------------------------------------
 
 	;-------------------------------------------------------------------------------------------
- 	; Setup - put copy of ROM routine 'relocate' (final launch code) into Screen memory	
-	; We are preparing screen memory now while registers are still available.
+	; Setup - Copy code to screen memory, as we'll be switching ROMs later.
+	; After the ROM swap, we lose this ROM code in exchange for the system ROM,
+	; so the launch code will run from screen RAM.
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
@@ -223,7 +223,7 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	
 	;-------------------------------------------------------------------------------------------
 	; -- Restore Alternate Registers HL',DE',BC',AF --'
-	ld c,$1f  				 ; setup for pair read
+	ld c,$1f  				 ; Just use C above for LDIR copy, setup again for pair read 
 	READ_PAIR_WITH_HALT L,H  ; future HL'
 	READ_PAIR_WITH_HALT e,d  ; future DE'
 	READ_ACC_WITH_HALT		 ; C
@@ -241,7 +241,7 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	
 	;-------------------------------------------------------------------------------------------
 	; Restore IY,IX	
-	ld c,$1f  				  ; setup for pair read
+	ld c,$1f  				  ; setup again for pair read 
 	READ_PAIR_WITH_HALT e,d;  ; read IY
 	push de
 	pop IY					  ; restore IY
@@ -251,14 +251,14 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Read IFF
+	; Restore IFF
 	READ_ACC_WITH_HALT		; reads the IFF flag states
-	jp RestoreEI_IFFState	; jump used - avoiding stack use
+	jp RestoreEI_IFFState	; jump used - avoiding stack use in general
 RestoreEI_IFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Read R (refresh) register
+	; Restore R (refresh) register
 	READ_ACC_WITH_HALT      ; read R
 	ld r, a                 ; Sets R, but this won't match the original start value,
 	                        ; since we're restoring the state now, not at true game start.
@@ -269,16 +269,19 @@ RestoreEI_IFFStateComplete:
 	;-----------------------------------------------
 	; Final Stack Usage:
 	; Instead of using RETN to start the .SNA program, we jump directly to the starting address. 
-	; This frees up 2 bytes of stack space, allowing for a minimal but useful 1-deep stack. 
-	; The HALT instruction requires an active stack for synchronization. The 2 freed bytes, 
-	; originally holding the snapshot's return address, now serve as a temporary single-level 
-	; stack—just enough for our needs in the final "resource-critical" restore stages.
+	; This frees up 2 bytes of stack space that would normally be used to hold the return address 
+	; required by the RETN instruction.
 	;
-	; Restore Program's Stack Pointer - the SNA format allows some magic here
-	READ_PAIR_WITH_HALT l, h  ; Read stack
-	ld sp, hl                 ; 'Snapshots_SP' restored (the normal 'RET' location)
-	pop hl                    ; SP += 2, move past 'RET' location - ready as a tiny stack!
-	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; patching "JP xxxx" starup-up address
+	; This gives us a minimal but useful 1-deep stack.
+	; The HALT instruction requires an active stack for synchronization. The 2 freed bytes, 
+	; which originally held the snapshot's return address, now serve as a temporary single-level 
+	; stack — just enough for the final "resource-critical" restore stages.
+	;
+	; Restore Program's Stack Pointer — the SNA format allows some magic here (see above)
+	READ_PAIR_WITH_HALT l, h      ; Read stack
+	ld sp, hl                     ; Restore Snapshots_SP (the normal RET location)
+	pop hl                        ; SP += 2, move past RET location — ready as a tiny stack!
+	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx startup address
 	;-----------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -292,19 +295,23 @@ RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	READ_ACC_WITH_HALT   ; Border Colour
-	AND %00000111		 ; Only the lower 3 bits are used (0-7)
-	out ($fe),a			 ; set border
+	READ_ACC_WITH_HALT   		; Border Colour
+	AND %00000111		 		; Only the lower 3 bits are used (0-7)
+	out ($fe),a			 		; set border
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore DE & BC (we are now resource-poor)
- 	READ_PAIR_WITH_HALT e, d   ; Restore DE directly 
-	; Restore BC - To restore BC we can only use 'READ_ACC_WITH_HALT'
-	READ_ACC_WITH_HALT	; C
+	; Restore DE 
+ 	READ_PAIR_WITH_HALT e, d   	; Restore DE directly 
+
+	; Restore BC - !!! we are now resource-poor !!! 
+	; To restore BC we can only use 'READ_ACC_WITH_HALT'
+	READ_ACC_WITH_HALT			; C
 	ld c,a
-	READ_ACC_WITH_HALT	; B
+	READ_ACC_WITH_HALT			; B
 	ld b,a
+	; NOTE: BC is intentionally restored 2nd last to 
+	; keep C=$1F usable for as long as possible! (i.e. READ_PAIR_WITH_HALT)
 	;------------------------------------------------------------------------
 
 	; *************************************************
@@ -355,8 +362,8 @@ relocateEnd:
 ClearScreen:
 	SET_BORDER 0
    	ld a, 0              
-    ld hl, 16384       
-    ld de, 16385        
+    ld hl, SCREEN_START       
+    ld de, SCREEN_START+1        
     ld bc, 6144       
     ld (hl), a    	; Screen bitmap locations
     ldir                
@@ -382,6 +389,7 @@ setIM2:
     IM 2
     jp RestoreInterruptModeComplete  ; used only to avoid stack use
 setIM1:
+	; IM1 uses the Spectrum's default interrupt handler at $0038 (simple RET).
     IM 1
     jp RestoreInterruptModeComplete  ; used only to avoid stack use
 setIM0:
@@ -421,7 +429,7 @@ DS  16384 - last	; leave rest of rom blank
 ; 2/ Add SCR loading/viewing "SC" [DONE]
 ; 3/ Add PSG Files - AY Player  "PS" 
 ; 4/ Add GIF Files - Gif Viewer/Player "GI"
-; 5/ TO VOID - reorder incoming snapshot header  
+; 5/ reorder incoming snapshot header [DONE]
 ; 6/ Options to change loading boarder (off, colour choice)
 ; 7/ Options to slow down loading, mimic tapes
 ; 8/ load binary TAP files (add command "T")
@@ -431,36 +439,141 @@ DS  16384 - last	; leave rest of rom blank
 ; 12/ Support poke cheats
 ; 13/ Analyse games at load time, add lives + cheats
 ; 14/ Analyse music players extract, enable for AY on 48k.
-; 15/ Compress data/unpack - result must be faster (so maybe not)
+; 15/ Compress data/unpack - with the aim of faster load times (so maybe not)
 ; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
 
 ;*****************************
-; 27 bytes SNA Header Example
+; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)
 ; [0 ] I            = 0x3F       
 ; [1 ] HL_          = 0x2758     
 ; [3 ] DE_          = 0xB462     
 ; [5 ] BC_          = 0x3F62     
 ; [7 ] AF_          = 0x12A8     
-; [9 ] HL           = 0xFC0B   // READ LAST   
-; [11] DE           = 0x98B2   // READ 3rd LAST  
-; [13] BC           = 0x0012   // READ 2nd LAST  
-; [15] IY           = 0x5C3A     
+; [9 ] HL           = 0xFC0B    
+; [11] DE           = 0x98B2    
+; [13] BC           = 0x0012     
+; [15] IY           = 0x5C3A  [i.e. received 1st]
 ; [17] IX           = 0xDB59     
 ; [19] IFF2         = 0x00       
 ; [20] R            = 0x5F       
-; [21] AF           = 0x4040     
+; [21] AF           = 0x4040  [i.e. received last]
 ; [23] SP           = 0x6188     
 ; [25] IM           = 0x01       
 ; [26] BorderColour = 0x00       
 
-; This order is used Arduino end - it's better suited for restoring Z80 states.
-;  sendBytes(head27_1, (1/*"E"*/) + 1+2+2+2+2 );  // Send command "E" then I,HL',DE',BC',AF'
-;  sendBytes(&head27_1[1 + 15], 2+2+1+1 );   // Send IY,IX,IFF2,R (packet data continued)
-;  sendBytes(&head27_1[1 + 23], 2);          // Send SP                     "
-;  sendBytes(&head27_1[1 +  9], 2);          // Send HL                     "
-;  sendBytes(&head27_1[1 + 25], 1);          // Send IM                     "
-;  sendBytes(&head27_1[1 + 26], 1);          // Send BorderColour           "
-;  sendBytes(&head27_1[1 + 11], 2);          // Send DE                     "
-;  sendBytes(&head27_1[1 + 13], 2);          // Send BC                     "
-;  sendBytes(&head27_1[1 + 21], 2);          // Send AF                     "
+; The Arduino C code reorders the SNA header before sending.
+; This rejig make things better suited for restoring Z80 states.
+;  sendBytes(head27_1, (1/*"E"*/) + 1+2+2+2+2 );  	// Send command "E" then I,HL',DE',BC',AF'
+;  sendBytes(&head27_1[1 + 15], 2+2+1+1 );   		// Send IY,IX,IFF2,R (packet data continued)
+;  sendBytes(&head27_1[1 + 23], 2);          		// Send SP                     "
+;  sendBytes(&head27_1[1 +  9], 2);         		// Send HL                     "
+;  sendBytes(&head27_1[1 + 25], 1);       		   	// Send IM                     "
+;  sendBytes(&head27_1[1 + 26], 1);     		   	// Send BorderColour           "
+;  sendBytes(&head27_1[1 + 11], 2);        		  	// Send DE                     "
+;  sendBytes(&head27_1[1 + 13], 2);       		   	// Send BC                     "
+;  sendBytes(&head27_1[1 + 21], 2);         	 	// Send AF                     "
+
+
+
+
+
+
+
+
+; **** SCRATCH PAD ********
+
+; ;----------------------------------------
+; ; fill32: Fills 32 bytes 
+; ;----------------------------------------
+; ; Inputs:
+; ;   HL = target SP (caller precomputes start_address +32)
+; ;   A  = fill value
+; ;----------------------------------------
+; fill32:
+;     ld   (saved_sp), sp    ; 20t
+;     ld   sp, hl            ; 6t
+;     ld   h, a              ; 4t
+;     ld   l, a              ; 4t
+;     push hl                ; 16×11t = 176t
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     push hl
+;     ld   sp, (saved_sp)    ; 20c
+;     JR mainloop                      ; 10c
+
+; saved_sp:
+; dw 0                  ; SP storage
+
+; ; Z80 fill routine (BC must be >=2)
+; ; Inputs: DE=destination, BC=size (>=2), A=fill value
+; ; Clobbers: AF, BC, DE, HL
+; 	READ_PAIR_WITH_HALT b,c  ; DE = Fill amount
+; 	READ_PAIR_WITH_HALT d,e  ; HL = Destination address
+; 	halt				 	 ; Synchronizes with Arduino (NMI to continue)
+; 	in a,(c)				 ; Read fill value from the z80 I/O port
+; Fill:
+;     LD HL, DE       ; 
+;     LD (HL), A      ; 1st byte        
+;     INC HL          ; HL = dest+1             
+;     EX DE, HL       ; DE = dest+1, HL=dest    
+;     DEC BC          ; BC = size-1             
+;     LDIR            ; Fill
+;    JR mainloop     ;   
+
+
+
+; Fill using stack
+; Inputs: DE=dest, BC=size/2, A=value
+; Clobbers: AF, BC, DE, HL, SP
+; Preserves: Original SP, re-enables interrupts
+
+; Fill:   
+;     ; Prepare 16-bit fill pattern
+;     LD H, A           ; H = fill value          [4]
+;     LD L, A           ; L = fill value          [4]
+       
+;     ; Position stack at buffer end
+;     LD SP, DE         ; SP = start address      [6]
+;     ADD SP, BC        ; SP += word count        [10]
+;  	  ADD SP, BC 
+
+;     ;;;;;;;;;; Convert byte count to PUSH count (BC /= 2)
+;     ;;;;;;;;SRL B             ;                         [8]
+;     ;;;;;;;;RR C              ; BC = size in words      [8]
+    
+;     ; Fast fill loop
+; FillLoop:
+;     PUSH HL           ; Write 2 bytes           [11]
+;     DEC BC            ; Decrement word counter  [6]
+;     LD A, B           ; Check if counter = 0    [4]
+;     OR C              ;                         [4]
+;     JR NZ, FillLoop   ;                         [12/7]
+    
+;	  ld SP,WORKING_STACK
+;     JR mainloop 
+
+
+
+
+; 	LD HL,0 
+;	ADD HL,SP 
+;
+;	...
+;
+;	LD SP,HL 
+;
+;saved_sp: 
+;dw 0
