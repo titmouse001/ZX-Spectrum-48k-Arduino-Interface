@@ -525,7 +525,8 @@ void refreshFileList() {
     }
   }
 
-  fileName[0] = ' ';  // Empty file selector slots
+  // Clear the remaining screen after last list item when needed.
+  fileName[0] = ' ';  // Empty file selector slots (just wipes area)
   fileName[1] = '\0';
   for (uint8_t i = clr; i < WINDOW_SIZE; i++) {
     DrawSelectorText(0, (i * 8), fileName);
@@ -565,14 +566,13 @@ void DrawSelectorText(int xpos, int ypos, const char *message) {
   // Setup fill mode command for clearing space after text.
   // The packetBuffer[64] offset is used to share with the text buffer
   packetBuffer[64+0] = 'F';  // Fill mode
-  //packetBuffer[64+1] = 'L';
   packetBuffer[64+1] = (clr >> 8) & 0xFF;             // high byte
   packetBuffer[64+2] = clr & 0xFF;                    // low byte
+  // [64+3], [64+4] are set later
   packetBuffer[64+5] = B00000000; // Fill pattern
 
   // Packet for sending text data
   packetBuffer[HEADER_START_G] = 'C';  // copy data
-//  packetBuffer[HEADER_START_O] = 'P';
   packetBuffer[HEADER_PAYLOADSIZE] = byteCount;
 
   for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
@@ -582,9 +582,7 @@ void DrawSelectorText(int xpos, int ypos, const char *message) {
     packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
     packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
     // Copy the text graphic data into the packet buffer
-    for (int i = 0; i < byteCount; i++) {
-      packetBuffer[SIZE_OF_HEADER + i] = rowBufferPtr[i];
-    }
+    memcpy(&packetBuffer[SIZE_OF_HEADER], rowBufferPtr, byteCount);
     sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
 
     // Clear space after the text
@@ -599,19 +597,16 @@ void DrawSelectorText(int xpos, int ypos, const char *message) {
 
 __attribute__((optimize("-Os")))
 void DrawText(int xpos, int ypos, const char *message) {
-  uint8_t byteCount = prepareTextGraphics(message);
-  byteCount = ((byteCount * (_FONT_WIDTH + _FONT_GAP)) + 7) / 8;  // byte alignment
+  uint8_t charCount = prepareTextGraphics(message);
+  uint8_t byteCount = ((charCount * (_FONT_WIDTH + _FONT_GAP)) + 7) / 8;  // byte alignment
   packetBuffer[HEADER_START_G] = 'C';
-//  packetBuffer[HEADER_START_O] = 'P';
   packetBuffer[HEADER_PAYLOADSIZE] = byteCount;
   for (uint8_t y = 0; y < _FONT_HEIGHT; y++) {
     uint8_t *ptr = &finalOutput[y * _FONT_BUFFER_SIZE];
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y); 
     packetBuffer[HEADER_HIGH_BYTE] = (currentAddress >> 8) & 0xFF;
     packetBuffer[HEADER_LOW_BYTE] = currentAddress & 0xFF;
-    for (int i = 0; i < byteCount; i++) {  // copy gfx
-      packetBuffer[SIZE_OF_HEADER + i] = ptr[i];
-    }
+    memcpy(&packetBuffer[SIZE_OF_HEADER], ptr, byteCount);
     sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
   }
 }
