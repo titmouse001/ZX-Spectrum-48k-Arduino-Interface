@@ -28,33 +28,15 @@
 #include "utils.h"
 #include "smallfont.h"
 #include "pins.h"
+#include "ScrSupport.h"
+#include "Z80Bus.h"
+#include "Buffers.h"
 
 #define VERSION ("0.14")
 
-// -----------------------------------------------------------------------------------
-// Copy/Transfer Structure
-//
-// - Index for command character 
-//  'C'    // Transfer/copy (things like drawing Text, displying .scr files)
-//	'F'    // Fill (clearing screen areas, selector bar)   
-//  'G'    // Transfer/copy with flashing boarder (use for loading .sna files)
-//  'E'    // Execute program (includes restoring registers/states from the 27 byte header) 
-//  'W'    // Wait for 50Hz maskable interrupt (prevents interrupts from interfering at final run stage)
-const uint8_t HEADER_TOKEN = 0;          // Hold command charater 'C','F','G',E','W'
-/* Index for payload as bytes (max send of 255 bytes) */
-const uint8_t HEADER_PAYLOADSIZE = 1;    // Only 'C' and 'G' commands
-/* Index for high byte of destination address */
-const uint8_t HEADER_HIGH_BYTE = 2;      // Only 'C' and 'G' commands
-/* Index for low byte of destination addresa */
-const uint8_t HEADER_LOW_BYTE = 3;       // Only 'C' and 'G' commands
-// ----------------------------------------------------------------------------------
-const uint8_t SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
-/* Maximum payload per transfer is one byte (0–255) */   
-const uint8_t PAYLOAD_BUFFER_SIZE = 255;
-const uint16_t BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 // ----------------------------------------------------------------------------------  
-static uint8_t head27_Execute[27 + 1] = { 'E' };   // pre populate with Execute command 
-static uint8_t waitCommand[1] = { 'W' };           // pre populate with Wait command 
+//uint8_t head27_Execute[27 + 1] = { 'E' };   // pre populate with Execute command 
+uint8_t waitCommand[1] = { 'W' };           // pre populate with Wait command 
 static uint8_t packetBuffer[BUFFER_SIZE] ;         // Used by 'C','G' & 'F' commands
 // ----------------------------------------------------------------------------------
 #define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
@@ -90,74 +72,34 @@ void setup() {
   //  Serial.println("STARTING");
 
 
-  // Reset Z80
-  pinMode(Z80_REST, OUTPUT);
-  WRITE_BIT(PORTC, DDC3, LOW);  // reset-line "LOW" speccy
-  delay(10);
-  WRITE_BIT(PORTC, DDC3, HIGH);  // reset-line "HIGH" allow speccy to startup
-
+  Z80Bus::resetToSnaROM();
+ 
   // Setup pins for "74HC165" shift register
   pinMode(ShiftRegDataPin, INPUT);
   pinMode(ShiftRegLatchPin, OUTPUT);
   pinMode(ShiftRegClockPin, OUTPUT);
-
-  // 16k Rom switching (by sellecting which rom half from a 32k Rom)
-  WRITE_BIT(PORTC, DDC1, LOW);
-  pinMode(ROM_HALF, OUTPUT);  // LOW external/HIGH stock rom
-  WRITE_BIT(PORTC, DDC1, LOW);      // pin15, A1 , swap out stock rom
-
-  // Connect to Z80's NMI Line to unhalt Z80 (using NMI due to speccys maskable taken for 50fps H/W refresh)
-  pinMode(Z80_NMI, OUTPUT);  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-  WRITE_BIT(PORTC, DDC0, HIGH);       // pin14 (A0), Z80 /NMI line
-
-  // These pins are connected to the address lines on the Z80
-  pinMode(Z80_D0Pin, OUTPUT);
-  pinMode(Z80_D1Pin, OUTPUT);
-  pinMode(Z80_D2Pin, OUTPUT);
-  pinMode(Z80_D3Pin, OUTPUT);
-  pinMode(Z80_D4Pin, OUTPUT);
-  pinMode(Z80_D5Pin, OUTPUT);
-  pinMode(Z80_D6Pin, OUTPUT);
-  pinMode(Z80_D7Pin, OUTPUT);
+ 
+  Z80Bus::setupNMI();
+  Z80Bus::setupDataLine(OUTPUT);
+ 
   pinMode(Z80_HALT, INPUT);
 
   haveOled = setupOled();  // Using a mono OLED with 128x32 pixels
 
   int but = getAnalogButton(analogRead(21));
   if (but == BUTTON_SELECT) {
-    WRITE_BIT(PORTC, DDC1, HIGH);  // pin15 (A1) - Switch to high part of the ROM.
+     Z80Bus::bankSwitchStockRom();
   }
 
   if (but == BUTTON_DOWN) {
     InitializeSDcard();
-
-    // TEST SECTION ... loads .SCR files as a slide show
-    while (1) {
-      root.rewind();
-      while (file.openNext(&root, O_RDONLY)) {
-        if (file.isFile()) {
-          if (file.fileSize() == 6912) {
-            uint16_t currentAddress = 0x4000;  // screen start
-            while (file.available()) {
-              byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-              ASSIGN_16BIT_COMMAND(packetBuffer,'C',bytesRead);
-              ADDR_16BIT_COMMAND(packetBuffer,currentAddress);
-              sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
-              currentAddress += bytesRead;
-            }
-            delay(2000);
-          }
-        }
-        file.close();
-      }
-    }
+    ScrSupport::DemoScrFiles(root,file,packetBuffer);
   }
 }
 
 void loop() {
 
   clearScreenAttributes();
-
   InitializeSDcard();
   refreshFileList();
   HighLightFile();
@@ -170,7 +112,7 @@ void loop() {
     byte sg = readButtons();
     if (sg == BUTTON_SELECT) {
       Utils::openFileByIndex(currentFileIndex);
-      resetSpeccy();
+      Z80Bus::resetToSnaROM();
       break;
     } else if (sg == BUTTON_DOWN || sg == BUTTON_UP) {
       HighLightFile();
@@ -206,41 +148,32 @@ void loop() {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
     ASSIGN_16BIT_COMMAND(packetBuffer,'G',bytesRead);
     ADDR_16BIT_COMMAND(packetBuffer,currentAddress);
-    sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
+    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
     currentAddress += packetBuffer[HEADER_PAYLOADSIZE];
   }
   file.close();
 
   //-----------------------------------------
-  sendBytes(waitCommand, sizeof(waitCommand));  // Command Speccy to wait for the next screen frefresh
+  // Command Speccy to wait for the next screen frefresh
+  Z80Bus::sendBytes(waitCommand, sizeof(waitCommand)); 
+  //-----------------------------------------
   // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) will self release
   // the CPU from halt mode during the vertical blanking period.
-  waitHalt();  // wait for speccy to triggered the 50Hz maskable interrupt
+  Z80Bus::waitHalt();  // wait for speccy to triggered the 50Hz maskable interrupt
   //-----------------------------------------
-
-  // *** Send Snapshot Header Section ***
-  // head27_2[0] contains "E" which informs the speccy this packets a execute command.
-  sendBytes(&head27_Execute[   0], 1+1+2+2+2+2 );  // Send command "E" then I,HL',DE',BC',AF'
-  sendBytes(&head27_Execute[1+15], 2+2+1+1 );   // Send IY,IX,IFF2,R (packet data continued)
-  sendBytes(&head27_Execute[1+23], 2);          // Send SP                     "
-  sendBytes(&head27_Execute[1+ 9], 2);          // Send HL                     "
-  sendBytes(&head27_Execute[1+25], 1);          // Send IM                     "
-  sendBytes(&head27_Execute[1+26], 1);          // Send BorderColour           "
-  sendBytes(&head27_Execute[1+11], 2);          // Send DE                     "
-  sendBytes(&head27_Execute[1+13], 2);          // Send BC                     "
-  sendBytes(&head27_Execute[1+21], 2);          // Send AF                     "
-
+  Z80Bus::sendSnaHeader();  // sends 27 commands allowing Z80 to patch together the Sna files saved register states.
+  //-----------------------------------------
   // At this point the speccy is running code in screen memory to safely swap ROM banks.
   // A final HALT is given just before jumping back to the real snapshot code/game.
-  waitRelease_NMI();  // signal NMI line for the speccy to resume
-
+  Z80Bus::waitRelease_NMI();  // signal NMI line for the speccy to resume
+  //-----------------------------------------
   // T-state duration:  1/3.5MHz = 0.2857μs 
   // NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
   //                    RETN Instruction:    14 T-states.
   //                    Total:              ~24 T-states 
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-  WRITE_BIT(PORTC, DDC1, HIGH);  // pin15 (A1) - Switch to high part of the ROM.
+  Z80Bus::bankSwitchStockRom();
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
@@ -253,9 +186,9 @@ void loop() {
 
   while (1) {
     unsigned long startTime = millis();
-    PORTD = readJoystick();  // output to z80 data lines
+    PORTD = Z80Bus::readJoystick();  // output to z80 data lines
     if (getAnalogButton(analogRead(21)) == 2) {
-      resetSpeccy();
+      Z80Bus::resetToSnaROM();
       break;
     }
     unsigned long timeSpent = millis() - startTime;
@@ -263,42 +196,6 @@ void loop() {
       delay(maxButtonInputLoopTime - timeSpent);
     }
   }
-}
-
-//-------------------------------------------------
-// Section: Z80 Data Transfer and Control Routines
-//-------------------------------------------------
-
-__attribute__((optimize("-Ofast"))) 
-void sendBytes(byte *data, uint16_t size) {
-  for (uint16_t i = 0; i < size; i++) {
-    while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = data[i];
-    WRITE_BIT(PORTC, DDC0, LOW);
-    WRITE_BIT(PORTC, DDC0, HIGH);
-    while ((bitRead(PINB, PINB0) == LOW)) {};
-  }
-}
-
-void waitHalt() {
-  // Here we are waiting for the speccy to release the halt, it does this every 50fps.
-  while ((bitRead(PINB, PINB0) == HIGH)) {};
-  while ((bitRead(PINB, PINB0) == LOW)) {};
-}
-
-void waitRelease_NMI() {
-  // Here we MUST release the z80 for it's HALT state.
-  while ((bitRead(PINB, PINB0) == HIGH)) {};  // (1) Wait for Halt line to go LOW.
-  WRITE_BIT(PORTC, DDC0, LOW);                      // (2) A0 (pin-8) signals the Z80 /NMI line,
-  WRITE_BIT(PORTC, DDC0, HIGH);                        //     LOW then HIGH, this will un-halt the Z80.
-  while ((bitRead(PINB, PINB0) == LOW)) {};   // (3) Wait for halt line to go HIGH again.
-}
-
-void resetSpeccy(){
-  WRITE_BIT(PORTC, DDC3, LOW);  // reset-line "LOW" to speccy
-  WRITE_BIT(PORTC, DDC1, LOW);  // pin15 (A1) - Switch over to the lower part of the ROM.
-  delay(10);
-  WRITE_BIT(PORTC, DDC3, HIGH);    // reset-line "HIGH" allow speccy to startup
 }
 
 //-------------------------------------------------
@@ -344,32 +241,12 @@ uint8_t getAnalogButton(int but) {
   return BUTTON_NONE;
 }
 
-uint8_t readJoystick() {
-  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
-  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
-
-  byte data = 0;
-  // Read the data byte using shiftIn replacement with direct port manipulation
-  for (uint8_t i = 0; i < 8; i++) {  // only need first 5 bits "000FUDLR"
-    data <<= 1;
-    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
-      bitSet(data, 0);
-    }
-    // Toggle clock pin low to high to read the next bit
-    bitClear(PORTC, DDC2);  // Clock low
-    delayMicroseconds(1);   // Short delay to ensure stable clocking
-    bitSet(PORTC, DDC2);    // Clock high
-  }
-  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
-  return data;
-}
-
 byte readButtons() {
 
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = 0;
   int but = analogRead(21);
-  uint8_t joy = readJoystick();  //"000FUDLR" bit pattern
+  uint8_t joy = Z80Bus::readJoystick();  //"000FUDLR" bit pattern
 
   if (getAnalogButton(but) || (joy & B00011100)) {
     unsigned long currentMillis = millis();  // Get the current time
@@ -417,7 +294,7 @@ void clearScreenAttributes() {
     const uint8_t  whiteText = B01000111;
     /* Fill mode */
     FILL_8BIT_COMMAND(packetBuffer, amount, startAddress, whiteText );
-    sendBytes(packetBuffer, 6);
+    Z80Bus::sendBytes(packetBuffer, 6);
 }
 
 void HighLightFile() {
@@ -427,12 +304,12 @@ void HighLightFile() {
   const uint16_t startAddress = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
   /* Highlight file selection - B00101000: Black text, Cyan background*/
   FILL_8BIT_COMMAND(packetBuffer, amount, startAddress, B00101000 );    
-  sendBytes(packetBuffer, 6 );
+  Z80Bus::sendBytes(packetBuffer, 6 );
 
   if (oldHighlightAddress != startAddress) {
     /* Remove old highlight - B01000111: Restore white text/black background for future use */
     FILL_8BIT_COMMAND(packetBuffer, amount, oldHighlightAddress, B01000111 );
-    sendBytes(packetBuffer, 6);
+    Z80Bus::sendBytes(packetBuffer, 6);
     oldHighlightAddress = startAddress;
   }
 }
@@ -520,7 +397,7 @@ void DrawSelectorText(int xpos, int ypos, const char *message) {
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
     ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
     memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE); 
-    sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE);   // transmit each line
+    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE);   // transmit each line
   }
 }
 
@@ -534,7 +411,7 @@ void DrawText(int xpos, int ypos, const char *message) {
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y); 
     ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
     memcpy(&packetBuffer[SIZE_OF_HEADER], ptr, byteCount);
-    sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
+    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
   }
 }
 

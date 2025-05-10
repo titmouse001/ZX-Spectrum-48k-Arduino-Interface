@@ -2,7 +2,7 @@
 #define PINS_H
 
 #ifdef HIGH
-#undef HIGH
+#undef HIGH // can't use Arduino "0x1", need plain "1" for macros
 #endif
 
 #ifdef LOW
