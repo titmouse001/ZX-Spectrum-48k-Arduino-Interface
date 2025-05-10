@@ -20,36 +20,16 @@
 
 #include <avr/pgmspace.h>
 #include <SPI.h>
-#include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
-#include "SSD1306AsciiAvrI2c.h"
-#include "fudgefont.h"  // Based on the Adafruit5x7 font, with '!' to '(' changed to work as a VU BAR (8 chars)
-#include "utils.h"
 #include <Wire.h> 
 
-#define VERSION ("0.14")
+#include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
+#include "SSD1306AsciiAvrI2c.h"
 
-// 'Z80_D0Pin' to 'Z80_D7Pin'
-const byte Z80_D0Pin = 0;          // Arduino to z80 data pins
-const byte Z80_D1Pin = 1;          //  ""
-const byte Z80_D2Pin = 2;          //  ""
-const byte Z80_D3Pin = 3;          //  ""
-const byte Z80_D4Pin = 4;          //  ""
-const byte Z80_D5Pin = 5;          //  ""
-const byte Z80_D6Pin = 6;          //  ""
-const byte Z80_D7Pin = 7;          //  ""
-const byte Z80_HALT = 8;           // PINB0 (PORT B), Z80 'Halt' Status
-const byte ShiftRegDataPin = 9;    // connected to 74HC165 QH (pin-9 on chip)
-const byte ShiftRegLatchPin = 10;  // connected to 74HC165 SH/LD (pin-1 on chip)
-//                   pin 11 MOSI - SD CARD
-//                   pin 12 MISO - SD CARD
-//                   pin 13 SCK  - SD CARD
-const byte ledPin = 13;  // only used for critical errors (flashes)
-const byte Z80_NMI = 14;
-const byte ROM_HALF = 15;
-const byte ShiftRegClockPin = 16;  // connected to 74HC165 CLK (pin-2 on 165)
-const byte Z80_REST = 17;
-//                   pin 18 SDA - OLED
-//                   pin 19 SCL - OLED
+#include "utils.h"
+#include "smallfont.h"
+#include "pins.h"
+
+#define VERSION ("0.14")
 
 // -----------------------------------------------------------------------------------
 // Copy/Transfer Structure
@@ -77,36 +57,31 @@ static uint8_t head27_Execute[27 + 1] = { 'E' };   // pre populate with Execute 
 static uint8_t waitCommand[1] = { 'W' };           // pre populate with Wait command 
 static uint8_t packetBuffer[BUFFER_SIZE] ;         // Used by 'C','G' & 'F' commands
 // ----------------------------------------------------------------------------------
-
+#define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
+byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 };
+// ----------------------------------------------------------------------------------
+// SD card support
 SdFat32 sd;
 FatFile root;
 FatFile file;
 uint16_t totalFiles;
 char fileName[65];
-
+// ----------------------------------------------------------------------------------
+// OLED support
 #define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
+bool haveOled = false;
+// ----------------------------------------------------------------------------------
 
+enum { BUTTON_NONE, BUTTON_DOWN, BUTTON_SELECT, BUTTON_UP };
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
 unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
 unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
 bool buttonHeld = false;               // Track if the button is being held
-
-/* Fixed‐width bitmap font: */
-static const uint8_t FNT_WIDTH         = 5;   // character width in pixels (5 px per char) 
-static const uint8_t FNT_HEIGHT        = 7;   // character height in pixels (7 px per char)
-static const uint8_t FNT_GAP           = 1;   // horizontal spacing between adjacent characters (1 px)
-static const uint8_t FNT_BUFFER_SIZE   = 32;  // size of the on‐screen text buffer (enough bytes to hold one full line)
-byte finalOutput[FNT_BUFFER_SIZE * FNT_HEIGHT] = { 0 };
-
-#define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
 uint16_t oldHighlightAddress= 0;      // Last highlighted screen position for clearing away
 uint16_t currentFileIndex = 0;        // The currently selected file index in the list
 uint16_t startFileIndex = 0;          // The start file index of the current viewing window
 
-enum { BUTTON_NONE, BUTTON_DOWN, BUTTON_SELECT, BUTTON_UP };
-
-bool haveOled = false;
 
 void setup() {
 
@@ -117,9 +92,9 @@ void setup() {
 
   // Reset Z80
   pinMode(Z80_REST, OUTPUT);
-  bitClear(PORTC, DDC3);  // reset-line "LOW" speccy
-  delay(25);
-  bitSet(PORTC, DDC3);  // reset-line "HIGH" allow speccy to startup
+  WRITE_BIT(PORTC, DDC3, LOW);  // reset-line "LOW" speccy
+  delay(10);
+  WRITE_BIT(PORTC, DDC3, HIGH);  // reset-line "HIGH" allow speccy to startup
 
   // Setup pins for "74HC165" shift register
   pinMode(ShiftRegDataPin, INPUT);
@@ -127,13 +102,13 @@ void setup() {
   pinMode(ShiftRegClockPin, OUTPUT);
 
   // 16k Rom switching (by sellecting which rom half from a 32k Rom)
-  bitClear(PORTC, DDC1);
+  WRITE_BIT(PORTC, DDC1, LOW);
   pinMode(ROM_HALF, OUTPUT);  // LOW external/HIGH stock rom
-  bitClear(PORTC, DDC1);      // pin15, A1 , swap out stock rom
+  WRITE_BIT(PORTC, DDC1, LOW);      // pin15, A1 , swap out stock rom
 
   // Connect to Z80's NMI Line to unhalt Z80 (using NMI due to speccys maskable taken for 50fps H/W refresh)
   pinMode(Z80_NMI, OUTPUT);  // Connetcs to the Z80 /NMI which releases the z80's 'halt' state
-  bitSet(PORTC, DDC0);       // pin14 (A0), Z80 /NMI line
+  WRITE_BIT(PORTC, DDC0, HIGH);       // pin14 (A0), Z80 /NMI line
 
   // These pins are connected to the address lines on the Z80
   pinMode(Z80_D0Pin, OUTPUT);
@@ -150,7 +125,7 @@ void setup() {
 
   int but = getAnalogButton(analogRead(21));
   if (but == BUTTON_SELECT) {
-    bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+    WRITE_BIT(PORTC, DDC1, HIGH);  // pin15 (A1) - Switch to high part of the ROM.
   }
 
   if (but == BUTTON_DOWN) {
@@ -265,7 +240,7 @@ void loop() {
   //                    Total:              ~24 T-states 
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-  bitSet(PORTC, DDC1);  // pin15 (A1) - Switch to high part of the ROM.
+  WRITE_BIT(PORTC, DDC1, HIGH);  // pin15 (A1) - Switch to high part of the ROM.
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
 
   while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
@@ -299,8 +274,8 @@ void sendBytes(byte *data, uint16_t size) {
   for (uint16_t i = 0; i < size; i++) {
     while ((bitRead(PINB, PINB0) == HIGH)) {};
     PORTD = data[i];
-    bitClear(PORTC, DDC0);
-    bitSet(PORTC, DDC0);
+    WRITE_BIT(PORTC, DDC0, LOW);
+    WRITE_BIT(PORTC, DDC0, HIGH);
     while ((bitRead(PINB, PINB0) == LOW)) {};
   }
 }
@@ -314,16 +289,16 @@ void waitHalt() {
 void waitRelease_NMI() {
   // Here we MUST release the z80 for it's HALT state.
   while ((bitRead(PINB, PINB0) == HIGH)) {};  // (1) Wait for Halt line to go LOW.
-  bitClear(PORTC, DDC0);                      // (2) A0 (pin-8) signals the Z80 /NMI line,
-  bitSet(PORTC, DDC0);                        //     LOW then HIGH, this will un-halt the Z80.
+  WRITE_BIT(PORTC, DDC0, LOW);                      // (2) A0 (pin-8) signals the Z80 /NMI line,
+  WRITE_BIT(PORTC, DDC0, HIGH);                        //     LOW then HIGH, this will un-halt the Z80.
   while ((bitRead(PINB, PINB0) == LOW)) {};   // (3) Wait for halt line to go HIGH again.
 }
 
 void resetSpeccy(){
-  bitClear(PORTC, DDC3);  // reset-line "LOW" to speccy
-  bitClear(PORTC, DDC1);  // pin15 (A1) - Switch over to the lower part of the ROM.
+  WRITE_BIT(PORTC, DDC3, LOW);  // reset-line "LOW" to speccy
+  WRITE_BIT(PORTC, DDC1, LOW);  // pin15 (A1) - Switch over to the lower part of the ROM.
   delay(10);
-  bitSet(PORTC, DDC3);    // reset-line "HIGH" allow speccy to startup
+  WRITE_BIT(PORTC, DDC3, HIGH);    // reset-line "HIGH" allow speccy to startup
 }
 
 //-------------------------------------------------
@@ -503,12 +478,12 @@ void refreshFileList() {
 
 __attribute__((optimize("-Ofast")))
 uint8_t prepareTextGraphics(const char *message) {
-  Utils::memsetZero(&finalOutput[0], FNT_BUFFER_SIZE * FNT_HEIGHT);
+  Utils::memsetZero(&TextBuffer[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
   uint8_t charCount = 0;
 
   for (uint8_t i = 0; message[i] != '\0'; i++) {
     // font characters in flash
-    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * FNT_WIDTH) + 6];
+    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * SmallFont::FNT_WIDTH) + 6];
     const uint8_t d0 = pgm_read_byte(&ptr[0]);
     const uint8_t d1 = pgm_read_byte(&ptr[1]);
     const uint8_t d2 = pgm_read_byte(&ptr[2]);
@@ -516,7 +491,7 @@ uint8_t prepareTextGraphics(const char *message) {
     const uint8_t d4 = pgm_read_byte(&ptr[4]);
 
     // build each row’s transposed byte
-    for (uint8_t row = 0; row < FNT_HEIGHT; row++) {
+    for (uint8_t row = 0; row < SmallFont::FNT_HEIGHT; row++) {
       // bit 4 comes from column 0, bit 3 from col 1 ... bit 0 from col 4
       const uint8_t transposedRow =
           (((d0 >> row) & 0x01) << 4) |
@@ -526,8 +501,8 @@ uint8_t prepareTextGraphics(const char *message) {
           (((d4 >> row) & 0x01) << 0);
 
       // compute bit-offset into the big output buffer
-      const uint16_t bitPosition = (FNT_BUFFER_SIZE * row) * 8 + (i * (FNT_WIDTH + FNT_GAP));
-      Utils::joinBits(finalOutput,transposedRow, FNT_WIDTH + FNT_GAP, bitPosition);
+      const uint16_t bitPosition = (SmallFont::FNT_BUFFER_SIZE * row) * 8 + (i * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP));
+      Utils::joinBits(TextBuffer,transposedRow, SmallFont::FNT_WIDTH + SmallFont::FNT_GAP, bitPosition);
     }
     charCount++;
   }
@@ -539,23 +514,23 @@ __attribute__((optimize("-Ofast")))
 void DrawSelectorText(int xpos, int ypos, const char *message) {
   prepareTextGraphics(message); // return ignored - drawing the whole buffer
   // Lets draw the whole width of 256 pixles so it will also clear away the old text.
-  ASSIGN_16BIT_COMMAND(packetBuffer,'C',FNT_BUFFER_SIZE);
-  uint8_t *outputLine = finalOutput;
-  for (uint8_t y = 0; y < FNT_HEIGHT; ++y, outputLine += FNT_BUFFER_SIZE) { 
+  ASSIGN_16BIT_COMMAND(packetBuffer,'C',SmallFont::FNT_BUFFER_SIZE);
+  uint8_t *outputLine = TextBuffer;
+  for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) { 
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
     ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
-    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, FNT_BUFFER_SIZE); 
-    sendBytes(packetBuffer, SIZE_OF_HEADER + FNT_BUFFER_SIZE);   // transmit each line
+    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE); 
+    sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE);   // transmit each line
   }
 }
 
 __attribute__((optimize("-Os")))
 void DrawText(int xpos, int ypos, const char *message) {
   uint8_t charCount = prepareTextGraphics(message);
-  uint8_t byteCount = ((charCount * (FNT_WIDTH + FNT_GAP)) + 7) / 8;  // byte alignment
+  uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
   ASSIGN_16BIT_COMMAND(packetBuffer,'C',byteCount);
-  for (uint8_t y = 0; y < FNT_HEIGHT; y++) {
-    uint8_t *ptr = &finalOutput[y * FNT_BUFFER_SIZE];
+  for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++) {
+    uint8_t *ptr = &TextBuffer[y * SmallFont::FNT_BUFFER_SIZE];
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y); 
     ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
     memcpy(&packetBuffer[SIZE_OF_HEADER], ptr, byteCount);
