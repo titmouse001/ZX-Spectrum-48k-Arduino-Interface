@@ -7,7 +7,7 @@ extern FatFile file;
 extern FatFile root;
 
 namespace Utils {
-  
+
 __attribute__((optimize("-Ofast"))) 
 void memsetZero(byte* b, unsigned int len){
 	for (; len != 0; len--) {
@@ -68,7 +68,6 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   // Calculate and return the final screen address
   return base_address + section_offset + row_within_section + x_byte_index;
 }
-
 
 //-------------------------------------------------
 // SD Card - File loading Support Section 
