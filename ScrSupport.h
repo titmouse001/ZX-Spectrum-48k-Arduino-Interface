@@ -22,6 +22,7 @@ void DemoScrFiles(FatFile& root, FatFile& file, byte* packetBuffer) {
             currentAddress += bytesRead;
           }
           delay(2000);
+          Z80Bus::setupScreenAttributes(0);   // setup the whole screen
         }
       }
       file.close();

@@ -111,4 +111,9 @@ GLCDFONTDECL(fudged_Adafruit5x7) = {
 	0X7F, 0X7F, 0X7F, 0X7F, 0X7F  // del   
 };
 
+// helper to fetch a byte from flash:
+static inline uint8_t fontByte(uint16_t idx) {
+  return pgm_read_byte(&fudged_Adafruit5x7[idx]);
+}
+
 #endif  
