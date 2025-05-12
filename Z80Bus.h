@@ -127,7 +127,7 @@ void setupScreenAttributes(const uint8_t attributes) {
     const uint16_t amount = 768;      
     const uint16_t startAddress = 0x5800;
     /* Fill mode */
-    FILL_8BIT_COMMAND(packetBuffer, amount, startAddress, attributes );
+    FILL_COMMAND(packetBuffer, amount, startAddress, attributes );
     Z80Bus::sendBytes(packetBuffer, 6);
 }
 
@@ -137,12 +137,12 @@ void highlightSelection(uint16_t currentFileIndex,uint16_t startFileIndex, uint1
   const uint16_t amount = 32;
   const uint16_t destAddr = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
   /* Highlight file selection - B00101000: Black text, Cyan background*/
-  FILL_8BIT_COMMAND(packetBuffer, amount, destAddr, B00101000 );    
+  FILL_COMMAND(packetBuffer, amount, destAddr, B00101000 );    
   Z80Bus::sendBytes(packetBuffer, 6 );
 
   if (oldHighlightAddress != destAddr) {
     /* Remove old highlight - B01000111: Restore white text/black background for future use */
-    FILL_8BIT_COMMAND(packetBuffer, amount, oldHighlightAddress, B01000111 );
+    FILL_COMMAND(packetBuffer, amount, oldHighlightAddress, B01000111 );
     Z80Bus::sendBytes(packetBuffer, 6);
     oldHighlightAddress = destAddr;
   }

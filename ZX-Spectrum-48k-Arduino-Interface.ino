@@ -18,6 +18,8 @@
 //  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
 // -------------------------------------------------------------------------------------
 
+// Note about slow roms giving unextpected behaviour.
+
 #include <Arduino.h>
 //#include <avr/pgmspace.h>
 #include <SPI.h>
@@ -120,8 +122,16 @@ void loop() {
   }
 
   oledLoadingMessage();
-
+/*
   Z80Bus::sendBytes(stackCommand, sizeof(stackCommand));
+  Z80Bus::waitRelease_NMI();
+*/
+  
+  const uint16_t address = 0x4004;
+  packetBuffer[0] = 'S';
+  packetBuffer[1] = (uint8_t)(((address) >> 8) & 0xFF);
+  packetBuffer[2] = (uint8_t)((address)&0xFF);
+  Z80Bus::sendBytes(packetBuffer, 3);
   Z80Bus::waitRelease_NMI(); 
 
   //-----------------------------------------
@@ -138,8 +148,8 @@ void loop() {
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
   while (file.available()) {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-    ASSIGN_16BIT_COMMAND(packetBuffer, 'G', bytesRead);
-    ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
+    START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);
+    END_UPLOAD_COMMAND(packetBuffer, currentAddress);
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
     currentAddress += packetBuffer[HEADER_PAYLOADSIZE];
   }
@@ -186,11 +196,11 @@ void loop() {
 __attribute__((optimize("-Ofast"))) void DrawSelectorText(int xpos, int ypos, const char *message) {
   prepareTextGraphics(message);  // return ignored - drawing the whole buffer
   // Lets draw the whole width of 256 pixles so it will also clear away the old text.
-  ASSIGN_16BIT_COMMAND(packetBuffer, 'C', SmallFont::FNT_BUFFER_SIZE);
+  START_UPLOAD_COMMAND(packetBuffer, 'C', SmallFont::FNT_BUFFER_SIZE);
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
+    END_UPLOAD_COMMAND(packetBuffer, currentAddress);
     memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE);
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE);  // transmit each line
   }
@@ -199,11 +209,11 @@ __attribute__((optimize("-Ofast"))) void DrawSelectorText(int xpos, int ypos, co
 __attribute__((optimize("-Os"))) void DrawText(int xpos, int ypos, const char *message) {
   uint8_t charCount = prepareTextGraphics(message);
   uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
-  ASSIGN_16BIT_COMMAND(packetBuffer, 'C', byteCount);
+  START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++) {
     uint8_t *ptr = &TextBuffer[y * SmallFont::FNT_BUFFER_SIZE];
     uint16_t currentAddress = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
+    END_UPLOAD_COMMAND(packetBuffer, currentAddress);
     memcpy(&packetBuffer[SIZE_OF_HEADER], ptr, byteCount);
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount);
   }

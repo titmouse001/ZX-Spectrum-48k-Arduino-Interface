@@ -15,7 +15,7 @@ constexpr uint8_t Ink7Paper0 = B01000111;
   * @param address   16-bit destination address
   * @param value     fill value
   */
-#define FILL_8BIT_COMMAND(buf, amount, address, value) \
+#define FILL_COMMAND(buf, amount, address, value) \
   do { \
     (buf)[0] = 'F'; \
     (buf)[1] = (uint8_t)((amount) >> 8); \
@@ -33,7 +33,7 @@ constexpr uint8_t Ink7Paper0 = B01000111;
   *
   * This macro writes the command letter and the payload length.
   */
-#define ASSIGN_16BIT_COMMAND(buf, cmd, payloadSize) \
+#define START_UPLOAD_COMMAND(buf, cmd, payloadSize) \
   do { \
     (buf)[HEADER_TOKEN] = (uint8_t)(cmd); \
     (buf)[HEADER_PAYLOADSIZE] = (uint8_t)(payloadSize); \
@@ -46,7 +46,7 @@ constexpr uint8_t Ink7Paper0 = B01000111;
   *
   * This splits the 16-bit address into high and low bytes.
   */
-#define ADDR_16BIT_COMMAND(buf, address) \
+#define END_UPLOAD_COMMAND(buf, address) \
   do { \
     (buf)[HEADER_HIGH_BYTE] = (uint8_t)(((address) >> 8) & 0xFF); \
     (buf)[HEADER_LOW_BYTE] = (uint8_t)((address)&0xFF); \

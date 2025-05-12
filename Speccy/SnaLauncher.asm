@@ -11,10 +11,11 @@ SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START		EQU $5800  ; [768 bytes]
 SCREEN_ATTRIBUTES_END		EQU $5AFF  
 
+; Final stack for restoring sna files is place at location 0x4004 
+; see label 'relocate' for more info.
 WORKING_STACK				EQU  (SCREEN_START+(TempStack-relocate))
 ; Note: Setting the stack to the attributes area allows a visual debugging of the stack
-WORKING_STACK_DEBUG			EQU SCREEN_ATTRIBUTES_END+1  ; DEBUG STACK
-
+;WORKING_STACK_DEBUG			EQU SCREEN_ATTRIBUTES_END+1  ; DEBUG STACK
 LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 
 ;******************************************************************************
@@ -209,7 +210,10 @@ command_WT:  ; "W" - Wait for the 50Hz maskable interrupt
 ;-----------------------------------------------------
 command_STACK
 ;-----------------------------------------------------
-    ld   SP, WORKING_STACK 	; Point stack to screen memory (needed for sna loading)
+    ;ld   SP, WORKING_STACK 	; Point stack to screen memory (needed for sna loading)
+	READ_PAIR_WITH_HALT h,l
+	ld sp,hl
+
     halt  					; synchronization with Arduino
     jp   mainloop          	; Done – jump back for next command
 
@@ -220,7 +224,7 @@ command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 
 	;-------------------------------------------------------------------------------------------
 	; Setup - Copy code to screen memory, as we'll be switching ROMs later.
-	; After the ROM swap, we lose this ROM code in exchange for the system ROM,
+	; After the ROM swap, we lose this sna ROM code in exchange for the stock ROM,
 	; so the launch code will run from screen RAM.
 	LD HL,relocate
 	LD DE,SCREEN_START 

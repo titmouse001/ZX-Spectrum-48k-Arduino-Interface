@@ -16,8 +16,8 @@ void DemoScrFiles(FatFile& root, FatFile& file, byte* packetBuffer) {
           uint16_t currentAddress = 0x4000;  // screen start
           while (file.available()) {
             byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-            ASSIGN_16BIT_COMMAND(packetBuffer, 'C', bytesRead);
-            ADDR_16BIT_COMMAND(packetBuffer, currentAddress);
+            START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);
+            END_UPLOAD_COMMAND(packetBuffer, currentAddress);
             Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
             currentAddress += bytesRead;
           }
