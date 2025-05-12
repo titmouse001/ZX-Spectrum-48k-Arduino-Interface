@@ -27,6 +27,8 @@ LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 ; Usage Example:
 ;   READ_ACC_WITH_HALT  ; Read a byte into A
 ;
+; Note: We use halting like this to give us a synchronization point with the Arduino.
+; Once HALT is reached, the Arduino takes over via NMI. 
 MACRO READ_ACC_WITH_HALT 
 	halt  				;   HALT pauses Z80 until NMI (from Arduino) resumes execution.
     in a, ($1f)  
@@ -77,7 +79,10 @@ L0000:
     ; **IMPORTANT WARNINGS:**
     ; - Total stack usage must be **only 1 level deep** (2 bytes, just **one** push).
     ; - Do NOT use PUSH/POP around interrupts! (interrupts automatically push PC onto the stack)
-	ld SP,WORKING_STACK
+
+	 ld SP,0xFFFF
+;;;;	ld sp,WORKING_STACK
+
 	;-----------------------------------------------------------------------------------	
 	jp ClearScreen
 	ld c,$1F  				 ; setup for pair reads
@@ -124,6 +129,8 @@ check_initial:   	 ; command checking loop
     jr z, command_EX ; execute program (includes restoring 27 byte header) 
     cp 'W'            
     jr z, command_WT ; Wait for 50Hz maskable interrupt
+	cp 'S'
+	jr z, command_STACK ; Use screen memory for stack (for sna loading)
     jr check_initial 
 
 ;------------------------------------------------------
@@ -134,12 +141,12 @@ command_FL:  ; "F" - FILL COMMAND
 	halt		 	; Synchronizes with Arduino (NMI to continue)
 	in b,(c)		; Read fill value from the z80 I/O port
 fillLoop:
-	ld (hl),b	 	; Write to memory
-    inc hl		
-    DEC DE      
-    LD A, D      
-    OR E         
-    JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)
+	ld (hl),b	 	; Write to memory   [7]
+    inc hl			;					[6]
+    DEC DE      	;					[6]
+    LD A, D      	;					[4]
+    OR E         	;					[4]
+    JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
     JR mainloop 	; Return back for next transfer command
 
 ;---------------------------------------------------
@@ -192,13 +199,19 @@ command_WT:  ; "W" - Wait for the 50Hz maskable interrupt
     ; Our ISR does not re-enable interrupts, so no further interrupts will occur after this.
     IM 1    ; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
     EI 
-    ; We use HALT to pause execution until the next interrupt occurs. Giving us a 20ms delay 
+    ; We use HALT here to pause execution until the next interrupt occurs. Giving us a 20ms delay 
 	; before continuing. The goal is to prevent an interrupt from interfering while
-	; restoring the final state.  The Arduino monitors this HALT as special case and will wait 
-	; for the z80 to resume.  The Arduino give the "W" command and so knows when this code resumes.
-    HALT 			; enables z80's halt line
+	; restoring the final state.  Since the Arduino gave this "W" command it monitors halt and 
+	; blocks until the Z80 resumes.
+    HALT 			; enables the Z80 halt line
     jp mainloop 	; done - back for next transfer command
+
 ;-----------------------------------------------------
+command_STACK
+;-----------------------------------------------------
+    ld   SP, WORKING_STACK 	; Point stack to screen memory (needed for sna loading)
+    halt  					; synchronization with Arduino
+    jp   mainloop          	; Done – jump back for next command
 
 ;-------------------------------------------------------------------------------------------
 command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
@@ -442,6 +455,7 @@ DS  16384 - last	; leave rest of rom blank
 ; 15/ Compress data/unpack - with the aim of faster load times (so maybe not)
 ; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
+; 18/ Move stack for menu stuff (currently it's using screen mem)
 
 ;*****************************
 ; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)

@@ -88,6 +88,7 @@ void setup() {
 
 void loop() {
 
+
   Z80Bus::resetToSnaRom();
   Z80Bus::setupScreenAttributes(Utils::Ink7Paper0);   // setup the whole screen
 
@@ -101,7 +102,7 @@ void loop() {
   drawFileList();
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
-  // Wait here until SELECT is released, so we don't retrigger on the same press.
+   //Wait here until SELECT is released, so we don't retrigger on the same press.
   while ( getAnalogButton( analogRead(BUTTON_PIN) ) == BUTTON_SELECT ) {
     delay(1); // do nothing
   }
@@ -119,6 +120,9 @@ void loop() {
   }
 
   oledLoadingMessage();
+
+  Z80Bus::sendBytes(stackCommand, sizeof(stackCommand));
+  Z80Bus::waitRelease_NMI(); 
 
   //-----------------------------------------
   // Read the Snapshots 27-byte header
@@ -172,6 +176,7 @@ void loop() {
     PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
     Utils::frameDelay(startTime);
   } while (getAnalogButton(analogRead(BUTTON_PIN)) != BUTTON_SELECT);
+
 }
 
 //-------------------------------------------------
