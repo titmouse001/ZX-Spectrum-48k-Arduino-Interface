@@ -120,22 +120,25 @@ mainloop:
 check_initial:   	 ; command checking loop
 	READ_ACC_WITH_HALT
 	; These compares are in ordered in frequency of use
-    cp 'C'           
-    jr z, command_CP ; Transfer/copy (things like drawing Text, displying .scr files)
+	cp 'Z'
+	jp z, command_Copy32 ; Copy 32+(4 header), 256pixels (32bytes)
 	cp 'F'            
-    jr z, command_FL ; Fill (clearing screen areas, selector bar)   
+    jp z, command_Fill ; (clearing screen areas, selector bar)   
     cp 'G' 
-    jr z, command_GO ; Transfer/copy with flashing boarder (loading .sna files)
-    cp 'E'            
-    jr z, command_EX ; execute program (includes restoring 27 byte header) 
+    jp z, command_Transfer ; Transfer with flashing boarder (loading .sna files)
+    cp 'C'           
+    jp z, command_Copy ; Copy, use for Text (error messages)
     cp 'W'            
-    jr z, command_WT ; Wait for 50Hz maskable interrupt
+    jp z, command_Wait ; Wait for 50Hz maskable interrupt
 	cp 'S'
-	jr z, command_STACK ; Use screen memory for stack (for sna loading)
+	jp z, command_Stack ; Use screen memory for stack (for sna loading)
+    cp 'E'            
+    jp z, command_Execute ; execute program (includes restoring 27 byte header) 
+
     jr check_initial 
 
 ;------------------------------------------------------
-command_FL:  ; "F" - FILL COMMAND
+command_Fill:  ; "F" - FILL COMMAND
 ;------------------------------------------------------
 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
@@ -151,7 +154,7 @@ fillLoop:
     JR mainloop 	; Return back for next transfer command
 
 ;---------------------------------------------------
-command_GO:  ; "G" - TRANSFER DATA (flashes border)
+command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
 ;---------------------------------------------------
 	; Transfers are typically sequential, but any destination location can be targeted.
     ; The data transfer is limited to 255 bytes this INCLUDES THE HEADER.
@@ -172,7 +175,7 @@ readDataLoop:
     jp mainloop			; done - back for next transfer command
 
 ;------------------------------------------------------
-command_CP:  ; "C" - COPY DATA
+command_Copy:  ; "C" - COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
 	halt					; Synchronizes with Arduino (NMI to continue)
@@ -185,14 +188,35 @@ CopyLoop:
 ;	ld (hl),a	 	; write to memory					[7]
 ;   inc hl			;									[6]	
 ;	djnz CopyLoop  	; read loop							[13]
-
+; TOTAL: [37 t-states]
+	
 	ini   			; (HL)<-(C), B<-B–1, HL<-HL+1		[16]
 	JP nz,CopyLoop	;									[10]
 
     jp mainloop 	; done - back for next transfer command
 
+;------------------------------------------------------
+command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
+;------------------------------------------------------
+	halt					; Synchronizes with Arduino (NMI to continue)
+	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
+	READ_PAIR_WITH_HALT h,l	; HL = Destination address
+
+	; (64+192+56)*224 = 69888 T-states (One scanline takes 224 T-states)
+	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
+	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
+
+; https://github.com/rejunity/zx-racing-the-beam/blob/main/screen_timing.asm
+
+	REPT 32					; transfer x32 bytes [total:640 t-states]
+	halt					; [4]
+	ini						; [16]
+	ENDM
+
+    JP mainloop 			; done - back for next transfer command
+
 ;--------------------------------------------------------
-command_WT:  ; "W" - Wait for the 50Hz maskable interrupt
+command_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
 ;--------------------------------------------------------
     ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
     ; This will trigger an interrupt at 50Hz (every 20ms). 
@@ -208,17 +232,15 @@ command_WT:  ; "W" - Wait for the 50Hz maskable interrupt
     jp mainloop 	; done - back for next transfer command
 
 ;-----------------------------------------------------
-command_STACK
+command_Stack:  ; 'S'  - restores snapshots stack 
 ;-----------------------------------------------------
-    ;ld   SP, WORKING_STACK 	; Point stack to screen memory (needed for sna loading)
-	READ_PAIR_WITH_HALT h,l
+	READ_PAIR_WITH_HALT h,l 
 	ld sp,hl
-
     halt  					; synchronization with Arduino
     jp   mainloop          	; Done – jump back for next command
 
 ;-------------------------------------------------------------------------------------------
-command_EX:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
+command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
 ; Restore snapshot states & execute stored jump point from the stack
 ;-------------------------------------------------------------------------------------------
 
@@ -459,8 +481,10 @@ DS  16384 - last	; leave rest of rom blank
 ; 15/ Compress data/unpack - with the aim of faster load times (so maybe not)
 ; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
-; 18/ Move stack for menu stuff (currently it's using screen mem)
-
+; 18/ Move stack for menu stuff (currently it's using screen mem) [DONE]
+; 19/ Relocate stack anywhere in memory [DONE]
+; 20/ Launcher code can be relocated depending on game (maybe final unused ram outside screen?!?!). This will need to be done Arduino side
+; 21/ Command to upload code and execute (this will do the 20/ relocate)
 ;*****************************
 ; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)
 ; [0 ] I            = 0x3F       

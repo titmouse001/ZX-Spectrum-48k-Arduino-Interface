@@ -24,7 +24,7 @@ const uint16_t BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
 
 // ----------------------------------------------------------------------------------  
-uint8_t stackCommand[1] = { 'S' };  
+//uint8_t stackCommand[1] = { 'S' };  
 uint8_t waitCommand[1] = { 'W' };           // pre populate with Wait command 
 uint8_t packetBuffer[BUFFER_SIZE] ;         // Used by 'C','G' & 'F' commands
 uint8_t head27_Execute[27 + 1] = { 'E' };   // pre populate with Execute command 
