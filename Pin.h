@@ -1,24 +1,29 @@
 #ifndef PINS_H
 #define PINS_H
 
-#ifdef HIGH
-#undef HIGH  // can't use Arduino "0x1", need plain "1" for macros
-#endif
-
-#ifdef LOW
-#undef LOW
-#endif
-
 //------------------------------------------------------------
-// Pin Assignments: Arduino Nano to Z80 + Peripherals 
+// Pin Assignments: Arduino Nano to Z80 + Peripherals
+/*
+ * pin 0-7    <->  Z80:D0-D7 [!] Disable Serial in code
+ * pin 8      <-   Z80:/HALT (input)
+ * pin 9      <-   IC:74HC165 (data pin-7)
+ * pin 10      ->  IC:74HC165 (latch pin-1)
+ * pin 11      ->  SPI:SD MOSI
+ * pin 12     <-   SPI:SD MISO
+ * pin 13      ->  SPI:SD SCK
+ * pin 14/A0   ->  Z80:/NMI 
+ * pin 15/A1   ->  ROM:pin-27 (bank select)
+ * pin 16/A2   ->  IC:74HC165 (clock pin-2)
+ * pin 17/A3   ->  Z80:/RESET (active low)
+ * pin 18/A4  <->  I2C:OLED SDA (data)
+ * pin 19/A5   ->  I2C:OLED SCL (clock)
+ * pin 20/A6   -   *** NC (unused) ***
+ * pin 21/A7  <-   VOLTAGE: analog input
+ * GND         -   SD_CS
+ */
 //------------------------------------------------------------
 
-// pin 11 MOSI - used by SD CARD
-// pin 12 MISO - used by SD CARD
-// pin 13 SCK  - used by SD CARD
-// pin 18 SDA - used by OLED
-// pin 19 SCL - used by OLED
-// pin 20 A6 - I'm Free!!!
+namespace Pin {
 
 // Z80 data bus D0–D7 (Arduino digital pins 0–7)
 // Note: pins 0/1 also serve as RX/TX serial, so use Serial.begin() with care.
@@ -37,9 +42,8 @@ static constexpr uint8_t Z80_NMI = A0;   // pin14, PIN_A0 to Z80 NMI
 static constexpr uint8_t ROM_HALF = A1;  // pin15, PIN_A1 to ROM pin27 high/low bank select (sna or stock rom)
 static constexpr uint8_t Z80_REST = 17;  // PIN_A3 to the Z80 Reset line
 
-
 // Status LED
-static constexpr uint8_t ledPin        = 13;  // onboard LED (error indicator)
+static constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 
 // 74HC165 shift-register (parallel-in -> serial-out)
 static constexpr uint8_t ShiftRegDataPin = 9;    // Arduino pin9 to 74HC165 QH (pin-9 on chip)
@@ -49,33 +53,21 @@ static constexpr uint8_t ShiftRegLatchPin = 10;  // Arduino pin10 to 74HC165 SH/
 // Analog input  (see "pins_arduino.h" pulled in by "Arduino.h" )
 static constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
 
-/* Taken from pins_arduino.h for reference
-#define PIN_A0   (14) defines these also... static const uint8_t A0 = PIN_A0;
-#define PIN_A1   (15)
-#define PIN_A2   (16)
-#define PIN_A3   (17)
-#define PIN_A4   (18)
-#define PIN_A5   (19)
-#define PIN_A6   (20)
-#define PIN_A7   (21)
-*/
+/* NOTES ABOUT PIN NAMES ABOVE: 
+ * Taken from pins_arduino.h for reference
+ * #define PIN_A0   (14) defines these also... static const uint8_t A0 = PIN_A0;
+ * ...
+ * #define PIN_A7   (21)
+ */
+
 //------------------------------------------------------------
 
+#define _HIGH 1
+#define _LOW 0
+#define WRITE_BIT(reg, bit, val) _INTERNAL_WRITE_BIT_##val(reg, bit)  // USE ME
+#define _INTERNAL_WRITE_BIT__HIGH(reg, bit) ((reg) |= _BV(bit))       // SET
+#define _INTERNAL_WRITE_BIT__LOW(reg, bit) ((reg) &= ~_BV(bit))       // CLEAR
 
-// Bit support macros
-#define HIGH 1
-#define LOW 0
-
-#define WRITE_BIT(reg, bit, val) WRITE_BIT_IMPL(reg, bit, val)
-
-// Internal bit support - not for use
-#define _WRITE_BIT_0(reg, bit) CLEAR_BIT(reg, bit)
-#define _WRITE_BIT_1(reg, bit) SET_BIT(reg, bit)
-#define WRITE_BIT_IMPL(reg, bit, val) _WRITE_BIT_##val(reg, bit)
-#define SET_BIT(reg, bit) ((reg) |= _BV(bit))
-#define CLEAR_BIT(reg, bit) ((reg) &= ~_BV(bit))
-
-namespace NanoPins {
 
 void setupShiftRegister() {
   // Setup pins for "74HC165" shift register
@@ -87,9 +79,3 @@ void setupShiftRegister() {
 }
 
 #endif
-
-
-//static inline void writeBit(volatile uint8_t& reg, uint8_t b, bool v) {
-//  if (v) reg |= _BV(b);
-//  else   reg &= ~_BV(b);
-//}

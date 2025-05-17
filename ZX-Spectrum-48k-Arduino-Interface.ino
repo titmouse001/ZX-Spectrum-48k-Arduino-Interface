@@ -21,19 +21,26 @@
 // Note about slow roms giving unextpected behaviour.
 
 #include <Arduino.h>
-//#include <avr/pgmspace.h>
-#include <SPI.h>
-#include <Wire.h>
-
-#include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
-#include "SSD1306AsciiAvrI2c.h"
+#include <Wire.h>  //  I2C devices
+#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
 
 #include "utils.h"
 #include "smallfont.h"
-#include "pins.h"
+#include "pin.h"
 #include "ScrSupport.h"
 #include "Z80Bus.h"
 #include "Buffers.h"
+#include "sdSupport.h"
+#include "Draw.h"
+
+// --------------------------------
+#define SERIAL_DEBUG 0
+
+#if SERIAL_DEBUG
+  #warning "*** SERIAL_DEBUG is enabled: Pins D0/D1 are shared between Serial RX/TX and the Z80 data bus. This configuration will break Z80 communication. Enable SERIAL_DEBUG only for testing purposes and disable it in production builds. ***"
+  #include <SPI.h>  // Serial debug
+#endif
+// --------------------------------
 
 #define VERSION ("0.14")
 
@@ -66,46 +73,61 @@ uint16_t currentFileIndex = 0;         // The currently selected file index in t
 uint16_t startFileIndex = 0;           // The start file index of the current viewing window
 
 void setup() {
-  //  Serial.begin(9600);
-  //  while (! Serial) {};
-  //  Serial.println("STARTING");
 
-  Z80Bus::setupReset();
+#if (SERIAL_DEBUG==1)
+    Serial.begin(9600);
+    while (! Serial) {};
+    Serial.println("DEBUG MODE - THIS BREAK TRANSFERS TO Z80 - ARDUINO SIDE DEBUGGING ONLY");
+#endif
+
   Z80Bus::setupNMI();
-  Z80Bus::setupDataLine(OUTPUT);
-  Z80Bus::setupHalt();
-  NanoPins::setupShiftRegister();
+  Z80Bus::setupPins();
+  Pin::setupShiftRegister();
 
-  /* Optional - if detected display output to a 128x32 pixel OLED */
-  haveOled = setupOled();
+  haveOled = setupOled();  // Optional OLED can be installed (128x32 pixel) 
 
-  if (getAnalogButton(analogRead(BUTTON_PIN)) == BUTTON_SELECT) {
-    /* Select button was held down, allows speccy to revert into stock ROM */
+  // ---------------------------------------------------------------------------
+  // Revert to stock ROM at start-up (Select button held)
+  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_SELECT) {
     Z80Bus::bankSwitchStockRom();
     Z80Bus::resetZ80();
     // TO DO -  allow user to go back to the sna loading mode  ???
     while(true) { delay(50); }
   }
+  // -----------------------------------------------------------------------------
 }
 
 void loop() {
 
-
   Z80Bus::resetToSnaRom();
-  Z80Bus::setupScreenAttributes(Utils::Ink7Paper0);   // setup the whole screen
+  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);   // setup the whole screen
 
-  InitializeSDcard();
+  uint8_t result;
+  do {
+    result = Sd::Initialize(&totalFiles);
+    switch (result) {
+      case 0:
+        // SD Card OK - do nothing
+        break;
+      case 1:
+        Draw::text(80, 90, "NO FILES FOUND");  // fall through
+      case 2:
+        Draw::text(80, 90, "INSERT SD CARD");
+        delay(1000 / 50);
+        break;
+    }
+  } while (result > 0);
 
-  if (getAnalogButton(analogRead(BUTTON_PIN)) == BUTTON_DOWN) {
+  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_DOWN) {
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
 
   updateOledFileName();
-  drawFileList();
+  Draw::fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
    //Wait here until SELECT is released, so we don't retrigger on the same press.
-  while ( getAnalogButton( analogRead(BUTTON_PIN) ) == BUTTON_SELECT ) {
+  while ( getAnalogButton( analogRead(Pin::BUTTON_PIN) ) == BUTTON_SELECT ) {
     delay(1); // do nothing
   }
     
@@ -125,14 +147,15 @@ void loop() {
   
   const uint16_t address = 0x4004;
   packetBuffer[0] = 'S';
-  packetBuffer[1] = (uint8_t)(((address) >> 8) & 0xFF);
-  packetBuffer[2] = (uint8_t)((address)&0xFF);
+  packetBuffer[1] = (uint8_t)(address>>8);
+  packetBuffer[2] = (uint8_t)(address&0xFF);
   Z80Bus::sendBytes(packetBuffer, 3);
   Z80Bus::waitRelease_NMI(); 
 
   //-----------------------------------------
-  // Read the Snapshots 27-byte header
+  // Read the Snapshots 27-byte header ahead of time
   if (file.available()) {
+    head27_Execute[0] = 'E';
     byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);
     if (bytesReadHeader != 27) { debugFlash(3000); }
 
@@ -140,7 +163,6 @@ void loop() {
   } 
   //-----------------------------------------
   // Copy snapshot data into Speccy RAM (0x4000-0xFFFF)
-  packetBuffer[0] = 'G';
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
   while (file.available()) {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
@@ -152,7 +174,8 @@ void loop() {
   file.close();
   //-----------------------------------------
   // Command Speccy to wait for the next screen frefresh
-  Z80Bus::sendBytes(waitCommand, sizeof(waitCommand));
+  packetBuffer[0] = 'W';
+  Z80Bus::sendBytes(packetBuffer, 1);
   //-----------------------------------------
   // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) will self release
   // the CPU from halt mode during the vertical blanking period.
@@ -181,150 +204,19 @@ void loop() {
     unsigned long startTime = millis();
     PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
     Utils::frameDelay(startTime);
-  } while (getAnalogButton(analogRead(BUTTON_PIN)) != BUTTON_SELECT);
+  } while (getAnalogButton(analogRead(Pin::BUTTON_PIN)) != BUTTON_SELECT);
 
 }
 
 //-------------------------------------------------
-// Section: Drawing Support
-//-------------------------------------------------
-
-/**
- * DrawSelectorText:  Draws a full-width line of text (32 bytes per line).
- * The text is rendered into a buffer and sent row-by-row to the screen memory.
- * 
- * @param xpos     X coords
- * @param ypos     Y coords
- * @param message  String/null-terminated
- */
-__attribute__((optimize("-Ofast"))) void DrawSelectorText(int xpos, int ypos, const char *message) {
-  prepareTextGraphics(message);  // Pre-render text into TextBuffer (output count ignored)
-  START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE);
-  uint8_t *outputLine = TextBuffer;
-  for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
-    const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    END_UPLOAD_COMMAND(packetBuffer, destAddr );
-    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE);
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE); // Send line data
-  }
-}
-
-/**
- * DrawText: Draws only the required part of the screen buffer.
- * Useful for general-purpose text drawing.
- * 
- * @param xpos     X coords
- * @param ypos     Y coords
- * @param message  String/null-terminated
- */
-__attribute__((optimize("-Os"))) void DrawText(int xpos, int ypos, const char *message) {
-  const uint8_t charCount = prepareTextGraphics(message);
-  const uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
-  START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);
-  uint8_t *outputLine = TextBuffer;
-  for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
-    const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    END_UPLOAD_COMMAND(packetBuffer, destAddr );
-    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, byteCount);
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount); // send trimmed line
-  }
-} // refactored DrawText... but not tested yet .. should be ok
-
-__attribute__((optimize("-Ofast")))
-uint8_t
-prepareTextGraphics(const char *message) {
-  Utils::memsetZero(&TextBuffer[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-  uint8_t charCount = 0;
-
-  for (uint8_t i = 0; message[i] != '\0'; i++) {
-    // font characters in flash
-    const uint8_t *ptr = &fudged_Adafruit5x7[((message[i] - 0x20) * SmallFont::FNT_WIDTH) + 6];
-    const uint8_t d0 = pgm_read_byte(&ptr[0]);
-    const uint8_t d1 = pgm_read_byte(&ptr[1]);
-    const uint8_t d2 = pgm_read_byte(&ptr[2]);
-    const uint8_t d3 = pgm_read_byte(&ptr[3]);
-    const uint8_t d4 = pgm_read_byte(&ptr[4]);
-
-    // build each row’s transposed byte
-    for (uint8_t row = 0; row < SmallFont::FNT_HEIGHT; row++) {
-      // bit 4 comes from column 0, bit 3 from col 1 ... bit 0 from col 4
-      const uint8_t transposedRow =
-        (((d0 >> row) & 0x01) << 4) | (((d1 >> row) & 0x01) << 3) | (((d2 >> row) & 0x01) << 2) | (((d3 >> row) & 0x01) << 1) | (((d4 >> row) & 0x01) << 0);
-
-      // compute bit-offset into the big output buffer
-      const uint16_t bitPosition = (SmallFont::FNT_BUFFER_SIZE * row) * 8 + (i * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP));
-      Utils::joinBits(TextBuffer, transposedRow, SmallFont::FNT_WIDTH + SmallFont::FNT_GAP, bitPosition);
-    }
-    charCount++;
-  }
-  return charCount;
-}
-
-//-------------------------------------------------
-// Section: OLED Support
-//-------------------------------------------------
-
-bool setupOled() {
-  Wire.begin();
-  Wire.beginTransmission(I2C_ADDRESS);
-  bool result = (Wire.endTransmission() == 0);  // is OLED fitted
-  Wire.end();
-
-  if (result) {
-    // Initialise OLED
-    oled.begin(&Adafruit128x32, I2C_ADDRESS);   
-    delay(1);
-    // some hardware is slow to initialise, first call does not work.
-    oled.begin(&Adafruit128x32, I2C_ADDRESS);
-    // original Adafruit5x7 font with tweeks at start for VU meter
-    oled.setFont(fudged_Adafruit5x7);
-    oled.clear();
-    oled.print(F("ver"));
-    oled.println(F(VERSION));
-  }
-  return result;  // is OLED hardware available 
-}
-
-void updateOledFileName() {
-  if (haveOled) {
-    Utils::openFileByIndex(currentFileIndex);
-    uint8_t a = file.getName7(fileName, 41);
-    if (a == 0) { a = file.getSFN(fileName, 40); }
-    oled.setCursor(0, 0);
-    oled.print(F("Select:\n"));
-    oled.print(fileName);
-    oled.print("      ");
-    file.close();
-  }
-}
-
-void oledLoadingMessage() {
-  if (haveOled) {
-    file.getName(fileName, 15);
-    oled.clear();
-    oled.print(F("Loading:\n"));
-    oled.println(fileName);
-  }
-}
-
-void oledRunningMessage() {
-  if (haveOled) {
-    oled.clear();
-    oled.print("running:\n");
-    oled.println(fileName);
-  }
-}
-
-
-//-------------------------------------------------
-// Section: Input Support
+// Section: Menu / Input Support
 //-------------------------------------------------
 
 byte doMenu() {
   byte btn = readButtons();
   switch (btn) {
     case BUTTON_SELECT:
-      Utils::openFileByIndex(currentFileIndex);
+      Sd::openFileByIndex(currentFileIndex);
       break;
     case BUTTON_UP:
     case BUTTON_DOWN:
@@ -335,7 +227,7 @@ byte doMenu() {
     case BUTTON_UP_REFRESH_LIST:
     case BUTTON_DOWN_REFRESH_LIST:
       updateOledFileName();
-      drawFileList();
+      Draw::fileList(startFileIndex);
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
       break;
 
@@ -348,7 +240,7 @@ byte doMenu() {
 byte readButtons() {
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = BUTTON_NONE;
-  int but = analogRead(BUTTON_PIN);
+  int but = analogRead(Pin::BUTTON_PIN);
   uint8_t joy = Utils::readJoystick();  // Kempston standard, "000FUDLR" bit pattern
 
   if (getAnalogButton(but) || (joy & B00011100)) {
@@ -408,73 +300,60 @@ uint8_t getAnalogButton(int but) {
 
 
 //-------------------------------------------------
-// Section: SD Card Support
+// Section: OLED Support
 //-------------------------------------------------
 
-void InitializeSDcard() {
+bool setupOled() {
+  Wire.begin();
+  Wire.beginTransmission(I2C_ADDRESS);
+  bool result = (Wire.endTransmission() == 0);  // is OLED fitted
+  Wire.end();
 
-  if (totalFiles > 0) {
-    root.close();
-    sd.end();
-    totalFiles = 0;
+  if (result) {
+    // Initialise OLED
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);   
+    delay(1);
+    // some hardware is slow to initialise, first call does not work.
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);
+    // original Adafruit5x7 font with tweeks at start for VU meter
+    oled.setFont(fudged_Adafruit5x7);
+    oled.clear();
+    oled.print(F("ver"));
+    oled.println(F(VERSION));
   }
-
-  while (1) {
-    if (!sd.begin()) {}
-
-    if (root.open("/")) {
-      totalFiles = Utils::getSnaFileCount();
-      if (totalFiles > 0) {
-        break;
-      } else {
-        DrawText(80, 100, "NO FILES FOUND");
-      }
-    } else {
-      DrawText(80, 80, "INSERT SD CARD");
-      root.close();
-      sd.end();
-    }
-    delay(1000 / 50);
-  }
+  return result;  // is OLED hardware available 
 }
 
-__attribute__((optimize("-Ofast"))) void drawFileList() {
-  root.rewind();
-  uint8_t clr = 0;
-  uint8_t count = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-
-        if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
-          int len = file.getName7(fileName, 64);
-          if (len == 0) { file.getSFN(fileName, 20); }
-
-          if (len > 42) {
-            fileName[40] = '.';
-            fileName[41] = '.';
-            fileName[42] = '\0';
-          }
-
-          DrawSelectorText(0, ((count - startFileIndex) * 8), fileName);
-          clr++;
-        }
-        count++;
-      }
-    }
+void updateOledFileName() {
+  if (haveOled) {
+    Sd::openFileByIndex(currentFileIndex);
+    uint8_t a = file.getName7(fileName, 41);
+    if (a == 0) { a = file.getSFN(fileName, 40); }
+    oled.setCursor(0, 0);
+    oled.print(F("Select:\n"));
+    oled.print(fileName);
+    oled.print(F("      "));
     file.close();
-    if (clr == SCREEN_TEXT_ROWS) {
-      break;
-    }
-  }
-
-  // Clear the remaining screen after last list item when needed.
-  fileName[0] = ' ';  // Empty file selector slots (just wipes area)
-  fileName[1] = '\0';
-  for (uint8_t i = clr; i < SCREEN_TEXT_ROWS; i++) {
-    DrawSelectorText(0, (i * 8), fileName);
   }
 }
+
+void oledLoadingMessage() {
+  if (haveOled) {
+    file.getName(fileName, 15);
+    oled.clear();
+    oled.print(F("Loading:\n"));
+    oled.println(fileName);
+  }
+}
+
+void oledRunningMessage() {
+  if (haveOled) {
+    oled.clear();
+    oled.print("running:\n");
+    oled.println(fileName);
+  }
+}
+
 
 //-------------------------------------------------
 // Section: Debug Supprt
@@ -486,10 +365,10 @@ void debugFlash(int flashspeed) {
   root.close();
   sd.end();
   while (1) {
-    pinMode(ledPin, OUTPUT);
-    digitalWrite(ledPin, HIGH);
+    pinMode(Pin::ledPin, OUTPUT);
+    digitalWrite(Pin::ledPin, HIGH);
     delay(flashspeed);
-    digitalWrite(ledPin, LOW);
+    digitalWrite(Pin::ledPin, LOW);
     delay(flashspeed);
   }
 }

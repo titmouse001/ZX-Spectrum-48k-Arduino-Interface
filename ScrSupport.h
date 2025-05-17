@@ -1,9 +1,10 @@
 #ifndef SCRSUPPORT_H
 #define SCRSUPPORT_H
 
-#include "pins.h"
+#include "pin.h"
 #include "Buffers.h"
 #include "Z80Bus.h"
+#include "SdFat.h" 
 
 namespace ScrSupport {
 
@@ -22,7 +23,7 @@ void DemoScrFiles(FatFile& root, FatFile& file, byte* packetBuffer) {
             currentAddress += bytesRead;
           }
           delay(2000);
-          Z80Bus::setupScreenAttributes(0);   // setup the whole screen
+          Z80Bus::fillScreenAttributes(0);   // setup the whole screen
         }
       }
       file.close();

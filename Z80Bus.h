@@ -1,7 +1,7 @@
 #ifndef Z80BUS_H
 #define Z80BUS_H
 
-#include "pins.h"
+#include "pin.h"
 #include "buffers.h"
 
 namespace Z80Bus {
@@ -10,17 +10,26 @@ namespace Z80Bus {
 // Z80 Data Transfer and Control Routines
 //-------------------------------------------------
 
-__attribute__((optimize("-Ofast"))) 
-void sendBytes(byte *data, uint16_t size) {
-  for (uint16_t i = 0; i < size; i++) {
-    // Wait for the Z80’s HALT line to be released (go LOW).
-    while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = data[i];  // Arduino (d0-d7) data port to Z80 d0-d7
-    WRITE_BIT(PORTC, DDC0, LOW);   // A0, pin14 low to Z80 /NMI
-    WRITE_BIT(PORTC, DDC0, HIGH);  // A0, pin14 high to Z80 /NMI
-    // Confirm the HALT line has returned to HIGH.
-    while ((bitRead(PINB, PINB0) == LOW)) {};
-  }
+void setupPins(){
+  pinMode(Pin::Z80_HALT, INPUT);
+
+  pinMode(Pin::Z80_REST, OUTPUT);
+
+  pinMode(Pin::Z80_D0Pin, OUTPUT);
+  pinMode(Pin::Z80_D1Pin, OUTPUT);
+  pinMode(Pin::Z80_D2Pin, OUTPUT);
+  pinMode(Pin::Z80_D3Pin, OUTPUT);
+  pinMode(Pin::Z80_D4Pin, OUTPUT);
+  pinMode(Pin::Z80_D5Pin, OUTPUT);
+  pinMode(Pin::Z80_D6Pin, OUTPUT);
+  pinMode(Pin::Z80_D7Pin, OUTPUT);
+}
+
+void setupNMI() {
+  // This line connetcs to the Z80 /NMI which releases 
+  // the z80's from its 'HALT' state.
+  pinMode(Pin::Z80_NMI, OUTPUT);       
+  WRITE_BIT(PORTC, DDC0, _HIGH);   // pin14 (A0), default Z80 /NMI line high
 }
 
 void waitHalt() {
@@ -29,35 +38,46 @@ void waitHalt() {
   while ((bitRead(PINB, PINB0) == LOW)) {};
 }
 
+void resetZ80() { 
+ // pinMode(Z80_REST, OUTPUT);
+  WRITE_BIT(PORTC, DDC3, _LOW);    // z80 reset-line "LOW"
+  delay(250);                     // reset line needs a delay (this is way more than needed!)
+  WRITE_BIT(PORTC, DDC3, _HIGH);   // z80 reset-line "HIGH" - reboot
+}
+
+inline void resetToSnaRom() {
+  WRITE_BIT(PORTC, DDC1, _LOW);    // pin15 (A1) - Switch over to Sna ROM.
+  WRITE_BIT(PORTC, DDC3, _LOW);    // pin17 to z80 reset-line active low
+  delay(250);                     // reset line needs a delay (this is way more than needed!)
+  WRITE_BIT(PORTC, DDC3, _HIGH);   // pin17 to z80 reset-line (now low to high) - reboot
+}
+
+inline void bankSwitchStockRom() {
+  WRITE_BIT(PORTC, DDC1, _HIGH);   // pin15 (A1) - Switch over to stock ROM.
+}
+
 void waitRelease_NMI() {
   // Wait for the Z80’s HALT line to be released (go LOW).
   while (bitRead(PINB, PINB0) == HIGH) {}
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-  WRITE_BIT(PORTC, DDC0, LOW);    // A0, pin14 low to Z80 /NMI
-  WRITE_BIT(PORTC, DDC0, HIGH);   // A0, pin14 high to Z80 /NMI
+  WRITE_BIT(PORTC, DDC0, _LOW);    // A0, pin14 low to Z80 /NMI
+  WRITE_BIT(PORTC, DDC0, _HIGH);   // A0, pin14 high to Z80 /NMI
   // Confirm the HALT line has returned to HIGH.
   while (bitRead(PINB, PINB0) == LOW) {}
 }
 
-/*
-void resetToSnaROM(){
-  pinMode(Z80_REST, OUTPUT);
-  pinMode(ROM_HALF, OUTPUT);       
-
-  WRITE_BIT(PORTC, DDC3, LOW);    // z800 reset-line "LOW"
-  WRITE_BIT(PORTC, DDC1, LOW);    // pin15 (A1) - Switch over to Sna ROM.
-  delay(10);                      // reset line needs a delay
-  WRITE_BIT(PORTC, DDC3, HIGH);   // z80 reset-line "HIGH" - reboot
+__attribute__((optimize("-Ofast"))) 
+void sendBytes(byte *data, uint16_t size) {
+  for (uint16_t i = 0; i < size; i++) {
+    // Wait for the Z80’s HALT line to be released (go LOW).
+    while ((bitRead(PINB, PINB0) == HIGH)) {};
+    PORTD = data[i];  // Arduino (d0-d7) data port to Z80 d0-d7
+    WRITE_BIT(PORTC, DDC0, _LOW);   // A0, pin14 low to Z80 /NMI
+    WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
+    // Confirm the HALT line has returned to HIGH.
+    while ((bitRead(PINB, PINB0) == LOW)) {};
+  }
 }
-*/
-
-void resetZ80() { 
- // pinMode(Z80_REST, OUTPUT);
-  WRITE_BIT(PORTC, DDC3, LOW);    // z80 reset-line "LOW"
-  delay(250);                     // reset line needs a delay (this is way more than needed!)
-  WRITE_BIT(PORTC, DDC3, HIGH);   // z80 reset-line "HIGH" - reboot
-}
-
 
 /* Send Snapshot Header Section */
 void sendSnaHeader(byte* info) {
@@ -74,48 +94,9 @@ void sendSnaHeader(byte* info) {
 }
 
 
-inline void resetToSnaRom() {
-
-  WRITE_BIT(PORTC, DDC1, LOW);    // pin15 (A1) - Switch over to Sna ROM.
-
-  WRITE_BIT(PORTC, DDC3, LOW);    // pin17 to z80 reset-line active low
-  delay(250);                     // reset line needs a delay (this is way more than needed!)
-  WRITE_BIT(PORTC, DDC3, HIGH);   // pin17 to z80 reset-line (now low to high) - reboot
-}
-
-inline void bankSwitchStockRom() {
-  WRITE_BIT(PORTC, DDC1, HIGH);   // pin15 (A1) - Switch over to stock ROM.
-}
-
-void setupNMI() {
-  // This line connetcs to the Z80 /NMI which releases 
-  // the z80's from its 'HALT' state.
-  pinMode(Z80_NMI, OUTPUT);       
-  WRITE_BIT(PORTC, DDC0, HIGH);   // pin14 (A0), default Z80 /NMI line high
-}
-
-void setupHalt() {
-  pinMode(Z80_HALT, INPUT);
-}
-
-void setupReset(){
-  pinMode(Z80_REST, OUTPUT);
-}
-
-
-void setupDataLine(byte direction){
-  pinMode(Z80_D0Pin, direction);
-  pinMode(Z80_D1Pin, direction);
-  pinMode(Z80_D2Pin, direction);
-  pinMode(Z80_D3Pin, direction);
-  pinMode(Z80_D4Pin, direction);
-  pinMode(Z80_D5Pin, direction);
-  pinMode(Z80_D6Pin, direction);
-  pinMode(Z80_D7Pin, direction);
-}
 
 /* -------------------------------------------------
- * Section: Graphics Support for Zx Spectrum Screen
+ * NOTE: Screen Attributes - ZX Spectrum Screen
  * -------------------------------------------------
  * [F|B|P2|P1|P0|I2|I1|I0]
  * bit F sets the attribute FLASH mode
@@ -123,7 +104,8 @@ void setupDataLine(byte direction){
  * bits P2 to P0 is the PAPER colour
  * bits I2 to I0 is the INK colour
  */
-void setupScreenAttributes(const uint8_t attributes) {
+
+void fillScreenAttributes(const uint8_t attributes) {
     const uint16_t amount = 768;      
     const uint16_t startAddress = 0x5800;
     /* Fill mode */

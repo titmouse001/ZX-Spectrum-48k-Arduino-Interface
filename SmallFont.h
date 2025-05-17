@@ -1,6 +1,8 @@
 #ifndef SMALLFONT_H
 #define SMALLFONT_H
 
+#include <Arduino.h>
+
 #include "fudgefont.h"  // Based on the Adafruit5x7 font, with '!' to '(' changed to work as a VU BAR (8 chars)
 
 namespace SmallFont {

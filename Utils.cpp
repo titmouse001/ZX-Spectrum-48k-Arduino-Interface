@@ -75,40 +75,4 @@ uint8_t readJoystick() {
 }
 
 
-//-------------------------------------------------
-// SD Card - File loading Support Section 
-//-------------------------------------------------
-
-__attribute__((optimize("-Ofast"))) 
-void openFileByIndex(uint8_t searchIndex) {
-  root.rewind();
-  uint8_t index = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        if (index == searchIndex) {
-          break;
-        }
-        index++;
-      }
-    }
-    file.close();
-  }
-}
-
-__attribute__((optimize("-Ofast"))) 
-uint16_t getSnaFileCount() {
-  uint16_t totalFiles = 0;
-  root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-        totalFiles++;
-      }
-    }
-    file.close();
-  }
-  return totalFiles;
-}
-
 }
