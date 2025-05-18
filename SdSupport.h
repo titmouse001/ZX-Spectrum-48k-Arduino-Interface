@@ -9,8 +9,13 @@ extern FatFile file;
 
 namespace Sd {
 
-__attribute__((optimize("-Ofast"))) 
-void openFileByIndex(uint8_t searchIndex) {
+enum struct Status : uint8_t {
+  OK = 0,
+  NO_FILES = 1,
+  NO_SD_CARD = 2
+};
+
+__attribute__((optimize("-Ofast"))) void openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
@@ -27,7 +32,8 @@ void openFileByIndex(uint8_t searchIndex) {
 }
 
 __attribute__((optimize("-Ofast")))
-uint16_t countSnapshotFiles() {
+uint16_t
+countSnapshotFiles() {
   uint16_t totalFiles = 0;
   root.rewind();
   while (file.openNext(&root, O_RDONLY)) {
@@ -41,24 +47,32 @@ uint16_t countSnapshotFiles() {
   return totalFiles;
 }
 
-uint8_t Initialize(uint16_t* totalFiles) {
-  if (*totalFiles > 0) {
-    root.close();
-    sd.end();
-    *totalFiles = 0;
-  }
-  if (!sd.begin()) {}
-  if (root.open("/")) {
-    *totalFiles = countSnapshotFiles();
-    if (*totalFiles > 0) {
-      return 0;
-    } else {
-      return 1; // no files found
+// Attempt to initialize SD and count files.
+Status init(uint16_t& fileCount) {
+ 
+  fileCount=0;
+//  if (fileCount > 0) {  
+    // already initialized, clean up
+    if (root.isOpen()) {
+      root.close();
+      sd.end();
     }
+//    fileCount = 0;
+//  }
+  if (!sd.begin()) {
+    return Status::NO_SD_CARD;
+  }
+  if (!root.open("/")) {
+    sd.end();
+    return Status::NO_SD_CARD;
+  }
+  fileCount = countSnapshotFiles();  // implement this yourself
+  if (fileCount > 0) {
+    return Status::OK;
   } else {
     root.close();
     sd.end();
-    return 2;  // no sd card found
+    return Status::NO_FILES;
   }
 }
 

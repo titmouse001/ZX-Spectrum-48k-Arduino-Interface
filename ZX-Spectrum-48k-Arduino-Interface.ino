@@ -37,8 +37,11 @@
 #define SERIAL_DEBUG 0
 
 #if SERIAL_DEBUG
-  #warning "*** SERIAL_DEBUG is enabled: Pins D0/D1 are shared between Serial RX/TX and the Z80 data bus. This configuration will break Z80 communication. Enable SERIAL_DEBUG only for testing purposes and disable it in production builds. ***"
-  #include <SPI.h>  // Serial debug
+  #warning "*** SERIAL_DEBUG is enabled"
+  // Pins D0/D1 are shared between Serial RX/TX and the Z80 data bus.
+  // This configuration will break Z80 communication. Enable SERIAL_DEBUG only for 
+  // testing purposes and disable it in production builds.
+  #include <SPI.h>  // Serial
 #endif
 // --------------------------------
 
@@ -48,7 +51,6 @@
 SdFat32 sd;
 FatFile root;
 FatFile file;
-uint16_t totalFiles;
 char fileName[65];
 // ----------------------------------------------------------------------------------
 // OLED support
@@ -77,7 +79,7 @@ void setup() {
 #if (SERIAL_DEBUG==1)
     Serial.begin(9600);
     while (! Serial) {};
-    Serial.println("DEBUG MODE - THIS BREAK TRANSFERS TO Z80 - ARDUINO SIDE DEBUGGING ONLY");
+    Serial.println("DEBUG MODE - BREAKS Z80 TRANSFERS - ARDUINO SIDE DEBUGGING ONLY");
 #endif
 
   Z80Bus::setupNMI();
@@ -102,21 +104,7 @@ void loop() {
   Z80Bus::resetToSnaRom();
   Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);   // setup the whole screen
 
-  uint8_t result;
-  do {
-    result = Sd::Initialize(&totalFiles);
-    switch (result) {
-      case 0:
-        // SD Card OK - do nothing
-        break;
-      case 1:
-        Draw::text(80, 90, "NO FILES FOUND");  // fall through
-      case 2:
-        Draw::text(80, 90, "INSERT SD CARD");
-        delay(1000 / 50);
-        break;
-    }
-  } while (result > 0);
+  uint16_t totalFiles = getFileCount();
 
   if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_DOWN) {
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
@@ -136,7 +124,7 @@ void loop() {
   // ***************************************
   while (true) {
     unsigned long start = millis();
-    byte action = doMenu();
+    byte action = doMenu(totalFiles);
     if (action == BUTTON_SELECT) {
       break;
     }
@@ -212,8 +200,8 @@ void loop() {
 // Section: Menu / Input Support
 //-------------------------------------------------
 
-byte doMenu() {
-  byte btn = readButtons();
+byte doMenu(uint16_t totalFiles) {
+  byte btn = readButtons(totalFiles);
   switch (btn) {
     case BUTTON_SELECT:
       Sd::openFileByIndex(currentFileIndex);
@@ -237,7 +225,7 @@ byte doMenu() {
   return btn;
 }
 
-byte readButtons() {
+byte readButtons(uint16_t totalFiles) {
   // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
   byte ret = BUTTON_NONE;
   int but = analogRead(Pin::BUTTON_PIN);
@@ -298,6 +286,34 @@ uint8_t getAnalogButton(int but) {
   return BUTTON_NONE;
 }
 
+//-------------------------------------------------
+/*
+ * getFileCount: Returns number of SNA files on sd card 
+ * File Limit=65535
+ */
+uint16_t getFileCount() {
+  Sd::Status status;
+  uint16_t totalFiles = 0;
+
+  do {  // Keep trying - maybe sd card is missing
+    status = Sd::init(totalFiles);
+    if (status != Sd::Status::OK) {
+      switch (status) {
+        case Sd::Status::OK: 
+          break;  // do nothing
+        case Sd::Status::NO_FILES:
+          Draw::text(80, 90, "NO FILES FOUND");
+          break;
+        case Sd::Status::NO_SD_CARD:
+          Draw::text(80, 90, "INSERT SD CARD");
+          break;
+      }
+      delay(1000/50);
+    }
+  } while (totalFiles == 0);
+
+  return totalFiles;
+}
 
 //-------------------------------------------------
 // Section: OLED Support
