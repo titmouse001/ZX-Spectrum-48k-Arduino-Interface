@@ -1,6 +1,15 @@
 #ifndef fudgedfont5x7_h
 #define fudgedfont5x7_h
 
+
+// MACRO taken from here:- "SSD1306AsciiAvrI2c.h"
+#ifdef __AVR__
+#include <avr/pgmspace.h>
+#define GLCDFONTDECL(_n) static const uint8_t __attribute__((progmem)) _n[]
+#else  
+#define GLCDFONTDECL(_n) static const uint8_t _n[]
+#endif 
+
 //char fudged_Adafruit5x7[] = {
   
 GLCDFONTDECL(fudged_Adafruit5x7) = {

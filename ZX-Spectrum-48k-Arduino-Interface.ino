@@ -18,11 +18,7 @@
 //  REG_AF =21, REG_SP =23, REG_IM	=25, REG_BDR =26
 // -------------------------------------------------------------------------------------
 
-// Note about slow roms giving unextpected behaviour.
-
 #include <Arduino.h>
-#include <Wire.h>  //  I2C devices
-#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
 
 #include "utils.h"
 #include "smallfont.h"
@@ -53,18 +49,13 @@ FatFile root;
 FatFile file;
 char fileName[65];
 // ----------------------------------------------------------------------------------
-// OLED support
-#define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
-SSD1306AsciiAvrI2c oled;
-bool haveOled = false;
-// ----------------------------------------------------------------------------------
 
 enum { BUTTON_NONE,
-       BUTTON_DOWN,
+       BUTTON_BACK,
        BUTTON_SELECT,
-       BUTTON_UP,
-       BUTTON_DOWN_REFRESH_LIST,
-       BUTTON_UP_REFRESH_LIST };
+       BUTTON_ADVANCE,
+       BUTTON_BACK_REFRESH_LIST,
+       BUTTON_ADVANCE_REFRESH_LIST };
 
 unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
 unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
@@ -100,28 +91,36 @@ void setup() {
 void loop() {
 
   Z80Bus::resetToSnaRom();
-  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);   // setup the whole screen
+  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
 
-  uint16_t totalFiles = getFileCount();
+  Sd::FileCountResult result;
+  do {
+    result = Sd::init();
+    if (result.status == Sd::Status::NO_SD_CARD) {
+      Draw::text(80, 90, "INSERT SD CARD");
+    } else if (result.status == Sd::Status::NO_FILES) {
+      Draw::text(80, 90, "NO FILES FOUND");
+    }
+  } while (result.status != Sd::Status::OK);
 
-  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_DOWN) {
+  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_BACK) {
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
 
   Draw::fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
-   //Wait here until SELECT is released, so we don't retrigger on the same press.
-  while ( getAnalogButton( analogRead(Pin::BUTTON_PIN) ) == BUTTON_SELECT ) {
-    delay(1); // do nothing
+  //Wait here until SELECT is released, so we don't retrigger on the same press.
+  while (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_SELECT) {
+    delay(1);  // do nothing
   }
-    
+
   // ***************************************
   // *** Main loop - file selection menu ***
   // ***************************************
   while (true) {
     unsigned long start = millis();
-    byte action = doMenu(totalFiles);
+    byte action = doMenu(result.totalFiles);
     if (action == BUTTON_SELECT) {
       break;
     }
@@ -130,10 +129,10 @@ void loop() {
 
   const uint16_t address = 0x4004;
   packetBuffer[0] = 'S';
-  packetBuffer[1] = (uint8_t)(address>>8);
-  packetBuffer[2] = (uint8_t)(address&0xFF);
+  packetBuffer[1] = (uint8_t)(address >> 8);
+  packetBuffer[2] = (uint8_t)(address & 0xFF);
   Z80Bus::sendBytes(packetBuffer, 3);
-  Z80Bus::waitRelease_NMI(); 
+  Z80Bus::waitRelease_NMI();
 
   //-----------------------------------------
   // Read the Snapshots 27-byte header ahead of time
@@ -143,7 +142,7 @@ void loop() {
     if (bytesReadHeader != 27) { debugFlash(3000); }
 
     // TODO: show error message
-  } 
+  }
   //-----------------------------------------
   // Copy snapshot data into Speccy RAM (0x4000-0xFFFF)
   uint16_t currentAddress = 0x4000;  //starts at beginning of screen
@@ -180,14 +179,20 @@ void loop() {
 
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
   // Wait for HALT line to return HIGH again (shows Z80 has resumed)
-  while ( (PINB & (1 << PINB0)) == 0 ) {};
+  while ((PINB & (1 << PINB0)) == 0) {};
+
+  // Joystick Support:
+  // The Arduino polls the joystick at 50 fps via a 74HC165 shift register.
+  // When the Spectrum performs an IN (C) (like LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
+  //
+  // A 74HC245D transceiver connects the Arduino to the Z80 and is tri-stated when not in use.
+  // This setup emulates a Kempston interface without bus conflicts.
 
   do {
     unsigned long startTime = millis();
     PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
     Utils::frameDelay(startTime);
   } while (getAnalogButton(analogRead(Pin::BUTTON_PIN)) != BUTTON_SELECT);
-
 }
 
 //-------------------------------------------------
@@ -200,13 +205,13 @@ byte doMenu(uint16_t totalFiles) {
     case BUTTON_SELECT:
       Sd::openFileByIndex(currentFileIndex);
       break;
-    case BUTTON_UP:
-    case BUTTON_DOWN:
+    case BUTTON_ADVANCE:
+    case BUTTON_BACK:
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
       break;
 
-    case BUTTON_UP_REFRESH_LIST:
-    case BUTTON_DOWN_REFRESH_LIST:
+    case BUTTON_ADVANCE_REFRESH_LIST:
+    case BUTTON_BACK_REFRESH_LIST:
       Draw::fileList(startFileIndex);
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
       break;
@@ -234,22 +239,22 @@ byte readButtons(uint16_t totalFiles) {
       if (but < (100 + 22) || (joy & B00000100)) {  // 1st button
         if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < totalFiles - 1) {
           currentFileIndex++;
-          ret = BUTTON_DOWN;
+          ret = BUTTON_BACK;
         } else if (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) {
           startFileIndex += SCREEN_TEXT_ROWS;
           currentFileIndex = startFileIndex;
-          ret = BUTTON_DOWN_REFRESH_LIST;
+          ret = BUTTON_BACK_REFRESH_LIST;
         }
       } else if (but < (100 + 324) || (joy & B00010000)) {  // 2nd button
         ret = BUTTON_SELECT;
       } else if (but < (100 + 510) || (joy & B00001000)) {  // 3rd button
           if (currentFileIndex > startFileIndex) {
             currentFileIndex--;
-             ret = BUTTON_UP;
+             ret = BUTTON_ADVANCE;
           } else if (startFileIndex >= SCREEN_TEXT_ROWS) {
             startFileIndex -= SCREEN_TEXT_ROWS;
             currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
-            ret = BUTTON_UP_REFRESH_LIST;
+            ret = BUTTON_ADVANCE_REFRESH_LIST;
           }
       }
       buttonHeld = true;
@@ -264,48 +269,20 @@ byte readButtons(uint16_t totalFiles) {
 }
 
 uint8_t getAnalogButton(int but) {
-  static constexpr int BUTTON_UP_THRESHOLD = 122;
+  static constexpr int BUTTON_ADVANCE_THRESHOLD = 122;
   static constexpr int BUTTON_SELECT_THRESHOLD = 424;
-  static constexpr int BUTTON_DOWN_THRESHOLD = 610;
+  static constexpr int BUTTON_BACK_THRESHOLD = 610;
 
-  if (but < BUTTON_UP_THRESHOLD) {
-    return BUTTON_UP;
+  if (but < BUTTON_ADVANCE_THRESHOLD) {
+    return BUTTON_ADVANCE;
   } else if (but < BUTTON_SELECT_THRESHOLD) {
     return BUTTON_SELECT;
-  } else if (but < BUTTON_DOWN_THRESHOLD) {
-    return BUTTON_DOWN;
+  } else if (but < BUTTON_BACK_THRESHOLD) {
+    return BUTTON_BACK;
   }
   return BUTTON_NONE;
 }
 
-//-------------------------------------------------
-/*
- * getFileCount: Returns number of SNA files on sd card 
- * File Limit=65535
- */
-uint16_t getFileCount() {
-  Sd::Status status;
-  uint16_t totalFiles = 0;
-
-  do {  // Keep trying - maybe sd card is missing
-    status = Sd::init(totalFiles);
-    if (status != Sd::Status::OK) {
-      switch (status) {
-        case Sd::Status::OK: 
-          break;  // do nothing
-        case Sd::Status::NO_FILES:
-          Draw::text(80, 90, "NO FILES FOUND");
-          break;
-        case Sd::Status::NO_SD_CARD:
-          Draw::text(80, 90, "INSERT SD CARD");
-          break;
-      }
-      delay(1000/50);
-    }
-  } while (totalFiles == 0);
-
-  return totalFiles;
-}
 
 //-------------------------------------------------
 // Section: Debug Supprt
