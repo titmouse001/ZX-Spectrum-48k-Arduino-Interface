@@ -84,9 +84,7 @@ void setup() {
 
   Z80Bus::setupNMI();
   Z80Bus::setupPins();
-  Pin::setupShiftRegister();
-
-  haveOled = setupOled();  // Optional OLED can be installed (128x32 pixel) 
+  Utils::setupJoystick();
 
   // ---------------------------------------------------------------------------
   // Revert to stock ROM at start-up (Select button held)
@@ -110,7 +108,6 @@ void loop() {
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
 
-  updateOledFileName();
   Draw::fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
@@ -131,8 +128,6 @@ void loop() {
     Utils::frameDelay(start);
   }
 
-  oledLoadingMessage();
-  
   const uint16_t address = 0x4004;
   packetBuffer[0] = 'S';
   packetBuffer[1] = (uint8_t)(address>>8);
@@ -182,11 +177,10 @@ void loop() {
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
   Z80Bus::bankSwitchStockRom();
+
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
-
-  while (bitRead(PINB, PINB0) == LOW) {}  // DEBUG, blocking here if Z80's -HALT still in action
-
-  oledRunningMessage();
+  // Wait for HALT line to return HIGH again (shows Z80 has resumed)
+  while ( (PINB & (1 << PINB0)) == 0 ) {};
 
   do {
     unsigned long startTime = millis();
@@ -208,13 +202,11 @@ byte doMenu(uint16_t totalFiles) {
       break;
     case BUTTON_UP:
     case BUTTON_DOWN:
-      updateOledFileName();
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
       break;
 
     case BUTTON_UP_REFRESH_LIST:
     case BUTTON_DOWN_REFRESH_LIST:
-      updateOledFileName();
       Draw::fileList(startFileIndex);
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
       break;
@@ -314,62 +306,6 @@ uint16_t getFileCount() {
 
   return totalFiles;
 }
-
-//-------------------------------------------------
-// Section: OLED Support
-//-------------------------------------------------
-
-bool setupOled() {
-  Wire.begin();
-  Wire.beginTransmission(I2C_ADDRESS);
-  bool result = (Wire.endTransmission() == 0);  // is OLED fitted
-  Wire.end();
-
-  if (result) {
-    // Initialise OLED
-    oled.begin(&Adafruit128x32, I2C_ADDRESS);   
-    delay(1);
-    // some hardware is slow to initialise, first call does not work.
-    oled.begin(&Adafruit128x32, I2C_ADDRESS);
-    // original Adafruit5x7 font with tweeks at start for VU meter
-    oled.setFont(fudged_Adafruit5x7);
-    oled.clear();
-    oled.print(F("ver"));
-    oled.println(F(VERSION));
-  }
-  return result;  // is OLED hardware available 
-}
-
-void updateOledFileName() {
-  if (haveOled) {
-    Sd::openFileByIndex(currentFileIndex);
-    uint8_t a = file.getName7(fileName, 41);
-    if (a == 0) { a = file.getSFN(fileName, 40); }
-    oled.setCursor(0, 0);
-    oled.print(F("Select:\n"));
-    oled.print(fileName);
-    oled.print(F("      "));
-    file.close();
-  }
-}
-
-void oledLoadingMessage() {
-  if (haveOled) {
-    file.getName(fileName, 15);
-    oled.clear();
-    oled.print(F("Loading:\n"));
-    oled.println(fileName);
-  }
-}
-
-void oledRunningMessage() {
-  if (haveOled) {
-    oled.clear();
-    oled.print("running:\n");
-    oled.println(fileName);
-  }
-}
-
 
 //-------------------------------------------------
 // Section: Debug Supprt

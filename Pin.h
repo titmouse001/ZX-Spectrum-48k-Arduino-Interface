@@ -45,36 +45,35 @@ static constexpr uint8_t Z80_REST = 17;  // PIN_A3 to the Z80 Reset line
 // Status LED
 static constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 
-// 74HC165 shift-register (parallel-in -> serial-out)
-static constexpr uint8_t ShiftRegDataPin = 9;    // Arduino pin9 to 74HC165 QH (pin-9 on chip)
-static constexpr uint8_t ShiftRegClockPin = A2;  // pin16, connected to 74HC165 CLK (pin-2 on 165)
-static constexpr uint8_t ShiftRegLatchPin = 10;  // Arduino pin10 to 74HC165 SH/LD (pin-1 on chip)
+// ----------------------------------------------------------------------------------------------------
+// 74HC165 shift-register (parallel-in to serial-out)
+// Used to read 8 digital inputs (joystic) using only 3 Arduino pins
+// ----------------------------------------------------------------------------------------------------
+// Arduino connections to 74HC165:
+// - PB1 (Arduino pin 9)  <- QH (pin 9 on 74HC165): Serial data output (read input bits here)
+// - PC2 (Arduino pin A2) -> CLK (pin 2 on 74HC165): Clock input (shifts out next bit on rising edge)
+// - PB2 (Arduino pin 10) -> SH/LD (pin 1 on 74HC165): Shift/Load control (LOW to load inputs, HIGH to shift)
+static constexpr uint8_t ShiftRegDataPin  = 9;    // PB1: Serial data in from 74HC165 QH
+static constexpr uint8_t ShiftRegClockPin = A2;   // PC2: Clock output to 74HC165 CLK
+static constexpr uint8_t ShiftRegLatchPin = 10;   // PB2: Latch control to 74HC165 SH/LD
+// ----------------------------------------------------------------------------------------------------
+
 
 // Analog input  (see "pins_arduino.h" pulled in by "Arduino.h" )
 static constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
 
-/* NOTES ABOUT PIN NAMES ABOVE: 
- * Taken from pins_arduino.h for reference
- * #define PIN_A0   (14) defines these also... static const uint8_t A0 = PIN_A0;
- * ...
- * #define PIN_A7   (21)
- */
 
-//------------------------------------------------------------
-
+// -----------------------------------------------------------
+// Bit-level Write Macros for Direct Register Manipulation
+// 
+// Usage:
+//   WRITE_BIT(PORTB, PB2, _HIGH); // Sets bit PB2 in PORTB
+//   WRITE_BIT(PORTC, PC2, _LOW);  // Clears bit PC2 in PORTC
 #define _HIGH 1
 #define _LOW 0
 #define WRITE_BIT(reg, bit, val) _INTERNAL_WRITE_BIT_##val(reg, bit)  // USE ME
 #define _INTERNAL_WRITE_BIT__HIGH(reg, bit) ((reg) |= _BV(bit))       // SET
 #define _INTERNAL_WRITE_BIT__LOW(reg, bit) ((reg) &= ~_BV(bit))       // CLEAR
-
-
-void setupShiftRegister() {
-  // Setup pins for "74HC165" shift register
-  pinMode(ShiftRegDataPin, INPUT);
-  pinMode(ShiftRegLatchPin, OUTPUT);
-  pinMode(ShiftRegClockPin, OUTPUT);
-}
 
 }
 

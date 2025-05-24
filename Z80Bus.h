@@ -26,20 +26,19 @@ void setupPins(){
 }
 
 void setupNMI() {
-  // This line connetcs to the Z80 /NMI which releases 
-  // the z80's from its 'HALT' state.
+  // Line to the Z80 /NMI, used to trigger a 'HALT' release and resume
   pinMode(Pin::Z80_NMI, OUTPUT);       
   WRITE_BIT(PORTC, DDC0, _HIGH);   // pin14 (A0), default Z80 /NMI line high
 }
 
 void waitHalt() {
-  // Here we are waiting for the speccy to release the halt, it does this every 50fps.
-  while ((bitRead(PINB, PINB0) == HIGH)) {};
-  while ((bitRead(PINB, PINB0) == LOW)) {};
+    // Wait for Z80 HALT line (PINB0) to go LOW (active low)
+  while ( (PINB & (1 << PINB0)) != 0 ) {};  // wait while HALT is HIGH
+    // Wait for HALT line to return HIGH again (shows Z80 has resumed)
+  while ( (PINB & (1 << PINB0)) == 0 ) {};
 }
 
 void resetZ80() { 
- // pinMode(Z80_REST, OUTPUT);
   WRITE_BIT(PORTC, DDC3, _LOW);    // z80 reset-line "LOW"
   delay(250);                     // reset line needs a delay (this is way more than needed!)
   WRITE_BIT(PORTC, DDC3, _HIGH);   // z80 reset-line "HIGH" - reboot
@@ -57,26 +56,30 @@ inline void bankSwitchStockRom() {
 }
 
 void waitRelease_NMI() {
-  // Wait for the Z80’s HALT line to be released (go LOW).
-  while (bitRead(PINB, PINB0) == HIGH) {}
+  // Wait for Z80 HALT line (PINB0) to go LOW (active low)
+  while ( (PINB & (1 << PINB0)) != 0 ) {};  // wait while HALT is HIGH
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
   WRITE_BIT(PORTC, DDC0, _LOW);    // A0, pin14 low to Z80 /NMI
   WRITE_BIT(PORTC, DDC0, _HIGH);   // A0, pin14 high to Z80 /NMI
-  // Confirm the HALT line has returned to HIGH.
-  while (bitRead(PINB, PINB0) == LOW) {}
+  // Wait for HALT line to return HIGH again (shows Z80 has resumed)
+  while ( (PINB & (1 << PINB0)) == 0 ) {};
 }
 
 __attribute__((optimize("-Ofast"))) 
 void sendBytes(byte *data, uint16_t size) {
+  cli(); // No really needed
   for (uint16_t i = 0; i < size; i++) {
-    // Wait for the Z80’s HALT line to be released (go LOW).
-    while ((bitRead(PINB, PINB0) == HIGH)) {};
-    PORTD = data[i];  // Arduino (d0-d7) data port to Z80 d0-d7
-    WRITE_BIT(PORTC, DDC0, _LOW);   // A0, pin14 low to Z80 /NMI
-    WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
-    // Confirm the HALT line has returned to HIGH.
-    while ((bitRead(PINB, PINB0) == LOW)) {};
+    // Wait for Z80 HALT line to go LOW (active low)
+    while ( (PINB & (1 << PINB0)) != 0 ) {};  // wait while HALT is HIGH
+    // Arduino (d0-d7) data port to Z80 d0-d7
+    PORTD = data[i]; 
+     // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+    WRITE_BIT(PORTC, DDC0, _LOW);   // A0, pin14 low
+    WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high
+    // Wait for HALT line to return HIGH again (shows Z80 has resumed)
+    while ( (PINB & (1 << PINB0)) == 0 ) {};
   }
+  sei();
 }
 
 /* Send Snapshot Header Section */

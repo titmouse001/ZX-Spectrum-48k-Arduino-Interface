@@ -1,10 +1,7 @@
 
 #include <Arduino.h>
 #include "utils.h"
-#include "SdFat.h" 
-
-extern FatFile file;
-extern FatFile root;
+#include "Pin.h" 
 
 namespace Utils {
   
@@ -52,27 +49,34 @@ void frameDelay(unsigned long start) {
   }
 }
 
-
-
 uint8_t readJoystick() {
-  bitSet(PORTB, DDB2);  // HIGH, pin 10, disable input latching/enable shifting
-  bitSet(PORTC, DDC2);  // HIGH, pin 16, clock to retrieve first bit
+  // Enable shifting by pulling latch high
+  PORTB |= (1 << PB2);    // Latch HIGH (enable shifting)
+  PORTC |= (1 << PC2);    // Initial Clock HIGH
 
-  byte data = 0;
-  // Read the data byte using shiftIn replacement with direct port manipulation
-  for (uint8_t i = 0; i < 8; i++) {  // only need first 5 bits "000FUDLR"
+  uint8_t data = 0;
+  for (uint8_t i = 0; i < 8; i++) {
     data <<= 1;
-    if (bitRead(PINB, 1)) {  // Reads data from pin 9 (PB1)
-      bitSet(data, 0);
+    if (PINB & (1 << PB1)) {
+      data |= 1;
     }
-    // Toggle clock pin low to high to read the next bit
-    bitClear(PORTC, DDC2);  // Clock low
-    delayMicroseconds(1);   // Short delay to ensure stable clocking
-    bitSet(PORTC, DDC2);    // Clock high
+
+    // Clock low-high transition
+    PORTC &= ~(1 << PC2);       // Clock LOW
+    __builtin_avr_delay_cycles(16); // 1microsecond at 16 MHz (fine-tuned delay)
+    PORTC |= (1 << PC2);        // Clock HIGH
   }
-  bitClear(PORTB, DDB2);  //LOW, pin 10 (PB2),  Disable shifting (latch)
+
+  // Disable shifting by pulling latch low
+  PORTB &= ~(1 << PB2);    // Latch LOW (disable shifting)
   return data;
 }
 
+void setupJoystick() {
+  // Setup pins for "74HC165" shift register
+  pinMode(Pin::ShiftRegDataPin, INPUT);
+  pinMode(Pin::ShiftRegLatchPin, OUTPUT);
+  pinMode(Pin::ShiftRegClockPin, OUTPUT);
+}
 
 }

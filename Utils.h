@@ -60,7 +60,7 @@ uint16_t getSnaFileCount();
 void openFileByIndex(uint8_t searchIndex);
 void frameDelay(unsigned long start);
 uint8_t readJoystick(); 
-
+void setupJoystick();
 /*
  * The 256×192-pixel bitmap sits at 0x4000 in three 64-line bands (each 2048 bytes apart),
  * with each band storing the first scan-row of all eight 8-pixel blocks, 
