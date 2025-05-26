@@ -1,13 +1,13 @@
-#ifndef SDSUPPORT_H
-#define SDSUPPORT_H
+#ifndef SDCARD_H
+#define SDCARD_H
 
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 
-extern SdFat32 sd;
-extern FatFile root;
-extern FatFile file;
+SdFat32 sd;
+FatFile root;
+FatFile file;
 
-namespace Sd {
+namespace SdCardSupport {
 
 static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024u*48u) + 27u;  //49179
 
@@ -19,38 +19,53 @@ enum struct Status : uint8_t {
   NO_SD_CARD = 2
 };
 
-struct FileCountResult {
-  Status status;
-  uint16_t totalFiles;
-};
+// struct FileCountResult {
+//   Status status;
+//   uint16_t totalFiles;
+// };
 
 
-// Attempt to initialize SD and count files.
-FileCountResult init() {
-  FileCountResult result;
+boolean init() {
   if (root.isOpen()) {
     root.close();
     sd.end();
   }
   if (!sd.begin()) {
-    result.status = Status::NO_SD_CARD;
-    return result;
+    return false;
   }
   if (!root.open("/")) {
     sd.end();
-    result.status = Status::NO_SD_CARD;
-    return result;
+    return false;
   }
-  result.totalFiles = countSnapshotFiles(); 
-  if (result.totalFiles > 0) {
-    result.status = Status::OK;
-  } else {
-    root.close();
-    sd.end();
-    result.status = Status::NO_FILES;
-  }
-  return result;
+  return true;
 }
+
+
+// FileCountResult init() {
+//   FileCountResult result;
+//   if (root.isOpen()) {
+//     root.close();
+//     sd.end();
+//   }
+//   if (!sd.begin()) {
+//     result.status = Status::NO_SD_CARD;
+//     return result;
+//   }
+//   if (!root.open("/")) {
+//     sd.end();
+//     result.status = Status::NO_SD_CARD;
+//     return result;
+//   }
+//   result.totalFiles = countSnapshotFiles(); 
+//   if (result.totalFiles > 0) {
+//     result.status = Status::OK;
+//   } else {
+//     root.close();
+//     sd.end();
+//     result.status = Status::NO_FILES;
+//   }
+//   return result;
+// }
 
 __attribute__((optimize("-Ofast"))) 
 void openFileByIndex(uint8_t searchIndex) {

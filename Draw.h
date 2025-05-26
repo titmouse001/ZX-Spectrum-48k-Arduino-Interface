@@ -3,10 +3,8 @@
 
 extern FatFile root;
 extern FatFile file;
-extern char fileName[65];
 
 namespace Draw {
-  
   
 /**
  * textLine:  Draws a full-width line of text (32 bytes per line).
@@ -51,45 +49,6 @@ void text(int xpos, int ypos, const char *message) {
   }
 } // refactored DrawText... but not tested yet .. should be ok
 
-
-__attribute__((optimize("-Ofast"))) 
-void fileList(uint16_t startFileIndex) {
-  root.rewind();
-  uint8_t clr = 0;
-  uint8_t count = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (file.fileSize() == 49179) {
-
-        if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
-          int len = file.getName7(fileName, 64);
-          if (len == 0) { file.getSFN(fileName, 20); }
-
-          if (len > 42) {
-            fileName[40] = '.';
-            fileName[41] = '.';
-            fileName[42] = '\0';
-          }
-
-          textLine(0, ((count - startFileIndex) * 8), fileName);
-          clr++;
-        }
-        count++;
-      }
-    }
-    file.close();
-    if (clr == SCREEN_TEXT_ROWS) {
-      break;
-    }
-  }
-
-  // Clear the remaining screen after last list item when needed.
-  fileName[0] = ' ';  // Empty file selector slots (just wipes area)
-  fileName[1] = '\0';
-  for (uint8_t i = clr; i < SCREEN_TEXT_ROWS; i++) {
-    textLine(0, (i * 8), fileName);
-  }
-}
 
 }
 

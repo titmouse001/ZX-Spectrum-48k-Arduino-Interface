@@ -4,6 +4,23 @@
 #include "pin.h"
 #include "buffers.h"
 
+/* -------------------------------------------------
+ * ZX Spectrum Screen Attribute Byte Format
+ * -------------------------------------------------
+ * Format: [F | B | P2 | P1 | P0 | I2 | I1 | I0]
+ *
+ * Bit Fields:
+ *   F  - FLASH mode (1 = flash, 0 = steady)
+ *   B  - BRIGHT mode (1 = bright, 0 = normal)
+ *   P2-P0 - PAPER colour (background)
+ *   I2-I0 - INK colour (foreground)
+ *
+ * Colour Key (FBPPPIII): 
+ *   000 = Black, 001 = Blue, 010 = Red, 011 = Magenta,
+ *   100 = Green, 101 = Cyan, 110 = Yellow, 111 = White
+ */
+
+
 namespace Z80Bus {
 
 //-------------------------------------------------
@@ -96,18 +113,6 @@ void sendSnaHeader(byte* info) {
   Z80Bus::sendBytes(&info[1+21], 2);          // Send AF                     "
 }
 
-
-
-/* -------------------------------------------------
- * NOTE: Screen Attributes - ZX Spectrum Screen
- * -------------------------------------------------
- * [F|B|P2|P1|P0|I2|I1|I0]
- * bit F sets the attribute FLASH mode
- * bit B sets the attribute BRIGHTNESS mode
- * bits P2 to P0 is the PAPER colour
- * bits I2 to I0 is the INK colour
- */
-
 void fillScreenAttributes(const uint8_t attributes) {
     const uint16_t amount = 768;      
     const uint16_t startAddress = 0x5800;
@@ -117,13 +122,8 @@ void fillScreenAttributes(const uint8_t attributes) {
 }
 
 void highlightSelection(uint16_t currentFileIndex,uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
-  /* Draw Cyan selector bar with black text (FBPPPIII) */
-  /* BITS COLOUR KEY: 0 Black, 1 Blue, 2 Red, 3 Magenta, 4 Green, 5 Cyan, 6 Yellow, 7 White	*/
   const uint16_t amount = 32;
   const uint16_t destAddr = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
-  /* Highlight file selection - B00101000: Black text, Cyan background*/
-  FILL_COMMAND(packetBuffer, amount, destAddr, B00101000 );    
-  Z80Bus::sendBytes(packetBuffer, 6 );
 
   if (oldHighlightAddress != destAddr) {
     /* Remove old highlight - B01000111: Restore white text/black background for future use */
@@ -131,8 +131,11 @@ void highlightSelection(uint16_t currentFileIndex,uint16_t startFileIndex, uint1
     Z80Bus::sendBytes(packetBuffer, 6);
     oldHighlightAddress = destAddr;
   }
-}
 
+  /* Highlight file selection - B00101000: Black text, Cyan background*/
+  FILL_COMMAND(packetBuffer, amount, destAddr, B00101000 );    
+  Z80Bus::sendBytes(packetBuffer, 6 );
+}
 
 }
 

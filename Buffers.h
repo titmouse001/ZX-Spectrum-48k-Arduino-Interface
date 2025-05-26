@@ -22,16 +22,17 @@ const uint8_t SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
 const uint8_t PAYLOAD_BUFFER_SIZE = 255;
 const uint16_t BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
-
 // ----------------------------------------------------------------------------------  
-//uint8_t stackCommand[1] = { 'S' };  
-//uint8_t waitCommand[1] = { 'W' };     // pre populate with Wait command 
 uint8_t packetBuffer[BUFFER_SIZE] ;     // Used by 'C','G' & 'F' commands
 uint8_t head27_Execute[27 + 1];         // for 'E' Execute command (stores sna header) 
 // ----------------------------------------------------------------------------------
 #define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
 byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 };
 // ----------------------------------------------------------------------------------
+
+char fileName[65];
+
+
 
 
 #endif

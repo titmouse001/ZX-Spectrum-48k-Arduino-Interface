@@ -26,8 +26,9 @@
 #include "ScrSupport.h"
 #include "Z80Bus.h"
 #include "Buffers.h"
-#include "sdSupport.h"
+#include "SdCardSupport.h"
 #include "Draw.h"
+#include "Menu.h"
 
 // --------------------------------
 #define SERIAL_DEBUG 0
@@ -43,27 +44,7 @@
 
 #define VERSION ("0.14")
 
-// SD card support
-SdFat32 sd;
-FatFile root;
-FatFile file;
-char fileName[65];
-// ----------------------------------------------------------------------------------
 
-enum { BUTTON_NONE,
-       BUTTON_BACK,
-       BUTTON_SELECT,
-       BUTTON_ADVANCE,
-       BUTTON_BACK_REFRESH_LIST,
-       BUTTON_ADVANCE_REFRESH_LIST };
-
-unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
-unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
-unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
-bool buttonHeld = false;               // Track if the button is being held
-uint16_t oldHighlightAddress = 0;      // Last highlighted screen position for clearing away
-uint16_t currentFileIndex = 0;         // The currently selected file index in the list
-uint16_t startFileIndex = 0;           // The start file index of the current viewing window
 
 void setup() {
 
@@ -78,14 +59,26 @@ void setup() {
   Utils::setupJoystick();
 
   // ---------------------------------------------------------------------------
-  // Revert to stock ROM at start-up (Select button held)
-  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_SELECT) {
+  // Use stock ROM (Select button held)
+  if (getAnalogButton() == BUTTON_SELECT) {
     Z80Bus::bankSwitchStockRom();
     Z80Bus::resetZ80();
-    // TO DO -  allow user to go back to the sna loading mode  ???
-    while(true) { delay(50); }
+    delay(1500);
+    while(getAnalogButton() != BUTTON_SELECT) { delay(50); }
+    // return to Sna loader rom
   }
   // -----------------------------------------------------------------------------
+
+  Z80Bus::resetToSnaRom();
+  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
+
+  while (!SdCardSupport::init()) {
+    Draw::text(80, 90, "INSERT SD CARD");
+  }
+    
+  if (getAnalogButton() == BUTTON_BACK) {
+    ScrSupport::DemoScrFiles(root, file, packetBuffer);
+  }
 }
 
 void loop() {
@@ -93,40 +86,28 @@ void loop() {
   Z80Bus::resetToSnaRom();
   Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
 
-  Sd::FileCountResult result;
-  do {
-    result = Sd::init();
-    if (result.status == Sd::Status::NO_SD_CARD) {
-      Draw::text(80, 90, "INSERT SD CARD");
-    } else if (result.status == Sd::Status::NO_FILES) {
-      Draw::text(80, 90, "NO FILES FOUND");
-    }
-  } while (result.status != Sd::Status::OK);
-
-  if (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_BACK) {
-    ScrSupport::DemoScrFiles(root, file, packetBuffer);
+  uint16_t totalFiles=0;
+  while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
+    Draw::text(80, 90, "NO FILES FOUND");
   }
 
-  Draw::fileList(startFileIndex);
-  Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
+  uint16_t fileIndex = doMenu(totalFiles);
+  SdCardSupport::openFileByIndex(fileIndex);
 
-  //Wait here until SELECT is released, so we don't retrigger on the same press.
-  while (getAnalogButton(analogRead(Pin::BUTTON_PIN)) == BUTTON_SELECT) {
-    delay(1);  // do nothing
+  if (bootFromSnapshot()) {
+    do {
+      unsigned long startTime = millis();
+      PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
+      Utils::frameDelay(startTime);
+    } while (getAnalogButton() != BUTTON_SELECT);
+    while (getAnalogButton() == BUTTON_NONE) {} // wait for button release
   }
+}
 
-  // ***************************************
-  // *** Main loop - file selection menu ***
-  // ***************************************
-  while (true) {
-    unsigned long start = millis();
-    byte action = doMenu(result.totalFiles);
-    if (action == BUTTON_SELECT) {
-      break;
-    }
-    Utils::frameDelay(start);
-  }
-
+boolean bootFromSnapshot() {
+  // Send the set "stack point" command.
+  // This reuses the 2-byte jump address in screen memory's startup code,
+  // which is unused until the final stage of execution.
   const uint16_t address = 0x4004;
   packetBuffer[0] = 'S';
   packetBuffer[1] = (uint8_t)(address >> 8);
@@ -139,9 +120,12 @@ void loop() {
   if (file.available()) {
     head27_Execute[0] = 'E';
     byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);
-    if (bytesReadHeader != 27) { debugFlash(3000); }
-
-    // TODO: show error message
+    if (bytesReadHeader != 27) {
+        file.close();
+        Draw::text(80, 90, "Invalid sna file");
+        delay(3000);
+        return false; // failed to load snapshot file
+    }
   }
   //-----------------------------------------
   // Copy snapshot data into Speccy RAM (0x4000-0xFFFF)
@@ -181,123 +165,21 @@ void loop() {
   // Wait for HALT line to return HIGH again (shows Z80 has resumed)
   while ((PINB & (1 << PINB0)) == 0) {};
 
-  // Joystick Support:
-  // The Arduino polls the joystick at 50 fps via a 74HC165 shift register.
-  // When the Spectrum performs an IN (C) (like LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
-  //
-  // A 74HC245D transceiver connects the Arduino to the Z80 and is tri-stated when not in use.
-  // This setup emulates a Kempston interface without bus conflicts.
-
-  do {
-    unsigned long startTime = millis();
-    PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
-    Utils::frameDelay(startTime);
-  } while (getAnalogButton(analogRead(Pin::BUTTON_PIN)) != BUTTON_SELECT);
-}
-
-//-------------------------------------------------
-// Section: Menu / Input Support
-//-------------------------------------------------
-
-byte doMenu(uint16_t totalFiles) {
-  byte btn = readButtons(totalFiles);
-  switch (btn) {
-    case BUTTON_SELECT:
-      Sd::openFileByIndex(currentFileIndex);
-      break;
-    case BUTTON_ADVANCE:
-    case BUTTON_BACK:
-      Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-      break;
-
-    case BUTTON_ADVANCE_REFRESH_LIST:
-    case BUTTON_BACK_REFRESH_LIST:
-      Draw::fileList(startFileIndex);
-      Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-      break;
-
-    default:
-      break;
-  }
-  return btn;
-}
-
-byte readButtons(uint16_t totalFiles) {
-  // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
-  byte ret = BUTTON_NONE;
-  int but = analogRead(Pin::BUTTON_PIN);
-  uint8_t joy = Utils::readJoystick();  // Kempston standard, "000FUDLR" bit pattern
-
-  if (getAnalogButton(but) || (joy & B00011100)) {
-    unsigned long currentMillis = millis();     // Get the current time
-    if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-      buttonDelay = max(40, buttonDelay - 20);  // speed-up file selection over time
-      lastButtonHoldTime = currentMillis;
-    }
-
-    if ((!buttonHeld) || (currentMillis - lastButtonPress >= buttonDelay)) {
-      if (but < (100 + 22) || (joy & B00000100)) {  // 1st button
-        if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < totalFiles - 1) {
-          currentFileIndex++;
-          ret = BUTTON_BACK;
-        } else if (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) {
-          startFileIndex += SCREEN_TEXT_ROWS;
-          currentFileIndex = startFileIndex;
-          ret = BUTTON_BACK_REFRESH_LIST;
-        }
-      } else if (but < (100 + 324) || (joy & B00010000)) {  // 2nd button
-        ret = BUTTON_SELECT;
-      } else if (but < (100 + 510) || (joy & B00001000)) {  // 3rd button
-          if (currentFileIndex > startFileIndex) {
-            currentFileIndex--;
-             ret = BUTTON_ADVANCE;
-          } else if (startFileIndex >= SCREEN_TEXT_ROWS) {
-            startFileIndex -= SCREEN_TEXT_ROWS;
-            currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
-            ret = BUTTON_ADVANCE_REFRESH_LIST;
-          }
-      }
-      buttonHeld = true;
-      lastButtonPress = currentMillis;
-      lastButtonHoldTime = currentMillis;
-    }
-  } else {   /* no button is pressed - reset delay */
-    buttonHeld = false;
-    buttonDelay = 300;  // Reset to the initial delay
-  }
-  return ret;
-}
-
-uint8_t getAnalogButton(int but) {
-  static constexpr int BUTTON_ADVANCE_THRESHOLD = 122;
-  static constexpr int BUTTON_SELECT_THRESHOLD = 424;
-  static constexpr int BUTTON_BACK_THRESHOLD = 610;
-
-  if (but < BUTTON_ADVANCE_THRESHOLD) {
-    return BUTTON_ADVANCE;
-  } else if (but < BUTTON_SELECT_THRESHOLD) {
-    return BUTTON_SELECT;
-  } else if (but < BUTTON_BACK_THRESHOLD) {
-    return BUTTON_BACK;
-  }
-  return BUTTON_NONE;
+  return true;
 }
 
 
-//-------------------------------------------------
-// Section: Debug Supprt
-//-------------------------------------------------
-
-void debugFlash(int flashspeed) {
-  // If we get here it's faital
-  file.close();
-  root.close();
-  sd.end();
-  while (1) {
-    pinMode(Pin::ledPin, OUTPUT);
-    digitalWrite(Pin::ledPin, HIGH);
-    delay(flashspeed);
-    digitalWrite(Pin::ledPin, LOW);
-    delay(flashspeed);
-  }
+/*
+uint16_t destAddr;
+char _c[32];
+for (uint8_t y = 0; y < 8; y++) {
+  destAddr = Utils::zx_spectrum_screen_address(128, y);
+  FILL_COMMAND(packetBuffer, 128 / 8, destAddr, 0x00);
+  Z80Bus::sendBytes(packetBuffer, 6);
 }
+destAddr = 0x5800 + (128 / 8);
+FILL_COMMAND(packetBuffer, 128 / 8, destAddr, B01000100);
+Z80Bus::sendBytes(packetBuffer, 6);
+sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));
+Draw::text(256 - 128, 0, _c);
+*/
