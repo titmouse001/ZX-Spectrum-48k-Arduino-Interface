@@ -86,7 +86,7 @@ L0000:
 
 	;-----------------------------------------------------------------------------------	
 	jp ClearScreen
-	ld c,$1F  				 ; setup for pair reads
+	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
@@ -134,11 +134,44 @@ check_initial:   	 ; command checking loop
 	jp z, command_Stack ; Use screen memory for stack (for sna loading)
     cp 'E'            
     jp z, command_Execute ; execute program (includes restoring 27 byte header) 
+    cp 'T'            
+    jp z, command_Transmit ; send data to Arduino USING A pulse-count protocol
 
     jr check_initial 
 
+
 ;------------------------------------------------------
-command_Fill:  ; "F" - FILL COMMAND
+; --- Transmit key press using pulse-count protocol ---
+; The Arduino watches the Z80's HALT line.
+; We issue N HALT instructions, where N=key index value (1–40).
+; Arduino counts the HALT pulses to determine which key was pressed.
+;
+command_Transmit:  ; "T" - TRANSMIT KEY PRESS
+;------------------------------------------------------
+	READ_ACC_WITH_HALT			 
+	ld b,a
+	push bc
+
+ 	; Get key pulses to send; 1:no key (2–41 keys)
+	JP GET_KEY_PULSES           
+DONE_KEY:
+	LD B, A                 
+	; send pulses  
+TX: HALT                    
+	DJNZ TX                  
+
+	; --- End marker delay ---
+	; Add a short delay to signal the end of pulse group.
+	; Note: Next HALT in the main loop will happen *after* this delay.
+	pop bc     
+DELAY_LOOP:
+	NOP                    
+	DJNZ DELAY_LOOP		; ball park T-states: N * (4 + 13)
+	ld c,$1F  			; re-setup for 'READ_PAIR_WITH_HALT'
+	JR mainloop         ; Return to main loop
+
+;------------------------------------------------------
+command_Fill:  ; "F" - FILL
 ;------------------------------------------------------
 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
@@ -447,6 +480,96 @@ RestoreEI_IFFState:
 	EI
 	jp RestoreEI_IFFStateComplete		 ; avoiding stack based calls
 ;------------------------------------------------------------------------
+
+
+
+; 2-42 pulse count represent keys, 1:no key, 0:invalid
+GET_KEY_PULSES:    
+            LD      D, $FE          	; first port row ($FE, $FD, ..., $7F)
+            LD      C, 2     		    ; reserve 1 for no key
+rawcheckKeyLoop: 	
+            LD      A, D            
+			; NOTE: IN uses A as port number
+            IN      A, ($FE)      		; row state
+            LD      B, 5            	; 5 keys per row (bits 0–4)
+            LD      E, 1            	; Bitmask to check/move on
+rawcheckBits:
+            RRCA                    	
+            JR      NC, rawKeyFound    	; key down (bit=0)
+            INC     C              	 	; add another pulse
+            SLA     E           	    ; move bitmask
+            DJNZ    rawcheckBits
+            RLC     D               	; Next row (D=$FD,$FB,...)
+            JR      C, rawcheckKeyLoop
+            ; No key found 
+			ld 		c,1
+rawKeyFound:
+            LD      A, C            	; key pulses (2–41)
+            JP      DONE_KEY
+
+
+
+
+; CHANEGE THE 'NO KEY' TO USE 1 , KEY INDEX WILL BEGIN AT 2 
+
+; GET_RAW_KEY:    
+;             LD      D, $FE          ; Start with first port row ($FE, $FD, ..., $7F)
+;             LD      C, 1            ; Start key index at 1
+; rawcheckKeyLoop: 	
+;             LD      A, D            
+; 			; NOTE: IN uses A as port number
+;             IN      A, ($FE)        ; Read key row state
+;             LD      B, 5            ; 5 keys per row (bits 0–4)
+;             LD      E, 1            ; Bitmask for bit check
+; rawcheckBits:
+;             RRCA                    ; Rotate bit into carry
+;             JR      NC, rawKeyFound    ; If key down (bit = 0), return index in C
+;             INC     C               ; Next key index
+;             SLA     E               ; Shift bitmask
+;             DJNZ    rawcheckBits
+;             RLC     D               ; Next row (D = $FD, $FB, ...)
+;             JR      C, rawcheckKeyLoop
+;             ; No key found (C=41)
+; rawKeyFound:   
+;             LD      A, C            ; A = key index (1–40) or 0 if none
+;             JP      DONE_KEY
+
+
+;------------------------------------------------------------------------
+GET_KEY:   ;; PUSH    BC            
+           ;; PUSH    HL              
+            LD      HL, KEY_TABLE    
+            LD      D, $FE          ; 1st Port to read
+checkKeyLoop: 	
+			LD      A, D            
+	        IN      A, ($FE)        ; Read key state
+            LD      E, $01          ; Bitmask for key check
+            LD      B, $05          ; 5 bits (keys) in each row
+CheckKey:   RRCA                    ; 
+            JR      NC, KeyFound 	; key down (bit checked is zero)
+            INC     HL              ; next lookup
+			SLA     E         		; move test mask
+            DJNZ    checkKeyLoop        
+            RLC     D               ; next port row to read ($FD,$FB...)
+            JR      C, checkKeyLoop
+KeyFound: 	LD      A, (HL)         ; get char value from table
+           ;; POP     HL            
+        ;;   POP     BC              
+			JP DONE_KEY
+          ;  RET    					; A holds result (UPPER CASE)          
+
+KEY_TABLE:	; Key row mapping  		; $6649
+			defb $01,"ZXCV"		 	; $01=shift	
+			defb "ASDFG"
+			defb "QWERT"
+			defb "12345"
+			defb "09876"
+			defb "POIUY"  
+			defb $0D,"LKJH"     	; $0D=enter
+			defb $20,$02,"MNB"  	; $20=space, $02=sym shft
+			defb $0					; tables end marker
+;------------------------------------------------------------------------
+
 
 ;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM

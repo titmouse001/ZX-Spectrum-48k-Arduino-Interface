@@ -30,6 +30,9 @@
 #include "Draw.h"
 #include "Menu.h"
 
+#include <Wire.h>  //  I2C devices
+#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
+
 // --------------------------------
 #define SERIAL_DEBUG 0
 
@@ -44,7 +47,12 @@
 
 #define VERSION ("0.14")
 
-
+// ----------------------------------------------------------------------------------
+// OLED support - *** now for debug ***
+//#define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
+//SSD1306AsciiAvrI2c oled;
+//bool haveOled = false;
+// 
 
 void setup() {
 
@@ -58,8 +66,12 @@ void setup() {
   Z80Bus::setupPins();
   Utils::setupJoystick();
 
+  // BEBUG ONLY   setupOled();  // Optional OLED can be installed (128x32 pixel) 
+
+
   // ---------------------------------------------------------------------------
   // Use stock ROM (Select button held)
+/*
   if (getAnalogButton() == BUTTON_SELECT) {
     Z80Bus::bankSwitchStockRom();
     Z80Bus::resetZ80();
@@ -67,6 +79,7 @@ void setup() {
     while(getAnalogButton() != BUTTON_SELECT) { delay(50); }
     // return to Sna loader rom
   }
+*/
   // -----------------------------------------------------------------------------
 
   Z80Bus::resetToSnaRom();
@@ -75,10 +88,15 @@ void setup() {
   while (!SdCardSupport::init()) {
     Draw::text(80, 90, "INSERT SD CARD");
   }
-    
+
+  //TODO ... add this to the menu 
+  /*  
   if (getAnalogButton() == BUTTON_BACK) {
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
+*/
+
+
 }
 
 void loop() {
@@ -97,10 +115,10 @@ void loop() {
   if (bootFromSnapshot()) {
     do {
       unsigned long startTime = millis();
-      PORTD = Utils::readJoystick();  // send to the Z80 data lines (Kempston standard)
+      PORTD = Utils::readJoystick()&B00111111;  // send to the Z80 data lines (Kempston standard)
       Utils::frameDelay(startTime);
-    } while (getAnalogButton() != BUTTON_SELECT);
-    while (getAnalogButton() == BUTTON_NONE) {} // wait for button release
+     } while ( (Utils::readJoystick()&B11000000) == 0 ); 
+    while ((Utils::readJoystick()&B11000000) != 0) {} // wait for button release
   }
 }
 
@@ -167,6 +185,29 @@ boolean bootFromSnapshot() {
 
   return true;
 }
+
+/*
+bool setupOled() {
+  Wire.begin();
+  Wire.beginTransmission(I2C_ADDRESS);
+  bool result = (Wire.endTransmission() == 0);  // is OLED fitted
+  Wire.end();
+
+  if (result) {
+    // Initialise OLED
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);   
+    delay(1);
+    // some hardware is slow to initialise, first call does not work.
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);
+    // original Adafruit5x7 font with tweeks at start for VU meter
+    oled.setFont(fudged_Adafruit5x7);
+    oled.clear();
+    oled.print(F("ver"));
+    oled.println(F(VERSION));
+  }
+  return result;  // is OLED hardware available 
+}
+*/
 
 
 /*
