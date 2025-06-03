@@ -13,8 +13,6 @@ uint16_t oldHighlightAddress = 0;      // Last highlighted screen position for c
 uint16_t currentFileIndex = 0;         // The currently selected file index in the list
 uint16_t startFileIndex = 0;           // The start file index of the current viewing window
 
-
-
 enum { BUTTON_NONE,
        BUTTON_BACK,
        BUTTON_SELECT,
@@ -26,10 +24,7 @@ enum { BUTTON_NONE,
 #include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
 
 extern SSD1306AsciiAvrI2c oled;
-//uint8_t pulseCount = 0;
-//uint32_t lastPulseTime = 0;
-uint8_t receivedValue = 0;
-
+//uint8_t receivedValue = 0;
 
 
 __attribute__((optimize("-Ofast"))) 
@@ -71,98 +66,84 @@ void fileList(uint16_t startFileIndex) {
   }
 }
 
-// uint8_t getAnalogButton() {
-//   static constexpr int BUTTON_ADVANCE_THRESHOLD = 22+40;    // (1st left button on PCB Board)
-//   static constexpr int BUTTON_SELECT_THRESHOLD = 324+40;
-//   static constexpr int BUTTON_BACK_THRESHOLD = 610;
-//   int but = analogRead(Pin::BUTTON_PIN);
-// //  int but = getStableAnalogRead(Pin::BUTTON_PIN);
-
-//   if (but < BUTTON_ADVANCE_THRESHOLD) {
-//     return BUTTON_ADVANCE;
-//   } else if (but < BUTTON_SELECT_THRESHOLD) {
-//     return BUTTON_SELECT;
-//   } else if (but < BUTTON_BACK_THRESHOLD) {
-//     return BUTTON_BACK;
-//   }
-//   return BUTTON_NONE;
-// }
-
 
 byte processButtons(uint16_t totalFiles) {
-  // ANALOGUE VALUES ARE AROUND... 1024,510,324,22
-  byte ret = BUTTON_NONE;
-  //int but = analogRead(Pin::BUTTON_PIN);
- // uint8_t but = getAnalogButton();
-  uint8_t joy = Utils::readJoystick();  // Kempston standard, "000FUDLR" bit pattern
+  // Kempston joystick bitmask: "000FUDLR" (Fire, Up, Down, Left, Right)
+  const uint8_t joy = Utils::readJoystick();
 
+  byte button = BUTTON_NONE;
 
-  //     oled.setRow(2);
-  //  oled.setCol(0);
-  //  char _c[12];
-  //  sprintf(_c,"%d  ",joy);
-  //   oled.println(_c);
+  // ****** currently circut is bodged onto button 1 with cut tracks *****
+  // ***** maps to two spare joined pins on shift registor ic (d6,d7)
+  // A or B hardware buttons mapped to B11000000
+  // Fire to B00010000
+  if (joy & B11010000) {  // "AB0F0000"
+    button = BUTTON_SELECT;
+  }
+  if (joy & B00000100) {
+    button = BUTTON_ADVANCE;
+  }
+  if (joy & B00001000) {
+    button = BUTTON_BACK;
+  }
 
+  switch (Z80Bus::GetKeyPulses()) {
+    case 11: button = BUTTON_BACK; break;    // Q
+    case 6: button = BUTTON_ADVANCE; break;  // A
+    case 31: button = BUTTON_SELECT; break;  // ENTER
+  }
 
-// TODO: refactor
+  if (button == BUTTON_SELECT) {
+    return BUTTON_SELECT;
+  }
 
-    if (joy&B11000000) { return BUTTON_SELECT;}
-
-  int but=BUTTON_NONE;
-
-
-    if (receivedValue==11) { but = BUTTON_BACK; }
-   if (receivedValue==6) { but = BUTTON_ADVANCE; }
-    if (receivedValue==31) {  but = BUTTON_SELECT; }
-  receivedValue=0;
-
-  if (but != BUTTON_NONE || (joy & B00011100)) {
-    unsigned long currentMillis = millis();  // Get the current time
+  if (button == BUTTON_NONE) {
+    buttonHeld = false;
+    buttonDelay = 300;  // Reset repeat delay
+  } else {
+    const unsigned long currentMillis = millis();
     if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-      buttonDelay = max(40, buttonDelay - 20);  // speed-up file selection over time
+      buttonDelay = (buttonDelay > 40) ? buttonDelay - 20 : 40;
       lastButtonHoldTime = currentMillis;
     }
-
-    if ((!buttonHeld) || (currentMillis - lastButtonPress >= buttonDelay)) {
-      if ((but == BUTTON_ADVANCE) || (joy & B00000100)) { 
+    if (!buttonHeld || (currentMillis - lastButtonPress >= buttonDelay)) {
+      byte action = BUTTON_NONE;
+      if ((button == BUTTON_ADVANCE)) {
         if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < totalFiles - 1) {
           currentFileIndex++;
-          ret = BUTTON_ADVANCE;
-        } else if (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) {
-          startFileIndex += SCREEN_TEXT_ROWS;
-          currentFileIndex = startFileIndex;
-          ret = BUTTON_ADVANCE_REFRESH_LIST;
+          action = BUTTON_ADVANCE;
         } else {
-          startFileIndex = 0;
-          currentFileIndex = 0;
-          ret = BUTTON_ADVANCE_REFRESH_LIST;
+          action = BUTTON_ADVANCE_REFRESH_LIST;
+          startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
+          currentFileIndex = startFileIndex;
         }
-      } else if ((but == BUTTON_SELECT) || (joy & B00010000)) { 
-        ret = BUTTON_SELECT;
-      } else if ((but == BUTTON_BACK) || (joy & B00001000)) { 
+      } else if ((button == BUTTON_BACK)) {
         if (currentFileIndex > startFileIndex) {
           currentFileIndex--;
-          ret = BUTTON_BACK;
-        } else if (startFileIndex >= SCREEN_TEXT_ROWS) {
-          startFileIndex -= SCREEN_TEXT_ROWS;
-          currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
-          ret = BUTTON_BACK_REFRESH_LIST;
+          action = BUTTON_BACK;
         } else {
-          startFileIndex = totalFiles - (totalFiles % SCREEN_TEXT_ROWS);
-          currentFileIndex = totalFiles - 1;  
-          ret = BUTTON_BACK_REFRESH_LIST;
+          action = BUTTON_BACK_REFRESH_LIST;
+          if (startFileIndex >= SCREEN_TEXT_ROWS) {
+            startFileIndex -= SCREEN_TEXT_ROWS;
+            currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
+          } else {
+            startFileIndex = totalFiles - (totalFiles % SCREEN_TEXT_ROWS);
+            currentFileIndex = totalFiles - 1;
+          }
         }
       }
-      buttonHeld = true;
-      lastButtonPress = currentMillis;
-      lastButtonHoldTime = currentMillis;
+
+      if (action != BUTTON_NONE) {
+        buttonHeld = true;
+        lastButtonPress = currentMillis;
+        lastButtonHoldTime = currentMillis;
+        return action;
+      }
     }
-  } else { /* no button is pressed - reset delay */
-    buttonHeld = false;
-    buttonDelay = 300;  // Reset to the initial delay
   }
-  return ret;
+  return BUTTON_NONE;
 }
+
 
 uint16_t doMenu(uint16_t totalFiles) {
 
@@ -192,46 +173,20 @@ uint16_t doMenu(uint16_t totalFiles) {
       default:
         break;
     }
+    
+    Utils::frameDelay(start);
+  }
+}
 
 
-    constexpr uint8_t DELAY_CMD_VALUE = 20;  // 20 units ≈ 70 µs (20 / 0.285714)
-    constexpr uint16_t PULSE_TIMEOUT_US = 70;
-    uint8_t pulseCount = 0;
-    uint32_t lastPulseTime = 0;
 
-    packetBuffer[0] = 'T';
-    packetBuffer[1] = DELAY_CMD_VALUE;  // delay after pulses
-    // 20 / 0.285714 = 70 microseconds
-    Z80Bus::sendBytes(packetBuffer, 2);
 
-    while (1) {
-      // Service current HALT if active
-      if ((PINB & (1 << PINB0)) == 0) {
-        // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-        WRITE_BIT(PORTC, DDC0, _LOW);  
-        WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
-        pulseCount++;
-        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      }
+#endif
 
-      // Detect end of transmission
-      if ( (pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US) ) {
-        receivedValue=pulseCount - 1;
-        
+
     //      oled.setRow(1);
     //      oled.setCol(0);
      //     char _c[18];
      //     sprintf(_c, "[ %d ]", receivedValue);
       //    oled.println(_c);
           
-        pulseCount = 0;
-        break;
-      }
-    }
-
-    Utils::frameDelay(start);
-  }
-}
-
-
-#endif

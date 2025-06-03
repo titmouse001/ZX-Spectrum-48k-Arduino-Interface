@@ -186,6 +186,11 @@ boolean bootFromSnapshot() {
   return true;
 }
 
+
+
+
+
+
 /*
 bool setupOled() {
   Wire.begin();

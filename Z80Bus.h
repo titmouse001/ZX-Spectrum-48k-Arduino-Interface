@@ -145,6 +145,36 @@ void highlightSelection(uint16_t currentFileIndex,uint16_t startFileIndex, uint1
   Z80Bus::sendBytes(packetBuffer, 6 );
 }
 
+
+uint8_t GetKeyPulses() {
+    constexpr uint8_t DELAY_CMD_VALUE = 20;  // 20 units ≈ 70 µs (20 / 0.285714)
+    constexpr uint16_t PULSE_TIMEOUT_US = 70;
+    uint8_t pulseCount = 0;
+    uint32_t lastPulseTime = 0;
+
+    packetBuffer[0] = 'T';
+    packetBuffer[1] = DELAY_CMD_VALUE;  // delay after pulses
+    // 20 / 0.285714 = 70 microseconds
+    Z80Bus::sendBytes(packetBuffer, 2);
+
+    while (1) {
+      // Service current HALT if active
+      if ((PINB & (1 << PINB0)) == 0) {
+        // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+        WRITE_BIT(PORTC, DDC0, _LOW);  
+        WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
+        pulseCount++;
+        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      }
+
+      // Detect end of transmission (delay timeout after last halt)
+      if ( (pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US) ) {
+        return pulseCount - 1;    
+      }
+    }
+}
+
+
 }
 
 #endif
