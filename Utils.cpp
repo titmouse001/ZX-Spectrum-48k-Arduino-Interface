@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "utils.h"
 #include "Pin.h" 
+#include "digitalWriteFast.h"
 
 namespace Utils {
   
@@ -68,7 +69,8 @@ uint8_t readJoystick() {
 
     // Clock low-high transition
     PORTC &= ~(1 << PC2);       // Clock LOW
-    __builtin_avr_delay_cycles(16); // 1microsecond at 16 MHz (fine-tuned delay)
+//    __builtin_avr_delay_cycles(16); // 1microsecond at 16 MHz (fine-tuned delay)
+    delayMicroseconds(16);
     PORTC |= (1 << PC2);        // Clock HIGH
   }
 
@@ -79,9 +81,11 @@ uint8_t readJoystick() {
 
 void setupJoystick() {
   // Setup pins for "74HC165" shift register
-  pinMode(Pin::ShiftRegDataPin, INPUT);
-  pinMode(Pin::ShiftRegLatchPin, OUTPUT);
-  pinMode(Pin::ShiftRegClockPin, OUTPUT);
+  pinModeFast(Pin::ShiftRegDataPin, INPUT);
+  pinModeFast(Pin::ShiftRegLatchPin, OUTPUT);
+  pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
+
+  Utils::readJoystick(); // call once to init - fudge
 }
 
 }

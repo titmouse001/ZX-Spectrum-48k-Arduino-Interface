@@ -20,6 +20,7 @@
 
 #include <Arduino.h>
 
+#include "digitalWriteFast.h"
 #include "utils.h"
 #include "smallfont.h"
 #include "pin.h"
@@ -48,61 +49,59 @@
 #define VERSION ("0.14")
 
 // ----------------------------------------------------------------------------------
-// OLED support - *** now for debug ***
+// OLED support removed - *** now for debug only ***
 //#define I2C_ADDRESS 0x3C  // 0x3C or 0x3D
 //SSD1306AsciiAvrI2c oled;
 //bool haveOled = false;
 // 
 
 void setup() {
-
+  
 #if (SERIAL_DEBUG==1)
     Serial.begin(9600);
     while (! Serial) {};
     Serial.println("DEBUG MODE - BREAKS Z80 TRANSFERS - ARDUINO SIDE DEBUGGING ONLY");
 #endif
 
-  Z80Bus::setupNMI();
   Z80Bus::setupPins();
   Utils::setupJoystick();
-
-  // BEBUG ONLY   setupOled();  // Optional OLED can be installed (128x32 pixel) 
-
+  // setupOled();  // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) 
 
   // ---------------------------------------------------------------------------
-  // Use stock ROM (Select button held)
-/*
-  if (getAnalogButton() == BUTTON_SELECT) {
-    Z80Bus::bankSwitchStockRom();
+  // Use stock ROM  - Select button held at power up
+  uint8_t joy = Utils::readJoystick();
+  if (joy & (B00010000 | B01000000)) {
+    digitalWriteFast(Pin::ROM_HALF, HIGH);  //  Switch over to speccy ROM.
+   // Z80Bus::bankSwitchStockRom();
     Z80Bus::resetZ80();
-    delay(1500);
-    while(getAnalogButton() != BUTTON_SELECT) { delay(50); }
-    // return to Sna loader rom
+    while ((Utils::readJoystick()&B01000000) != 0) {} // wait for button release
+    while(true) {
+      joy = Utils::readJoystick(); 
+      if (joy & B01000000) {
+        digitalWriteFast(Pin::ROM_HALF, LOW);  //  Done switch back to Sna ROM.
+        break;  // return to Sna loader rom
+      }
+      delay(50);   
+    }
   }
-*/
-  // -----------------------------------------------------------------------------
-
-  Z80Bus::resetToSnaRom();
-  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
+   
+  Z80Bus::resetZ80();
 
   while (!SdCardSupport::init()) {
+    Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
     Draw::text(80, 90, "INSERT SD CARD");
   }
 
   //TODO ... add this to the menu 
-  /*  
-  if (getAnalogButton() == BUTTON_BACK) {
+  joy = Utils::readJoystick();   //000FUDLR
+  if (joy & B00000100) {   // joy down
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
-*/
-
-
 }
 
 void loop() {
 
-  Z80Bus::resetToSnaRom();
-  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup the whole screen
+  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup screen colours
 
   uint16_t totalFiles=0;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
@@ -113,25 +112,26 @@ void loop() {
   SdCardSupport::openFileByIndex(fileIndex);
 
   if (bootFromSnapshot()) {
-    do {
+    do {  // Loop to monitor the spectrums game joystick inputs
       unsigned long startTime = millis();
       PORTD = Utils::readJoystick()&B00111111;  // send to the Z80 data lines (Kempston standard)
       Utils::frameDelay(startTime);
-     } while ( (Utils::readJoystick()&B11000000) == 0 ); 
-    while ((Utils::readJoystick()&B11000000) != 0) {} // wait for button release
+    } while ( (Utils::readJoystick()&B01000000) == 0 ); 
+    Z80Bus::resetToSnaRom();
+    while ((Utils::readJoystick()&B01000000) != 0) {} // wait for button release
   }
 }
 
 boolean bootFromSnapshot() {
-  // Send the set "stack point" command.
-  // This reuses the 2-byte jump address in screen memory's startup code,
-  // which is unused until the final stage of execution.
+  // Send the set stack point command.
+  // Reuses the 2-byte jump address in the spectrums screen memory,
+  // this start up code is unused until the final stage of execution.
   const uint16_t address = 0x4004;
   packetBuffer[0] = 'S';
   packetBuffer[1] = (uint8_t)(address >> 8);
   packetBuffer[2] = (uint8_t)(address & 0xFF);
   Z80Bus::sendBytes(packetBuffer, 3);
-  Z80Bus::waitRelease_NMI();
+  Z80Bus::waitRelease_NMI();  //  syncronise - extra halt after Z80 loads SP
 
   //-----------------------------------------
   // Read the Snapshots 27-byte header ahead of time
@@ -157,7 +157,7 @@ boolean bootFromSnapshot() {
   }
   file.close();
   //-----------------------------------------
-  // Command Speccy to wait for the next screen frefresh
+  // Command Speccy to wait for the next screen refresh
   packetBuffer[0] = 'W';
   Z80Bus::sendBytes(packetBuffer, 1);
   //-----------------------------------------
@@ -177,7 +177,8 @@ boolean bootFromSnapshot() {
   //                    Total:              ~24 T-states
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-  Z80Bus::bankSwitchStockRom();
+  //Z80Bus::bankSwitchStockRom();
+  digitalWriteFast(Pin::ROM_HALF, HIGH);  // stock rom
 
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
   // Wait for HALT line to return HIGH again (shows Z80 has resumed)

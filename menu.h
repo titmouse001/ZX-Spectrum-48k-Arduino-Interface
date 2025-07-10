@@ -24,8 +24,6 @@ enum { BUTTON_NONE,
 #include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
 
 extern SSD1306AsciiAvrI2c oled;
-//uint8_t receivedValue = 0;
-
 
 __attribute__((optimize("-Ofast"))) 
 void fileList(uint16_t startFileIndex) {
@@ -66,33 +64,25 @@ void fileList(uint16_t startFileIndex) {
   }
 }
 
-
-byte processButtons(uint16_t totalFiles) {
+byte getCommonButton() {
   // Kempston joystick bitmask: "000FUDLR" (Fire, Up, Down, Left, Right)
   const uint8_t joy = Utils::readJoystick();
-
-  byte button = BUTTON_NONE;
-
-  // ****** currently circut is bodged onto button 1 with cut tracks *****
-  // ***** maps to two spare joined pins on shift registor ic (d6,d7)
-  // A or B hardware buttons mapped to B11000000
-  // Fire to B00010000
-  if (joy & B11010000) {  // "AB0F0000"
-    button = BUTTON_SELECT;
-  }
-  if (joy & B00000100) {
-    button = BUTTON_ADVANCE;
-  }
-  if (joy & B00001000) {
-    button = BUTTON_BACK;
-  }
+  if (joy & (B00010000 | B01000000)) return BUTTON_SELECT;
+  if (joy & B00000100) return BUTTON_ADVANCE;
+  if (joy & B00001000) return BUTTON_BACK;
 
   switch (Z80Bus::GetKeyPulses()) {
-    case 11: button = BUTTON_BACK; break;    // Q
-    case 6: button = BUTTON_ADVANCE; break;  // A
-    case 31: button = BUTTON_SELECT; break;  // ENTER
+    case 11: return BUTTON_BACK;
+    case 6: return BUTTON_ADVANCE;
+    case 31: return BUTTON_SELECT;
   }
+  return BUTTON_NONE;
+}
 
+
+byte processButtons(uint16_t totalFiles) {
+ 
+  byte button = getCommonButton();
   if (button == BUTTON_SELECT) {
     return BUTTON_SELECT;
   }
@@ -146,16 +136,12 @@ byte processButtons(uint16_t totalFiles) {
 
 
 uint16_t doMenu(uint16_t totalFiles) {
-
   fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
   while (true) {
     unsigned long start = millis();
-
     byte btn = processButtons(totalFiles);
-
-
     switch (btn) {
       case BUTTON_SELECT:
         return currentFileIndex;
@@ -163,30 +149,16 @@ uint16_t doMenu(uint16_t totalFiles) {
       case BUTTON_BACK:
         Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
         break;
-
       case BUTTON_ADVANCE_REFRESH_LIST:
       case BUTTON_BACK_REFRESH_LIST:
         Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
         fileList(startFileIndex);
         break;
-
       default:
         break;
     }
-    
     Utils::frameDelay(start);
   }
 }
 
-
-
-
 #endif
-
-
-    //      oled.setRow(1);
-    //      oled.setCol(0);
-     //     char _c[18];
-     //     sprintf(_c, "[ %d ]", receivedValue);
-      //    oled.println(_c);
-          

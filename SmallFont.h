@@ -13,6 +13,9 @@ namespace SmallFont {
   static const uint8_t FNT_GAP           = 1;   // horizontal spacing between adjacent characters (1 px)
   static const uint8_t FNT_BUFFER_SIZE   = 32;  // size of the on‐screen text buffer (enough bytes to hold one full line)
 
+	//fudgefont byte format example:-
+  //  "0x00, 0x00, 0x5F, 0x00, 0x00"  for char '!'
+
 __attribute__((optimize("-Ofast")))
 uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
   Utils::memsetZero(&finalOutput[0], FNT_BUFFER_SIZE * FNT_HEIGHT);

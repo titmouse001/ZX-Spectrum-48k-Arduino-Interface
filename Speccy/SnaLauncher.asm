@@ -73,20 +73,26 @@ ORG $0000
 L0000:  
 	DI                     
 	;-----------------------------------------------------------------------------------	
-    ; Stack Behavior / Code Limitations
-    ; - The stack grows downward:
-    ;   - PUSH:  sp -= 2, stores value at (sp)
-    ;   - POP:   loads value from (sp), sp += 2
-    ; **IMPORTANT WARNINGS:**
-    ; - Total stack usage must be **only 1 level deep** (2 bytes, just **one** push).
-    ; - Do NOT use PUSH/POP around interrupts! (interrupts automatically push PC onto the stack)
+	;Stack Behavior - 	The stack grows downward.
+	;					PUSH: sp -= 2; stores value at (sp).
+	;					POP: loads value from (sp); sp += 2.
+	;*** IMPORTANT WARNINGS ***:
+	; Code limitations when using "command_Execute":
+	; Total stack usage must be only 1 level deep (2 bytes, just one push).
+	; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
+	; (While in the menu code, it's okay to use the stack normally.)
 
-	 ld SP,0xFFFF
-;;;;	ld sp,WORKING_STACK
+	; 0xffff for menu usem, this SP will be reasigned later with a "command_Stack"
+ 	ld SP,0xFFFF  
+
+;;	HALT ; syncronise with Arduino
 
 	;-----------------------------------------------------------------------------------	
 	jp ClearScreen
 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
+
+;;;;;	call CHECK_STARTUP_STRING
+
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
@@ -570,6 +576,27 @@ KEY_TABLE:	; Key row mapping  		; $6649
 			defb $0					; tables end marker
 ;------------------------------------------------------------------------
 
+;TARGET:  DB 'S', 'N', 'A', '!', 0
+;
+;CHECK_STARTUP_STRING:
+;LD HL, TARGET
+;
+;CHECK_LOOP:
+;    READ_ACC_WITH_HALT 
+;	cp (HL)
+;    JP NZ, not_match   
+;    INC HL        
+;    LD A, (HL)    
+;    CP 0          
+;    JP Z, match_found 
+;    JP CHECK_LOOP     
+;not_match:
+;    LD A, 0             ; failure
+;    JP check_end        
+;match_found:
+;    LD A, 1             ; success
+;check_end:
+;	ret
 
 ;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM
