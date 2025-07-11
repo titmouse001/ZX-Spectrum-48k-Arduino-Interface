@@ -17,13 +17,13 @@ namespace Draw {
 __attribute__((optimize("-Ofast"))) 
 void textLine(int xpos, int ypos, const char *message) {
   SmallFont::prepareTextGraphics(TextBuffer, message);  // Pre-render text into TextBuffer (output count ignored)
-  START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE);
+  START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE); // Z = command_Copy32
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
     END_UPLOAD_COMMAND(packetBuffer, destAddr );
     memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE);
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE); // Send line data
+    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
   }
 }
 
@@ -39,7 +39,7 @@ __attribute__((optimize("-Os")))   // Optimized for size - not used in time crit
 void text(int xpos, int ypos, const char *message) {
   const uint8_t charCount = SmallFont::prepareTextGraphics(TextBuffer, message);
   const uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
-  START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);
+  START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);  // C = command_Copy
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);

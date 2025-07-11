@@ -50,11 +50,12 @@ void frameDelay(unsigned long start) {
   }
 }
 
-// Joystick Support:
-// The Arduino polls the joystick at 50 fps via a 74HC165 shift register.
-// When the Spectrum performs an IN (C) (like LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
-// A 74HC245D transceiver connects the Arduino to the Z80 and is tri-stated when not in use.
-// This setup emulates a Kempston interface without bus conflicts.
+// Kempston Joystick Support:
+// 1. The Arduino polls the joystick at 50 FPS via a 74HC165 shift register.
+// 2. When the Spectrum performs an IN (C) instruction (e.g. LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
+//    A 74HC32 combines the /IORQ, /RD, and /A7 signals to detect when the joystick port is being accessed.
+//    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
+
 uint8_t readJoystick() {
   // Enable shifting by pulling latch high
   PORTB |= (1 << PB2);    // Latch HIGH (enable shifting)
@@ -76,7 +77,7 @@ uint8_t readJoystick() {
 
   // Disable shifting by pulling latch low
   PORTB &= ~(1 << PB2);    // Latch LOW (disable shifting)
-  return data;
+  return data;  // read bits are "000FUDLR"
 }
 
 void setupJoystick() {

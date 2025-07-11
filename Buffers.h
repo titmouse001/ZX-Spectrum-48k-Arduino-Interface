@@ -4,6 +4,7 @@
 // Copy/Transfer Structure
 //
 // - Index for command character 
+//  'Z'    // Transfer/copy 32bytes
 //  'C'    // Transfer/copy (things like drawing Text, displying .scr files)
 //	'F'    // Fill (clearing screen areas, selector bar)   
 //  'G'    // Transfer/copy with flashing boarder (use for loading .sna files)
@@ -26,7 +27,6 @@ const uint16_t BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 uint8_t packetBuffer[BUFFER_SIZE] ;     // Used by 'C','G' & 'F' commands
 uint8_t head27_Execute[27 + 1];         // for 'E' Execute command (stores sna header) 
 // ----------------------------------------------------------------------------------
-#define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
 byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 };
 // ----------------------------------------------------------------------------------
 

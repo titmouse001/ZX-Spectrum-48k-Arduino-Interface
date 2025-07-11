@@ -129,21 +129,21 @@ check_initial:   	 ; command checking loop
 	cp 'Z'
 	jp z, command_Copy32 ; Copy 32+(4 header), 256pixels (32bytes)
 	cp 'F'            
-    jp z, command_Fill ; (clearing screen areas, selector bar)   
-    cp 'G' 
-    jp z, command_Transfer ; Transfer with flashing boarder (loading .sna files)
-    cp 'C'           
-    jp z, command_Copy ; Copy, use for Text (error messages)
-    cp 'W'            
-    jp z, command_Wait ; Wait for 50Hz maskable interrupt
+	jp z, command_Fill ; (clearing screen areas, selector bar)   
+	cp 'G' 
+	jp z, command_Transfer ; Transfer with flashing boarder (loading .sna files)
+	cp 'C'           
+	jp z, command_Copy ; Copy, use for Text (error messages)
+	cp 'W'            
+	jp z, command_Wait ; Wait for 50Hz maskable interrupt
 	cp 'S'
 	jp z, command_Stack ; Use screen memory for stack (for sna loading)
-    cp 'E'            
-    jp z, command_Execute ; execute program (includes restoring 27 byte header) 
-    cp 'T'            
-    jp z, command_Transmit ; send data to Arduino USING A pulse-count protocol
+	cp 'E'            
+	jp z, command_Execute ; execute program (includes restoring 27 byte header) 
+	cp 'T'            
+	jp z, command_Transmit ; send data to Arduino USING A pulse-count protocol
 
-    jr check_initial 
+  jr check_initial 
 
 
 ;------------------------------------------------------

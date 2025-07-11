@@ -68,16 +68,13 @@ void setup() {
   // setupOled();  // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) 
 
   // ---------------------------------------------------------------------------
-  // Use stock ROM  - Select button held at power up
-  uint8_t joy = Utils::readJoystick();
-  if (joy & (B00010000 | B01000000)) {
+  // Use stock ROM  - Select button or fire held at power up
+  if (Utils::readJoystick()&(Utils::JOYSTICK_FIRE|Utils::JOYSTICK_SELECT)) {
     digitalWriteFast(Pin::ROM_HALF, HIGH);  //  Switch over to speccy ROM.
-   // Z80Bus::bankSwitchStockRom();
     Z80Bus::resetZ80();
-    while ((Utils::readJoystick()&B01000000) != 0) {} // wait for button release
+    while ((Utils::readJoystick()&Utils::JOYSTICK_SELECT) != 0) {} // wait for button release
     while(true) {
-      joy = Utils::readJoystick(); 
-      if (joy & B01000000) {
+      if (Utils::readJoystick()&Utils::JOYSTICK_SELECT) {
         digitalWriteFast(Pin::ROM_HALF, LOW);  //  Done switch back to Sna ROM.
         break;  // return to Sna loader rom
       }
@@ -92,9 +89,8 @@ void setup() {
     Draw::text(80, 90, "INSERT SD CARD");
   }
 
-  //TODO ... add this to the menu 
-  joy = Utils::readJoystick();   //000FUDLR
-  if (joy & B00000100) {   // joy down
+  //TODO ... add this to the menu      
+  if (Utils::readJoystick() & Utils::JOYSTICK_DOWN) { 
     ScrSupport::DemoScrFiles(root, file, packetBuffer);
   }
 }
@@ -103,22 +99,48 @@ void loop() {
 
   Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // setup screen colours
 
-  uint16_t totalFiles=0;
+  uint16_t totalFiles = 0;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
     Draw::text(80, 90, "NO FILES FOUND");
   }
 
-  uint16_t fileIndex = doMenu(totalFiles);
-  SdCardSupport::openFileByIndex(fileIndex);
+  SdCardSupport::openFileByIndex(doFileMenu(totalFiles));
 
-  if (bootFromSnapshot()) {
-    do {  // Loop to monitor the spectrums game joystick inputs
-      unsigned long startTime = millis();
-      PORTD = Utils::readJoystick()&B00111111;  // send to the Z80 data lines (Kempston standard)
-      Utils::frameDelay(startTime);
-    } while ( (Utils::readJoystick()&B01000000) == 0 ); 
-    Z80Bus::resetToSnaRom();
-    while ((Utils::readJoystick()&B01000000) != 0) {} // wait for button release
+  if (file.available() && file.fileSize() == 6912) {
+    Z80Bus::fillScreenAttributes(0);
+    uint16_t currentAddress = 0x4000;  // screen start
+    while (file.available()) {
+      byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+      START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);
+      END_UPLOAD_COMMAND(packetBuffer, currentAddress);
+      Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
+      currentAddress += bytesRead;
+    }
+    file.close();
+
+    while (getCommonButton() == 0) {}
+
+    Z80Bus::fillScreenAttributes(0);
+    currentAddress = 0x4000;
+    constexpr uint16_t amount = 6144 + 768;
+    packetBuffer[0] = 'F';                           // Fill mode
+    packetBuffer[1] = (amount >> 8) & 0xFF;          // high byte
+    packetBuffer[2] = amount & 0xFF;                 // low byte
+    packetBuffer[3] = (currentAddress >> 8) & 0xFF;  // high byte
+    packetBuffer[4] = currentAddress & 0xFF;         // low byte
+    packetBuffer[5] = 0;
+    Z80Bus::sendBytes(packetBuffer, 6);
+
+  } else {
+    if (bootFromSnapshot()) {
+      do {  // Loop to monitor the spectrums game joystick inputs
+        unsigned long startTime = millis();
+        PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;  // send to the Z80 data lines (Kempston standard)
+        Utils::frameDelay(startTime);
+      } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);
+      Z80Bus::resetToSnaRom();
+      while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // wait for button release
+    }
   }
 }
 
@@ -177,7 +199,6 @@ boolean bootFromSnapshot() {
   //                    Total:              ~24 T-states
   delayMicroseconds(7);  // (24×0.2857=6.857) wait for z80 to return to the main code.
 
-  //Z80Bus::bankSwitchStockRom();
   digitalWriteFast(Pin::ROM_HALF, HIGH);  // stock rom
 
   // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
@@ -194,7 +215,7 @@ boolean bootFromSnapshot() {
 
 /*
 bool setupOled() {
-  Wire.begin();
+  Wire.begin();c:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\Speccy\SnaLauncher.asm
   Wire.beginTransmission(I2C_ADDRESS);
   bool result = (Wire.endTransmission() == 0);  // is OLED fitted
   Wire.end();
@@ -216,7 +237,7 @@ bool setupOled() {
 */
 
 
-/*
+/* DEBUG EXAMPLE TO SPECTRUM SCREEN
 uint16_t destAddr;
 char _c[32];
 for (uint8_t y = 0; y < 8; y++) {

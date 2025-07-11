@@ -57,8 +57,6 @@ void setupPins() {
 void waitHalt() {
   while (digitalReadFast(Pin::Z80_HALT) != 0) {};
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
-//  while ((PINB & (1 << PINB0)) != 0) {};  // wait while HALT is HIGH
-//  while ((PINB & (1 << PINB0)) == 0) {};
 }
 
 void resetZ80() {
@@ -161,8 +159,10 @@ uint8_t GetKeyPulses() {
     // Service current HALT if active
     if ((PINB & (1 << PINB0)) == 0) {
       // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-      WRITE_BIT(PORTC, DDC0, _LOW);
-      WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
+//      WRITE_BIT(PORTC, DDC0, _LOW);
+//      WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
+      digitalWriteFast(Pin::Z80_NMI,LOW);
+      digitalWriteFast(Pin::Z80_NMI,HIGH);
       pulseCount++;
       lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
     }

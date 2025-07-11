@@ -69,11 +69,13 @@ static constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
 // Usage:
 //   WRITE_BIT(PORTB, PB2, _HIGH); // Sets bit PB2 in PORTB
 //   WRITE_BIT(PORTC, PC2, _LOW);  // Clears bit PC2 in PORTC
-#define _HIGH 1
-#define _LOW 0
-#define WRITE_BIT(reg, bit, val) _INTERNAL_WRITE_BIT_##val(reg, bit)  // USE ME
-#define _INTERNAL_WRITE_BIT__HIGH(reg, bit) ((reg) |= _BV(bit))       // SET
-#define _INTERNAL_WRITE_BIT__LOW(reg, bit) ((reg) &= ~_BV(bit))       // CLEAR
+
+// Section replaced with digitalWriteFast.h 
+//#define _HIGH 1
+//#define _LOW 0
+//#define WRITE_BIT(reg, bit, val) _INTERNAL_WRITE_BIT_##val(reg, bit)  // USE ME
+//#define _INTERNAL_WRITE_BIT__HIGH(reg, bit) ((reg) |= _BV(bit))       // SET
+//#define _INTERNAL_WRITE_BIT__LOW(reg, bit) ((reg) &= ~_BV(bit))       // CLEAR
 
 }
 

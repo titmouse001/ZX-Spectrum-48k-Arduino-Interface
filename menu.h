@@ -13,6 +13,8 @@ uint16_t oldHighlightAddress = 0;      // Last highlighted screen position for c
 uint16_t currentFileIndex = 0;         // The currently selected file index in the list
 uint16_t startFileIndex = 0;           // The start file index of the current viewing window
 
+#define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
+
 enum { BUTTON_NONE,
        BUTTON_BACK,
        BUTTON_SELECT,
@@ -32,7 +34,7 @@ void fileList(uint16_t startFileIndex) {
   uint8_t count = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if (file.fileSize() == 49179) {
+      if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE || (file.fileSize() == 6912)  ) {
 
         if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
           int len = file.getName7(fileName, 64);
@@ -135,7 +137,7 @@ byte processButtons(uint16_t totalFiles) {
 }
 
 
-uint16_t doMenu(uint16_t totalFiles) {
+uint16_t doFileMenu(uint16_t totalFiles) {
   fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 

@@ -9,8 +9,7 @@ FatFile file;
 
 namespace SdCardSupport {
 
-static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024u*48u) + 27u;  //49179
-
+static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024*48)+27;  //49179
 uint16_t countSnapshotFiles();
 
 enum struct Status : uint8_t {
@@ -18,12 +17,6 @@ enum struct Status : uint8_t {
   NO_FILES = 1,
   NO_SD_CARD = 2
 };
-
-// struct FileCountResult {
-//   Status status;
-//   uint16_t totalFiles;
-// };
-
 
 boolean init() {
   if (root.isOpen()) {
@@ -40,40 +33,13 @@ boolean init() {
   return true;
 }
 
-
-// FileCountResult init() {
-//   FileCountResult result;
-//   if (root.isOpen()) {
-//     root.close();
-//     sd.end();
-//   }
-//   if (!sd.begin()) {
-//     result.status = Status::NO_SD_CARD;
-//     return result;
-//   }
-//   if (!root.open("/")) {
-//     sd.end();
-//     result.status = Status::NO_SD_CARD;
-//     return result;
-//   }
-//   result.totalFiles = countSnapshotFiles(); 
-//   if (result.totalFiles > 0) {
-//     result.status = Status::OK;
-//   } else {
-//     root.close();
-//     sd.end();
-//     result.status = Status::NO_FILES;
-//   }
-//   return result;
-// }
-
 __attribute__((optimize("-Ofast"))) 
 void openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if (file.fileSize() == SNAPSHOT_FILE_SIZE) {
+      if ((file.fileSize() == SNAPSHOT_FILE_SIZE) || (file.fileSize() == 6912)) {
         if (index == searchIndex) {
           break;
         }
@@ -94,7 +60,7 @@ uint16_t countSnapshotFiles() {
   root.rewind();
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if (file.fileSize() == 49179) {
+      if (file.fileSize() == 49179 || (file.fileSize() == 6912)  ) {
         totalFiles++;
       }
     }

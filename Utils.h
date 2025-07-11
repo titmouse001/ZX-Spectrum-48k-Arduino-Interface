@@ -6,6 +6,10 @@ namespace Utils {
 
 constexpr uint16_t SCREEN_BASE = 0x4000;
 constexpr uint8_t Ink7Paper0 = B01000111;
+constexpr uint8_t JOYSTICK_MASK = B00111111;
+constexpr uint8_t JOYSTICK_FIRE = B00100000;
+constexpr uint8_t JOYSTICK_DOWN = B00000100;
+constexpr uint8_t JOYSTICK_SELECT = B01000000;
 
 /**
   * Setup the Fill Command
