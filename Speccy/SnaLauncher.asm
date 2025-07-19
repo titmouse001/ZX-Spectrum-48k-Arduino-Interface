@@ -85,14 +85,9 @@ L0000:
 	; 0xffff for menu usem, this SP will be reasigned later with a "command_Stack"
  	ld SP,0xFFFF  
 
-;;	HALT ; syncronise with Arduino
-
 	;-----------------------------------------------------------------------------------	
 	jp ClearScreen
-	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
-
-;;;;;	call CHECK_STARTUP_STRING
-
+;;	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
@@ -120,59 +115,52 @@ L0066:
 ; *** MAIN LOOP ***
 ;******************
 mainloop:
-; For each incoming data transfer the header's first byte provides the request command ["C,"F","G","E","W"].
-; NOTE: Most of the snapshot 16-bit data later on is big-endian. The sending Arduino pre-chewes this
-; byte pair 'command header' information as little-endian.
+	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
+; Command protocol: 
+; First byte indicates operation type, ordered by frequency of use.
 check_initial:   	 ; command checking loop
 	READ_ACC_WITH_HALT
-	; These compares are in ordered in frequency of use
+													
 	cp 'Z'
-	jp z, command_Copy32 ; Copy 32+(4 header), 256pixels (32bytes)
+	jp z, command_Copy32 		; Copy 32 bytes (optimized for screen updates)
 	cp 'F'            
-	jp z, command_Fill ; (clearing screen areas, selector bar)   
+	jp z, command_Fill 			; Fill memory region
 	cp 'G' 
-	jp z, command_Transfer ; Transfer with flashing boarder (loading .sna files)
+	jp z, command_Transfer 	; Transfer with flashing border (SNA loading)
 	cp 'C'           
-	jp z, command_Copy ; Copy, use for Text (error messages)
+	jp z, command_Copy 			; Copy data (text/error messages)
 	cp 'W'            
-	jp z, command_Wait ; Wait for 50Hz maskable interrupt
+	jp z, command_Wait 			; Wait for 50Hz interrupt
 	cp 'S'
-	jp z, command_Stack ; Use screen memory for stack (for sna loading)
+	jp z, command_Stack 		; Set stack pointer for SNA loading
 	cp 'E'            
-	jp z, command_Execute ; execute program (includes restoring 27 byte header) 
+	jp z, command_Execute 	; Execute program (restore SNA state)
 	cp 'T'            
-	jp z, command_Transmit ; send data to Arduino USING A pulse-count protocol
+	jp z, command_Transmit 	; Send keypress via pulse-count protocol
 
-  jr check_initial 
-
+	jr check_initial
 
 ;------------------------------------------------------
 ; --- Transmit key press using pulse-count protocol ---
-; The Arduino watches the Z80's HALT line.
-; We issue N HALT instructions, where N=key index value (1–40).
-; Arduino counts the HALT pulses to determine which key was pressed.
-;
+; Arduino counts the HALT pulses (1=no key, 2+=key index).
 command_Transmit:  ; "T" - TRANSMIT KEY PRESS
 ;------------------------------------------------------
 	READ_ACC_WITH_HALT			 
-	ld b,a
-	push bc
-
- 	; Get key pulses to send; 1:no key (2–41 keys)
-	JP GET_KEY_PULSES           
+	ld b,a 	 			; b = delay 
+	push bc	 
+ 	
+	JP GET_KEY_PULSES  	; RESULT A = key pulses (2 to N)
 DONE_KEY:
 	LD B, A                 
-	; send pulses  
-TX: HALT                    
-	DJNZ TX                  
-
-	; --- End marker delay ---
-	; Add a short delay to signal the end of pulse group.
-	; Note: Next HALT in the main loop will happen *after* this delay.
+TX: HALT   				; send fudge-pulse
+	DJNZ TX
+	; --- end marker delay ---
 	pop bc     
 DELAY_LOOP:
 	NOP                    
 	DJNZ DELAY_LOOP		; ball park T-states: N * (4 + 13)
+	; Above adds a short delay to signal the end of pulse group.
+	
 	ld c,$1F  			; re-setup for 'READ_PAIR_WITH_HALT'
 	JR mainloop         ; Return to main loop
 
@@ -195,24 +183,19 @@ fillLoop:
 ;---------------------------------------------------
 command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
 ;---------------------------------------------------
-	; Transfers are typically sequential, but any destination location can be targeted.
-    ; The data transfer is limited to 255 bytes this INCLUDES THE HEADER.
-	; Due to the synchronizing 'halt' we can't use 'INI'
-	halt					; Synchronizes with Arduino (NMI to continue)
-	in b,(c)  				; The transfer size: 1 byte
-	READ_PAIR_WITH_HALT h,l ; HL = Destination address
+	halt
+													   
+	in b,(c)  					; B = transfer size
+	READ_PAIR_WITH_HALT h,l 	; HL = destination
 readDataLoop:
-	halt		 		; Synchronizes with Arduino (NMI to continue)
-	in a,($1f)   		; Read a byte from the z80 I/O port
-	ld (hl),a	 		; write to memory
-    inc hl		
-	
-	AND LOADING_COLOUR_MASK  
-	out ($fe), a   		; Flash border - from actual data while loading
-
-	djnz readDataLoop  	; read loop
-    jp mainloop			; done - back for next transfer command
-
+	halt
+	in a,($1f)   				; Read data byte
+	ld (hl),a					; Store byte
+  inc hl
+	AND LOADING_COLOUR_MASK  	; Use data for border flash
+	out ($fe), a
+	djnz readDataLoop
+	jp mainloop
 ;------------------------------------------------------
 command_Copy:  ; "C" - COPY DATA
 ;------------------------------------------------------
@@ -252,7 +235,7 @@ command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
 	ini						; [16]
 	ENDM
 
-    JP mainloop 			; done - back for next transfer command
+  JP mainloop 			; done - back for next transfer command
 
 ;--------------------------------------------------------
 command_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
@@ -300,13 +283,13 @@ command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;-------------------------------------------------------------------------------------------
 	
 	;-------------------------------------------------------------------------------------------
-	; -- Restore Alternate Registers HL',DE',BC',AF --'
+	; -- Restore Alternate Registers HL',DE',BC',AF' --
 	ld c,$1f  				 ; Just use C above for LDIR copy, setup again for pair read 
 	READ_PAIR_WITH_HALT L,H  ; future HL'
 	READ_PAIR_WITH_HALT e,d  ; future DE'
-	READ_ACC_WITH_HALT		 ; C
+	READ_ACC_WITH_HALT		 ; C'
 	ld c,a
-	READ_ACC_WITH_HALT		 ; B
+	READ_ACC_WITH_HALT		 ; B'
 	ld b,a					 ; future BC'
 	exx						 ; Alternates registers restored
 	; registers are free again, just AF' left to restore
@@ -345,21 +328,19 @@ RestoreEI_IFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;-----------------------------------------------
-	; Final Stack Usage:
+	; Note: The 'SNA' format does not store the program counter in the header, it's put in the stack.
+	; Final Stack Usage: 
 	; Instead of using RETN to start the .SNA program, we jump directly to the starting address. 
 	; This frees up 2 bytes of stack space that would normally be used to hold the return address 
-	; required by the RETN instruction.
-	;
-	; This gives us a minimal but useful 1-deep stack.
-	; The HALT instruction requires an active stack for synchronization. The 2 freed bytes, 
-	; which originally held the snapshot's return address, now serve as a temporary single-level 
-	; stack — just enough for the final "resource-critical" restore stages.
+	; required by the RETN instruction. This gives us a minimal but useful 1-deep stack.
+	; NOTE: The HALT instruction requires an active stack for synchronization. The 2 freed bytes is used 
+	; as a temporary single-level stack, just enough for the final "resource-critical" restore stages.
 	;
 	; Restore Program's Stack Pointer — the SNA format allows some magic here (see above)
-	READ_PAIR_WITH_HALT l, h      ; Read stack
-	ld sp, hl                     ; Restore Snapshots_SP (the normal RET location)
-	pop hl                        ; SP += 2, move past RET location — ready as a tiny stack!
-	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx startup address
+	READ_PAIR_WITH_HALT l, h      ; Read stack pointer
+	ld sp, hl                     ; Restore sp from Snapshots_SP
+	pop hl                        ; SP += 2, move past RET location (now we can use this area as a tiny stack!)
+	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx with games startup address
 	;-----------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -405,59 +386,51 @@ RestoreInterruptModeComplete:
 	dec sp                   ; Restore SP to its original position
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) – AF is now fully restored
 
-	;------------------------------------------------------------------------
 	JP SCREEN_START		 ; jump to relocated code in screen memory
-	;------------------------------------------------------------------------
-; END - "command_EX:"
-
-;-----------------------------------------------------------------------    
-; 'relocate' - The interface ROM has to give way to the original ROM for most games to work.
-; For this to happen, a small 4-byte section of screen memory must be overwritten.
-; At the "Execute Code Stage," this 'relocate' section is copied into screen memory and executed.
-; Since we can't execute code during a ROM swap, it must run from screen memory (only memory we can spoil)
-; allowing the second half of the ROM (a copy of the original Speccy 48K ROM) to be swapped in.
-; (I found switching back to the internal ROM just gave me issues :(, so I used the second
-;  half of the ROM which worked perfectly.) 
-;-----------------------------------------------------------------------    
-; FINAL STEP - Start the restored program. 
-relocate:
-    ; 1/ The Arduino detects this HALT and triggers the 'NMI' line to resume the Z80.
-    ; 2/ The Arduino waits 7 microseconds (since NMI will cause a 'PUSH' & 'RETN').
-    ; 3/ The Arduino switches from the loader ROM to the original ROM 
-    ;    (same external ROM, but using its second half).
-    HALT       		; [opcode: 76] - After HALT, the original ROM should be active again!
-
-JumpInstruction:     
-    jp 0000h 		; [opcode: C3] !!! THIS IS IT - WE ARE ABOUT TO JUMP TO THE RESTORED PROGRAM !!!
-
-TempStack:        	; Address of above "jp" acts as temporary stack until the SNAPSHOT_SP is restored.
-relocateEnd: 
+	
 ;-----------------------------------------------------------------------	
+
+
+
+;-----------------------------------------------------------------------    
+; RELOCATE SECTION - ROM swap code
+; 
+; NOTE: Games need original Spectrum ROM, but we can't execute code during ROM swap
+; so we copy this small routine to screen memory before swapping ROMs.
+; 
+; This 4-byte section runs from screen memory (safe to overwrite) and switches to 
+; the second half of our ROM (original 48K ROM copy). Switching back to internal 
+; ROM caused issues, so using ROM's second half works perfectly.
+;-----------------------------------------------------------------------    
+relocate:
+    HALT       					; Signal Arduino to switch ROM
+JumpInstruction:     
+    jp 0000h 					; Jump to restored program (address patched above)
+TempStack:        				; Temporary stack space (2 bytes)
+relocateEnd:
+;-----------------------------------------------------------------------	
+
 
 ;-----------------------------------------------------------------------
-; Not speed critical (used at startup)	
-; NOT optimising away 17 t-states, sepuration for future colour changes.
+; SCREEN CLEAR - Initialize display memory
+;-----------------------------------------------------------------------
 ClearScreen:
 	SET_BORDER 0
-   	ld a, 0              
-    ld hl, SCREEN_START       
-    ld de, SCREEN_START+1        
-    ld bc, 6144       
-    ld (hl), a    	; Screen bitmap locations
-    ldir                
-	; continue HL into attributes 
-    ld bc, 768-1
-    ld (hl), a  	; Screen attribute locations
-    ldir        
-    jp mainloop  	; avoiding stack based calls
+   	ld a, 0
+    ld hl, SCREEN_START
+    ld de, SCREEN_START+1
+    ld bc, 6144					; Screen bitmap
+    ld (hl), a
+    ldir
+    ld bc, 768-1				; Screen attributes
+    ld (hl), a
+    ldir
+    jp mainloop
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
-; RestoreInterruptMode
-;	IN: A, IM0=0, IM1=1, IM2=2
-; 	Sets: IM0, IM1 or IM2  
-; 	Destroys D register
-;	NOTE: JP back not RET as subroutine calls due to the one‐level stack constraint
+; RESTORE INTERRUPT MODE - Helper for command_Execute
+;-----------------------------------------------------------------------	
 RestoreInterruptMode:
     cp 0
     jr z, setIM0
@@ -488,61 +461,35 @@ RestoreEI_IFFState:
 ;------------------------------------------------------------------------
 
 
-
-; 2-42 pulse count represent keys, 1:no key, 0:invalid
+;------------------------------------------------------------------------
+; KEYBOARD SCANNING - Converts keypress to pulse count for "HALT-FUDGE" transmission
+;------------------------------------------------------------------------
 GET_KEY_PULSES:    
-            LD      D, $FE          	; first port row ($FE, $FD, ..., $7F)
-            LD      C, 2     		    ; reserve 1 for no key
+    LD      D, $FE          	; First keyboard row
+    LD      C, 2     		    ; Start pulse count (1=no key, 2+=key index)
 rawcheckKeyLoop: 	
-            LD      A, D            
-			; NOTE: IN uses A as port number
-            IN      A, ($FE)      		; row state
-            LD      B, 5            	; 5 keys per row (bits 0–4)
-            LD      E, 1            	; Bitmask to check/move on
+    LD      A, D
+    IN      A, ($FE)      		; Read keyboard row
+    LD      B, 5            	; 5 keys per row
+    LD      E, 1            	; Bit mask
 rawcheckBits:
-            RRCA                    	
-            JR      NC, rawKeyFound    	; key down (bit=0)
-            INC     C              	 	; add another pulse
-            SLA     E           	    ; move bitmask
-            DJNZ    rawcheckBits
-            RLC     D               	; Next row (D=$FD,$FB,...)
-            JR      C, rawcheckKeyLoop
-            ; No key found 
-			ld 		c,1
+    RRCA                    	; Test bit in carry
+    JR      NC, rawKeyFound    	; Key pressed (bit=0)
+    INC     C              	 	; Next pulse count
+    SLA     E           	    ; Next bit mask
+    DJNZ    rawcheckBits
+    RLC     D               	; Next keyboard row
+    JR      C, rawcheckKeyLoop
+    ; No key found
+	ld 		c,1
 rawKeyFound:
-            LD      A, C            	; key pulses (2–41)
-            JP      DONE_KEY
-
-
-
-
-; CHANEGE THE 'NO KEY' TO USE 1 , KEY INDEX WILL BEGIN AT 2 
-
-; GET_RAW_KEY:    
-;             LD      D, $FE          ; Start with first port row ($FE, $FD, ..., $7F)
-;             LD      C, 1            ; Start key index at 1
-; rawcheckKeyLoop: 	
-;             LD      A, D            
-; 			; NOTE: IN uses A as port number
-;             IN      A, ($FE)        ; Read key row state
-;             LD      B, 5            ; 5 keys per row (bits 0–4)
-;             LD      E, 1            ; Bitmask for bit check
-; rawcheckBits:
-;             RRCA                    ; Rotate bit into carry
-;             JR      NC, rawKeyFound    ; If key down (bit = 0), return index in C
-;             INC     C               ; Next key index
-;             SLA     E               ; Shift bitmask
-;             DJNZ    rawcheckBits
-;             RLC     D               ; Next row (D = $FD, $FB, ...)
-;             JR      C, rawcheckKeyLoop
-;             ; No key found (C=41)
-; rawKeyFound:   
-;             LD      A, C            ; A = key index (1–40) or 0 if none
-;             JP      DONE_KEY
+    LD      A, C            	; Return pulse count
+    JP      DONE_KEY
+;------------------------------------------------------------------------
 
 
 ;------------------------------------------------------------------------
-GET_KEY:   ;; PUSH    BC            
+___UNUSED___GET_KEY:   ;; PUSH    BC            
            ;; PUSH    HL              
             LD      HL, KEY_TABLE    
             LD      D, $FE          ; 1st Port to read
@@ -574,29 +521,6 @@ KEY_TABLE:	; Key row mapping  		; $6649
 			defb $0D,"LKJH"     	; $0D=enter
 			defb $20,$02,"MNB"  	; $20=space, $02=sym shft
 			defb $0					; tables end marker
-;------------------------------------------------------------------------
-
-;TARGET:  DB 'S', 'N', 'A', '!', 0
-;
-;CHECK_STARTUP_STRING:
-;LD HL, TARGET
-;
-;CHECK_LOOP:
-;    READ_ACC_WITH_HALT 
-;	cp (HL)
-;    JP NZ, not_match   
-;    INC HL        
-;    LD A, (HL)    
-;    CP 0          
-;    JP Z, match_found 
-;    JP CHECK_LOOP     
-;not_match:
-;    LD A, 0             ; failure
-;    JP check_end        
-;match_found:
-;    LD A, 1             ; success
-;check_end:
-;	ret
 
 ;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM
@@ -635,7 +559,10 @@ DS  16384 - last	; leave rest of rom blank
 ; 19/ Relocate stack anywhere in memory [DONE]
 ; 20/ Launcher code can be relocated depending on game (maybe final unused ram outside screen?!?!). This will need to be done Arduino side
 ; 21/ Command to upload code and execute (this will do the 20/ relocate)
+; 22/ Joystick remapping including 2nd button support
 ;*****************************
+
+
 ; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)
 ; [0 ] I            = 0x3F       
 ; [1 ] HL_          = 0x2758     
@@ -653,21 +580,6 @@ DS  16384 - last	; leave rest of rom blank
 ; [23] SP           = 0x6188     
 ; [25] IM           = 0x01       
 ; [26] BorderColour = 0x00       
-
-; The Arduino C code reorders the SNA header before sending.
-; This rejig make things better suited for restoring Z80 states.
-;  sendBytes(head27_1, (1/*"E"*/) + 1+2+2+2+2 );  	// Send command "E" then I,HL',DE',BC',AF'
-;  sendBytes(&head27_1[1 + 15], 2+2+1+1 );   		// Send IY,IX,IFF2,R (packet data continued)
-;  sendBytes(&head27_1[1 + 23], 2);          		// Send SP                     "
-;  sendBytes(&head27_1[1 +  9], 2);         		// Send HL                     "
-;  sendBytes(&head27_1[1 + 25], 1);       		   	// Send IM                     "
-;  sendBytes(&head27_1[1 + 26], 1);     		   	// Send BorderColour           "
-;  sendBytes(&head27_1[1 + 11], 2);        		  	// Send DE                     "
-;  sendBytes(&head27_1[1 + 13], 2);       		   	// Send BC                     "
-;  sendBytes(&head27_1[1 + 21], 2);         	 	// Send AF                     "
-
-
-
 
 
 
