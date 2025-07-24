@@ -134,7 +134,7 @@ check_initial:   	 ; command checking loop
 	cp 'S'
 	jp z, command_Stack 		; Set stack pointer for SNA loading
 	cp 'E'            
-	jp z, command_Execute 	; Execute program (restore SNA state)
+	jp z, command_Execute 	; Execute program (includes restoring regesters)
 	cp 'T'            
 	jp z, command_Transmit 	; Send keypress via pulse-count protocol
 

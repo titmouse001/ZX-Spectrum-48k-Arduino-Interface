@@ -3,13 +3,13 @@
 
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 
-SdFat32 sd;
-FatFile root;
-FatFile file;
-
 namespace SdCardSupport {
+static SdFat32 sd;
+static FatFile root;
+static FatFile file;
+//static FatFile fileOut;  // runnig out of mem forthis test !!!
 
-static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024*48)+27;  //49179
+static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024UL * 48) + 27;  //49179
 uint16_t countSnapshotFiles();
 
 enum struct Status : uint8_t {
@@ -33,36 +33,103 @@ boolean init() {
   return true;
 }
 
-__attribute__((optimize("-Ofast"))) 
+int fileAvailable() {
+  return file.available();
+}
+
+int fileRead() {
+  return file.read();
+}
+
+int filePosition() {
+  return file.curPosition();
+}
+
+bool fileSeek(uint32_t pos) {
+  return file.seekSet(pos);
+}
+
+//__attribute__((optimize("-Ofast")))
 void openFileByIndex(uint8_t searchIndex) {
+
   root.rewind();
   uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if ((file.fileSize() == SNAPSHOT_FILE_SIZE) || (file.fileSize() == 6912)) {
-        if (index == searchIndex) {
-          break;
-        }
-        index++;
+      //  if ((file.fileSize() == SNAPSHOT_FILE_SIZE) || (file.fileSize() == 6912)) {
+      if (index == searchIndex) {
+        break;
       }
+      index++;
+      //    }
     }
     file.close();
   }
 }
 
+bool openFileByName(const char* filename) {
+  if (file.isOpen()) {
+    file.close();
+  }
+  // return file.open(&root, filename, O_READ);
+  return file.open(filename, O_READ);
+}
+
+
+uint16_t fileSize() {
+  return file.fileSize();
+}
+
+bool fileClose() {
+  return file.close();
+}
+
+
+
+// //---
+
+// // fileOut works, sna load in emulator... using root to convert over to pump into speccy ram... not needed from now on, removing soon.
+// bool openFileByNameForWrite(const char* filename) {
+// //   if (fileOut.isOpen()) {
+// //  fileOut.close();
+// //   }
+//  // return fileOut.open(&root, filename, O_WRITE | O_CREAT );
+//    return root.open( filename, O_WRITE | O_CREAT );
+// }
+
+// bool fileCloseForWrite(){
+//    return root.close();
+// }
+
+// bool fileWriteSeek(uint32_t pos) {
+// 		return  root.seekSet(pos);
+// }
+
+// size_t fileWrite(uint8_t data) {
+// 		return root.write(data);
+// }
+
+// size_t fileWrite(const uint8_t* buffer, size_t len) {
+// 		return root.write(buffer, len);
+// }
+// int fileWritePosition() {
+//  	return root.curPosition();
+// }
+
 // ---------------------------------
 // Supporting Section - internal use
 // ---------------------------------
 
-__attribute__((optimize("-Ofast")))
+//__attribute__((optimize("-Ofast")))
 uint16_t countSnapshotFiles() {
+
   uint16_t totalFiles = 0;
   root.rewind();
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if (file.fileSize() == 49179 || (file.fileSize() == 6912)  ) {
-        totalFiles++;
-      }
+      //   if (file.fileSize() == 49179 || (file.fileSize() == 6912)  ) {
+      totalFiles++;
+      //   }
     }
     file.close();
   }

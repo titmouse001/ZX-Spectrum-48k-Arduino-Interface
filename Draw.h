@@ -1,8 +1,8 @@
 #ifndef DRAW_H
 #define DRAW_H
 
-extern FatFile root;
-extern FatFile file;
+//extern FatFile root;
+//extern FatFile file;
 
 namespace Draw {
   

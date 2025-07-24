@@ -6,19 +6,18 @@
 // - 32K bytes of in-system self-programmable flash program memory
 // - 1K bytes EEPROM
 // - 2K bytes internal SRAM
-// IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits.
-// This preserves the Arduino's external clock; direct writes could halt the microcontroller.
+//
+// (IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits)
 // -------------------------------------------------------------------------------------
 // SPEC OF SPECCY H/W PORTS HERE: - https://mdfs.net/Docs/Comp/Spectrum/SpecIO
 // good links for Arduino info: https://devboards.info/boards/arduino-nano
 //https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
-// SNAPSHOT FILE HEADER (.sna files)
-// This section details the byte offsets for Z80 registers within a .SNA file header.
-// This mapping restores the Spectrum's CPU state from a snapshot.
-//REG_I=00, REG_HL'=01, REG_DE' =03, REG_BC' =05(.sna file header)
-//REG_AF'=07, REG_HL =09, REG_DE=11, REG_BC=13(27 bytes)
-//REG_IY =15, REG_IX =17, REG_IFF =19, REG_R =20
-//REG_AF =21, REG_SP =23, REG_IM=25, REG_BDR =26
+//
+// SNAPSHOT FILE HEADER (27 bytes, no PC value stored):
+//REG_I  =00, REG_HL'=01, REG_DE'=03, REG_BC'=05
+//REG_AF'=07, REG_HL =09, REG_DE =11, REG_BC =13
+//REG_IY =15, REG_IX =17, REG_IFF=19, REG_R  =20
+//REG_AF =21, REG_SP =23, REG_IM =25, REG_BDR=26
 // -------------------------------------------------------------------------------------
 
 #include <Arduino.h>
@@ -33,6 +32,10 @@
 #include "SdCardSupport.h"     // SD card initialization and file operations.
 #include "Draw.h"              // Higher-level drawing primitives using ScrSupport.
 #include "Menu.h"              // Menu system for file selection on the Spectrum display.
+
+#include "Constants.h"   
+#include "Z802SNA.h" 
+#include "Z80_Snapshot.h"   
 
 #include <Wire.h>                // I2C communication library for peripherals like OLED.
 #include "SSD1306AsciiAvrI2c.h"  // Specific driver for SSD1306 OLED displays on AVR.
@@ -52,8 +55,9 @@
 // ----------------------------------------------------------------------------------
 // OLED support removed - *** now for debug only ***
 // Retained for potential developer debugging, not part of the main release.
-//#define I2C_ADDRESS 0x3C// 0x3C or 0x3D
-//SSD1306AsciiAvrI2c oled;
+#define I2C_ADDRESS 0x3C// 0x3C or 0x3D
+SSD1306AsciiAvrI2c oled;
+extern bool setupOled();
 //bool haveOled = false;
 //
 
@@ -67,7 +71,7 @@ void setup() {
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-  // setupOled();// ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
+   setupOled();// ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
 
   // ---------------------------------------------------------------------------
   // Use stock ROM- Select button or fire held at power up
@@ -87,18 +91,29 @@ void setup() {
 
   Z80Bus::resetZ80();  // Ensures Z80 is reset before SD card/snapshot operations.
 
+
   while (!SdCardSupport::init()) {                    // Loops until SD card is successfully initialized.
+     oled.println("SD card failed.");
     Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
     Draw::text(80, 90, "INSERT SD CARD");             // Displays SD card prompt on Spectrum screen.
   }
 
-  //TODO ... add this to the menu
-  if (Utils::readJoystick() & Utils::JOYSTICK_DOWN) {  // Placeholder for a future feature to demo .SCR files.
-    ScrSupport::DemoScrFiles(root, file, packetBuffer);
-  }
+
+/*
+   int a =  convertZ80toSNA("turtles.z80");
+   	 oled.print("END:'");
+	 oled.print(a);
+//	SdCardSupport::fileCloseForWrite();
+    delay(222222222);
+
+*/
+
 }
 
 void loop() {
+ // FatFile& root = (SdCardSupport::root);
+  FatFile& file = (SdCardSupport::file);
+
 
   Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Resets screen colors for menu display.
 
@@ -135,35 +150,127 @@ void loop() {
     Z80Bus::sendBytes(packetBuffer, 6);              // Sends fill command.
 
   } else {
-    if (bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
-      do {                     // Loop to monitor Spectrum joystick inputs during game.
-        unsigned long startTime = millis();
-        PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
-        Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-      } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
-      Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-      while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+    if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE) {
+      if (bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
+        do {                     // Loop to monitor Spectrum joystick inputs during game.
+          unsigned long startTime = millis();
+          PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
+          Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
+        } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+        Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
+        while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+      }
+    }else {
+
+   int a =  convertZ80toSNA("turtles.z80");
+   	 oled.print("END:'");
+	 oled.print(a);
+   if (a==0) {
+     do {                     // Loop to monitor Spectrum joystick inputs during game.
+          unsigned long startTime = millis();
+          PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
+          Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
+        } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+        Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
+        while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+
+    }
     }
   }
 }
 
+
+
+boolean bootFromSnapshot_z80_end() {
+  //FatFile& root = (SdCardSupport::root);
+//  FatFile& file = (SdCardSupport::file);
+
+
+  // Send the set stack point command.
+  // Reuses a jump address in screen memory, unused until final execution.
+  // const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
+  // packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
+  // packetBuffer[1] = (uint8_t)(address >> 8);
+  // packetBuffer[2] = (uint8_t)(address & 0xFF);
+  // Z80Bus::sendBytes(packetBuffer, 3); // 3 = character command + 16bit address
+  // Z80Bus::waitRelease_NMI();  //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
+
+  //-----------------------------------------
+  // // Pe-load .sna 27-byte header (CPU registers)
+  // if (file.available()) {
+  //   byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);  // +1 leave room for command i.e. "E"
+  //   if (bytesReadHeader != 27) {                                        
+  //     file.close();
+  //     Draw::text(80, 90, "Invalid sna file");
+  //     delay(3000);
+  //     return false;  // Failed snapshot load.
+  //   }
+  // }
+  //-----------------------------------------
+  // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of PAYLOAD_BUFFER_SIZE bytes.
+  // uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
+  // while (file.available()) {
+  //   byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+  //   START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);  // 'G' command: Generic data upload to Z80.
+  //   END_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
+  //   Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
+  //   currentAddress += packetBuffer[HEADER_PAYLOADSIZE];  // Advances target address.
+  // }
+  // file.close();
+
+  //-----------------------------------------
+  // Wait for the next vertial blank to synchronize (Enables Interrupt Mode and Halts).
+  packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
+  Z80Bus::sendBytes(packetBuffer, 1);   // We just send the 1 character "W" command
+  //-----------------------------------------
+  // Special: Here we wait for the ZX Spectrum's vertical blank interrupt (triggered automatically by the 50Hz screen refresh)
+  Z80Bus::waitHalt();  // Continue after vertial blank interrupt
+  //-----------------------------------------
+  // 'E' command - Load Registers & Executes code
+  head27_Execute[0] = 'E';                    
+  Z80Bus::sendSnaHeader(&head27_Execute[0]);  // Internally reorganizes registers to help direct loading by the Z80 itself.
+  //-----------------------------------------
+  // Now we wait for the speccy to signal it's ready with a last final HALT.
+  Z80Bus::waitRelease_NMI();  // Synchronize: Speccy knows it must halt - Aruindo waits for NMI release.
+  // At this point, synchronization is confirmed and we know the Speccy is executing code 
+  // from screen memory, so it's now safe to swap ROM banks.
+  //-----------------------------------------
+  // Allow a safety gap in the timings (NMI Z80 timings)
+  //  Speccy is in or returning from the interrupt (T-state duration:1/3.5MHz = 0.2857 microseconds)
+  //  (1) Push PC onto Stack: ~10 or 11 T-states , (2) RETN Instruction: 14 T-states. (Total:~24 T-states)
+  delayMicroseconds(7);  // (24×0.2857=6.857) delay for NMI routine completion.
+  // At this pint (or sooner) the Speccy does it's last start-up sequence instruction "JP nnnn" to actual game code.
+  //-----------------------------------------
+  // Switch to 16K stock ROM (still external, see notes on why)
+  digitalWriteFast(Pin::ROM_HALF, HIGH);  
+  //-----------------------------------------
+  // Wait for the speccy to start executing code
+  while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming snapshot execution resumed.
+  //
+  // At this point the ZX Spectrum should be happly running the newly loaded snapshot code.
+  return true;  // Snapshot boot successful.
+}
+
+
 boolean bootFromSnapshot() {
+  //FatFile& root = (SdCardSupport::root);
+  FatFile& file = (SdCardSupport::file);
+
+
   // Send the set stack point command.
   // Reuses a jump address in screen memory, unused until final execution.
   const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
   packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
   packetBuffer[1] = (uint8_t)(address >> 8);
   packetBuffer[2] = (uint8_t)(address & 0xFF);
-  Z80Bus::sendBytes(packetBuffer, 3);
-  Z80Bus::waitRelease_NMI();  //Synchronizes: Z80 halts after loading SP; waits for NMI release.
+  Z80Bus::sendBytes(packetBuffer, 3); // 3 = character command + 16bit address
+  Z80Bus::waitRelease_NMI();  //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
   //-----------------------------------------
-  // Read the Snapshots 27-byte header ahead of time
-  // .SNA header holds critical CPU register states to restore Spectrum's CPU.
+  // Pe-load .sna 27-byte header (CPU registers)
   if (file.available()) {
-    head27_Execute[0] = 'E';                                             // 'E' command: Execute/Load Registers on Z80.
-    byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);  // Reads 27 bytes of register data.
-    if (bytesReadHeader != 27) {                                         // Ensures complete header read for reliable snapshot restore.
+    byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);  // +1 leave room for command i.e. "E"
+    if (bytesReadHeader != 27) {                                        
       file.close();
       Draw::text(80, 90, "Invalid sna file");
       delay(3000);
@@ -171,8 +278,7 @@ boolean bootFromSnapshot() {
     }
   }
   //-----------------------------------------
-  // Copy snapshot data into Speccy RAM (0x4000-0xFFFF)
-  // Transfers main memory block from .SNA file to Spectrum's RAM.
+  // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of PAYLOAD_BUFFER_SIZE bytes.
   uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
   while (file.available()) {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
@@ -183,38 +289,40 @@ boolean bootFromSnapshot() {
   }
   file.close();
   //-----------------------------------------
-  // Command Speccy to wait for the next screen refresh
-  // Synchronizes Z80 with video timing, halting until vertical blanking NMI.
-  packetBuffer[0] = 'W';  // 'W' command: "Wait for vertical blank."
-  Z80Bus::sendBytes(packetBuffer, 1);
+  // Wait for the next vertial blank to synchronize (Enables Interrupt Mode and Halts).
+  packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
+  Z80Bus::sendBytes(packetBuffer, 1);   // We just send the 1 character "W" command
   //-----------------------------------------
-  // The ZX Spectrum's maskable interrupt (triggered by the 50Hz screen refresh) will self release
-  // the CPU from halt mode during the vertical blanking period.
-  Z80Bus::waitHalt();  // Waits for Z80 to signal HALT, confirming readiness for interrupt.
+  // Special: Here we wait for the ZX Spectrum's vertical blank interrupt (triggered automatically by the 50Hz screen refresh)
+  Z80Bus::waitHalt();  // Continue after vertial blank interrupt
   //-----------------------------------------
-  Z80Bus::sendSnaHeader(&head27_Execute[0]);  // Populates Z80 registers with saved state from .SNA header.
+  // 'E' command - Load Registers & Executes code
+  head27_Execute[0] = 'E';                    
+  Z80Bus::sendSnaHeader(&head27_Execute[0]);  // Internally reorganizes registers to help direct loading by the Z80 itself.
   //-----------------------------------------
-  // At this point the speccy is running code in screen memory to safely swap ROM banks.
-  // A final HALT is given just before jumping back to the real snapshot code/game.
-  Z80Bus::waitRelease_NMI();  // NMI triggers Z80 to execute ROM bank swap stub in screen memory.
+  // Now we wait for the speccy to signal it's ready with a last final HALT.
+  Z80Bus::waitRelease_NMI();  // Synchronize: Speccy knows it must halt - Aruindo waits for NMI release.
+  // At this point, synchronization is confirmed and we know the Speccy is executing code 
+  // from screen memory, so it's now safe to swap ROM banks.
   //-----------------------------------------
-  // T-state duration:1/3.5MHz = 0.2857μs
-  // NMI Z80 timings -Push PC onto Stack: ~10 or 11 T-states
-  //RETN Instruction:14 T-states.
-  //Total:~24 T-states
-  delayMicroseconds(7);  // (24×0.2857=6.857) Precise delay for NMI routine completion.
-
-  digitalWriteFast(Pin::ROM_HALF, HIGH);  // Switches Spectrum to 16K stock ROM after snapshot initializes.
-
-  // At ths point rhe Spectrum's external ROM has switched to using the 16K stock ROM.
-  // Wait for HALT line to return HIGH again (shows Z80 has resumed)
+  // Allow a safety gap in the timings (NMI Z80 timings)
+  //  Speccy is in or returning from the interrupt (T-state duration:1/3.5MHz = 0.2857 microseconds)
+  //  (1) Push PC onto Stack: ~10 or 11 T-states , (2) RETN Instruction: 14 T-states. (Total:~24 T-states)
+  delayMicroseconds(7);  // (24×0.2857=6.857) delay for NMI routine completion.
+  // At this pint (or sooner) the Speccy does it's last start-up sequence instruction "JP nnnn" to actual game code.
+  //-----------------------------------------
+  // Switch to 16K stock ROM (still external, see notes on why)
+  digitalWriteFast(Pin::ROM_HALF, HIGH);  
+  //-----------------------------------------
+  // Wait for the speccy to start executing code
   while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming snapshot execution resumed.
-
+  //
+  // At this point the ZX Spectrum should be happly running the newly loaded snapshot code.
   return true;  // Snapshot boot successful.
 }
 
 
-/*
+
 bool setupOled() {
   Wire.begin();
   Wire.beginTransmission(I2C_ADDRESS);
@@ -227,15 +335,15 @@ bool setupOled() {
     delay(1);
     // some hardware is slow to initialise, first call does not work.
     oled.begin(&Adafruit128x32, I2C_ADDRESS);
-    // original Adafruit5x7 font with tweeks at start for VU meter
+    // original Adafruit5x7 font with tweaks at start for VU meter
     oled.setFont(fudged_Adafruit5x7);
     oled.clear();
-    oled.print(F("ver"));
-    oled.println(F(VERSION));
+  // oled.print(F("ver"));
+  // oled.println(F(VERSION));
   }
   return result;  // is OLED hardware available 
 }
-*/
+
 
 
 /* DEBUG EXAMPLE TO SPECTRUM SCREEN
@@ -252,3 +360,12 @@ Z80Bus::sendBytes(packetBuffer, 6);
 sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));
 Draw::text(256 - 128, 0, _c);
 */
+
+
+
+
+
+
+
+
+

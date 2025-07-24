@@ -29,12 +29,16 @@ extern SSD1306AsciiAvrI2c oled;
 
 __attribute__((optimize("-Ofast"))) 
 void fileList(uint16_t startFileIndex) {
+
+  FatFile& root =  (SdCardSupport::root);
+  FatFile& file = (SdCardSupport::file);
+
   root.rewind();
   uint8_t clr = 0;
   uint8_t count = 0;
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isFile()) {
-      if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE || (file.fileSize() == 6912)  ) {
+   //   if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE || (file.fileSize() == 6912)  ) {
 
         if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
           int len = file.getName7(fileName, 64);
@@ -50,7 +54,7 @@ void fileList(uint16_t startFileIndex) {
           clr++;
         }
         count++;
-      }
+ //     }
     }
     file.close();
     if (clr == SCREEN_TEXT_ROWS) {
