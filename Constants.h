@@ -39,7 +39,7 @@ constexpr uint8_t Z80_V1_HEADERLENGTH = 30; // CORRECTED length from constants.h
 constexpr uint8_t Z80_EXT_PC_LOW = 0;
 constexpr uint8_t Z80_EXT_PC_HIGH = 1;
 constexpr uint8_t Z80_EXT_HW_MODE = 2;
-constexpr uint8_t Z80_EXT_7FFD_PORT = 3; // Corrected name: Last OUT to 0x7FFD (128K machine) or SamRam (48K)
+constexpr uint8_t Z80_EXT_7FFD_PORT = 3; // Last OUT to 0x7FFD (128K machine) or SamRam (48K)
 constexpr uint8_t Z80_EXT_IF1_PAGE_STATUS = 4; // 0xFF if IF1 ROM is paged, 0x00 if not
 constexpr uint8_t Z80_EXT_FLAGS3 = 5; // Bit 0: R bit 7 (different from V1); Bit 1: LDIR active; Bit 2: AY-3-8912 active (48K)
 constexpr uint8_t Z80_EXT_FFFD_PORT = 6; // Last OUT to 0xFFFD
@@ -47,7 +47,7 @@ constexpr uint8_t Z80_EXT_AY_REGS_START = 7; // AY-3-8912 registers (16 bytes)
 
 constexpr uint8_t Z80_V2_HEADERLENGTH = 23; // Length of the extended header for V2
 constexpr uint8_t Z80_V3_HEADERLENGTH = 54; // Length of the extended header for V3
-constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; // Added from user's request
+constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 
 // SNA header defines (from constants.h)
 #define SNA_I           0
@@ -92,12 +92,16 @@ enum Z80CheckResult {
 };
 
 enum RLEDecodeResult {
-    RLE_SUCCESS = 0,
+    RLE_OK = 0,
     RLE_ERROR_DEST_BUFFER_FULL,
     RLE_ERROR_INCOMPLETE_SEQUENCE,
     RLE_ERROR_EXPANSION_OVERRUN,
     RLE_ERROR_WRITE,
-    RLE_ERROR_OUTPUT_OVERFLOW
+    RLE_ERROR_OUTPUT_OVERFLOW,
+    RLE_ERROR_UNEXPECTED_EOF,
+    RLE_ERROR_SD_READ,
+    RLE_ED_MARKER,
+    RLE_ERROR_SD_READ_FAILED
 };
 
 /*

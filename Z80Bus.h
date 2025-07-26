@@ -86,23 +86,24 @@ void waitRelease_NMI() {
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
 }
 
-__attribute__((optimize("-Ofast"))) void sendBytes(byte* data, uint16_t size) {
-  cli();  // Not really needed
+//__attribute__((optimize("-Ofast"))) 
+void sendBytes(byte* data, uint16_t size) {
+ // cli();  // Not really needed
   for (uint16_t i = 0; i < size; i++) {
     // Wait for Z80 HALT line to go LOW (active low)
     while (digitalReadFast(Pin::Z80_HALT) != 0) {};
     PORTD = data[i];  // Send Arduino d0-d7 to Z80 d0-d7
-                      // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+    // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
     digitalWriteFast(Pin::Z80_NMI, LOW);
-    //  asm volatile(
-    //    "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 8 NOPs = 500ns @ 16MHz
+   //   asm volatile(
+   //     "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 8 NOPs = 500ns @ 16MHz
     //    "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 16 total NOPs
     //  );
     digitalWriteFast(Pin::Z80_NMI, HIGH);
     // Wait for HALT line to return HIGH again (shows Z80 has resumed)
     while (digitalReadFast(Pin::Z80_HALT) == 0) {};
   }
-  sei();
+ // sei();
 }
 
 /* Send Snapshot Header Section */

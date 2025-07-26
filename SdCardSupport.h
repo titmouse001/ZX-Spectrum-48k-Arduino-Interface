@@ -40,6 +40,9 @@ int fileAvailable() {
 int fileRead() {
   return file.read();
 }
+int fileRead(uint8_t* buf, uint16_t count) { 
+  return file.read((void*)buf, (size_t)count);
+}
 
 int filePosition() {
   return file.curPosition();

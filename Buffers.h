@@ -19,8 +19,7 @@ const uint8_t HEADER_HIGH_BYTE = 2;      // Only 'C' and 'G' commands
 const uint8_t HEADER_LOW_BYTE = 3;       // Only 'C' and 'G' commands
 // ----------------------------------------------------------------------------------
 const uint8_t SIZE_OF_HEADER = HEADER_LOW_BYTE + 1;
-/* Maximum payload per transfer is one byte (0–255) */   
-const uint8_t PAYLOAD_BUFFER_SIZE = 255;
+const uint8_t PAYLOAD_BUFFER_SIZE = 255;  /* !!! PLEASE NOTE: Maximum payload per transfer is one byte (0–255) !!! */   
 const uint16_t BUFFER_SIZE = SIZE_OF_HEADER + PAYLOAD_BUFFER_SIZE;
 
 // ----------------------------------------------------------------------------------  

@@ -111,7 +111,7 @@ void setup() {
 }
 
 void loop() {
- // FatFile& root = (SdCardSupport::root);
+  // FatFile& root = (SdCardSupport::root);
   FatFile& file = (SdCardSupport::file);
 
 
@@ -160,21 +160,20 @@ void loop() {
         Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
         while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
       }
-    }else {
+    } else {
 
-   int a =  convertZ80toSNA("turtles.z80");
-   	 oled.print("END:'");
-	 oled.print(a);
-   if (a==0) {
-     do {                     // Loop to monitor Spectrum joystick inputs during game.
+      int a = convertZ80toSNA();
+      oled.print("END:'");
+      oled.print(a);
+      if (a == 0) {
+        do {  // Loop to monitor Spectrum joystick inputs during game.
           unsigned long startTime = millis();
           PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
           Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
         } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
         Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
         while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
-
-    }
+      }
     }
   }
 }
