@@ -150,8 +150,9 @@ void loop() {
     } else {
 
       int a = convertZ80toSNA();
-      oled.print("END:'");
-      oled.print(a);
+     	bootFromSnapshot_z80_end();
+//      oled.print("END:");
+//      oled.print(a);
       if (a == 0) {
         do {  // Loop to monitor Spectrum joystick inputs during game.
           unsigned long startTime = millis();
