@@ -9,7 +9,7 @@ static FatFile root;
 static FatFile file;
 //static FatFile fileOut;  // runnig out of mem forthis test !!!
 
-static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024UL * 48) + 27;  //49179
+static constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024UL * 48) + 27;  //49179 (.sna files)
 uint16_t countSnapshotFiles();
 
 enum struct Status : uint8_t {
@@ -33,28 +33,15 @@ boolean init() {
   return true;
 }
 
-int fileAvailable() {
-  return file.available();
-}
-
-int fileRead() {
-  return file.read();
-}
-int fileRead(uint8_t* buf, uint16_t count) { 
-  return file.read((void*)buf, (size_t)count);
-}
-
-int filePosition() {
-  return file.curPosition();
-}
-
-bool fileSeek(uint32_t pos) {
-  return file.seekSet(pos);
-}
+int fileAvailable() { return file.available(); }
+int fileRead() {  return file.read(); }
+void fileRead(uint8_t* b) { file.read(b, 1);  }
+int fileRead(uint8_t* buf, uint16_t count) {  return file.read((void*)buf, (size_t)count); }
+int filePosition() {  return file.curPosition(); }
+bool fileSeek(uint32_t pos) {  return file.seekSet(pos); }
 
 //__attribute__((optimize("-Ofast")))
 void openFileByIndex(uint8_t searchIndex) {
-
   root.rewind();
   uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
@@ -78,18 +65,25 @@ bool openFileByName(const char* filename) {
   return file.open(filename, O_READ);
 }
 
+uint16_t fileSize() {  return file.fileSize(); }
+bool fileClose() {  return file.close(); }
 
-uint16_t fileSize() {
-  return file.fileSize();
+
+//__attribute__((optimize("-Ofast")))
+uint16_t countSnapshotFiles() {
+  uint16_t totalFiles = 0;
+  root.rewind();
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      //   if (file.fileSize() == 49179 || (file.fileSize() == 6912)  ) {
+      totalFiles++;
+      //   }
+    }
+    file.close();
+  }
+  return totalFiles;
 }
 
-bool fileClose() {
-  return file.close();
-}
-
-
-
-// //---
 
 // // fileOut works, sna load in emulator... using root to convert over to pump into speccy ram... not needed from now on, removing soon.
 // bool openFileByNameForWrite(const char* filename) {
@@ -118,26 +112,6 @@ bool fileClose() {
 // int fileWritePosition() {
 //  	return root.curPosition();
 // }
-
-// ---------------------------------
-// Supporting Section - internal use
-// ---------------------------------
-
-//__attribute__((optimize("-Ofast")))
-uint16_t countSnapshotFiles() {
-
-  uint16_t totalFiles = 0;
-  root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      //   if (file.fileSize() == 49179 || (file.fileSize() == 6912)  ) {
-      totalFiles++;
-      //   }
-    }
-    file.close();
-  }
-  return totalFiles;
-}
 
 
 }

@@ -89,6 +89,7 @@ enum Z80CheckResult {
     Z80_CHECK_ERROR_UNEXPECTED_EOF = -5, // For general file truncation
     Z80_CHECK_ERROR_UNSUPPORTED_TYPE = -6, // For machine type check
     Z80_CHECK_ERROR_EOF = -7,
+    Z80_CHECK_ERROR_SEEK = -8
 };
 
 enum RLEDecodeResult {
