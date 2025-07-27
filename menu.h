@@ -22,10 +22,10 @@ enum { BUTTON_NONE,
        BUTTON_BACK_REFRESH_LIST,
        BUTTON_ADVANCE_REFRESH_LIST };
 
-#include <Wire.h>  //  I2C devices
-#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
-
-extern SSD1306AsciiAvrI2c oled;
+//DEBUG ONLY
+//#include <Wire.h>  //  I2C devices
+//#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
+//extern SSD1306AsciiAvrI2c oled;
 
 __attribute__((optimize("-Ofast"))) 
 void fileList(uint16_t startFileIndex) {
@@ -33,23 +33,26 @@ void fileList(uint16_t startFileIndex) {
   FatFile& root =  (SdCardSupport::root);
   FatFile& file = (SdCardSupport::file);
 
+  // Note: It's safe to use this space for the filename without a care.
+  //       'textLine' will process its characters long before it internaly needs access to the global packetBuffer.
+  //         - extra note: We could use index [0] but that would mean extra work, well in this case it would mean having the 
+  //           [0]...fileName[1] = '\0'; reset inside the loop.
+  char* fileName = (char*) &packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
+
   root.rewind();
   uint8_t clr = 0;
   uint8_t count = 0;
   while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
+    if (file.isFile()) {  // for now just list all files, will work out file types later on.
    //   if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE || (file.fileSize() == 6912)  ) {
-
         if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
-          int len = file.getName7(fileName, 64);
+          uint16_t len = file.getName7(fileName, 64);
           if (len == 0) { file.getSFN(fileName, 20); }
-
-          if (len > 42) {
+          if (len > 42) {  // limit filename to fit speccy screen
             fileName[40] = '.';
             fileName[41] = '.';
             fileName[42] = '\0';
           }
-
           Draw::textLine(0, ((count - startFileIndex) * 8), fileName);
           clr++;
         }
@@ -62,11 +65,11 @@ void fileList(uint16_t startFileIndex) {
     }
   }
 
-  // Clear the remaining screen after last list item when needed.
-  fileName[0] = ' ';  // Empty file selector slots (just wipes area)
+  // Clear the remaining screen for shorter lists.
+  fileName[0] = ' ';  // Use blank filename to wipe each unused row
   fileName[1] = '\0';
   for (uint8_t i = clr; i < SCREEN_TEXT_ROWS; i++) {
-    Draw::textLine(0, (i * 8), fileName);
+    Draw::textLine(0, (i * 8), fileName); // also clears unused
   }
 }
 

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------
-//"Arduino Hardware Interface for ZX Spectrum" - 2023/24 P.Overy
+//"Arduino Hardware Interface for ZX Spectrum" - 2023/25 P.Overy
 // -------------------------------------------------------------------------------------
 // This software uses the Arduino's ATmega328P range (Nano, Pro mini ... )
 // for example here's the Nano specs:-
@@ -37,29 +37,23 @@
 #include "Z802SNA.h" 
 #include "Z80_Snapshot.h"   
 
-#include <Wire.h>                // I2C communication library for peripherals like OLED.
-#include "SSD1306AsciiAvrI2c.h"  // Specific driver for SSD1306 OLED displays on AVR.
+#define VERSION ("0.21")  // Arduino firmware
 
-// --------------------------------
+// ----------------------------------------------------------------------------------
 #define SERIAL_DEBUG 0  // Conditional compilation flag for serial debug output.
-
 #if SERIAL_DEBUG
 #warning "*** SERIAL_DEBUG is enabled"
 // D0/D1 pins are shared with Z80 data bus. Enabling debug breaks Z80 communication.
 #include <SPI.h>  // Included for potential SPI-based debugging peripherals.
 #endif
-// --------------------------------
-
-#define VERSION ("0.14")  // Firmware version string.
-
 // ----------------------------------------------------------------------------------
 // OLED support removed - *** now for debug only ***
-// Retained for potential developer debugging, not part of the main release.
-#define I2C_ADDRESS 0x3C// 0x3C or 0x3D
-SSD1306AsciiAvrI2c oled;
-extern bool setupOled();
-//bool haveOled = false;
-//
+//#include <Wire.h>                // I2C communication library for peripherals like OLED.
+//#include "SSD1306AsciiAvrI2c.h"  // Specific driver for SSD1306 OLED displays on AVR.
+//#define I2C_ADDRESS 0x3C// 0x3C or 0x3D
+//SSD1306AsciiAvrI2c oled;
+//extern bool setupOled();
+// ----------------------------------------------------------------------------------
 
 void setup() {
 
@@ -71,7 +65,7 @@ void setup() {
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-  setupOled();             // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
+//  setupOled();             // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
 
   // ---------------------------------------------------------------------------
   // Use stock ROM- Select button or fire held at power up
@@ -91,7 +85,7 @@ void setup() {
 
   Z80Bus::resetZ80();  // Ensures Z80 is reset before SD card/snapshot operations.
   while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
-    oled.println("SD card failed.");
+    //oled.println("SD card failed");
     Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
     Draw::text(80, 90, "INSERT SD CARD");             // Displays SD card prompt on Spectrum screen.
   }
@@ -117,7 +111,7 @@ void loop() {
     while (file.available()) {                        // Reads and sends file data in chunks to Spectrum.
       byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
       START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);           // Prepares 'Copy' command for Z80.
-      END_UPLOAD_COMMAND(packetBuffer, currentAddress);             // Appends target Spectrum RAM address.
+      ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);             // Appends target Spectrum RAM address.
       Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);  // Transmits command and data.
       currentAddress += bytesRead;                                  // Advances target address.
     }
@@ -125,16 +119,10 @@ void loop() {
 
     while (getCommonButton() == 0) {}  // Waits for user input to view loaded screen.
 
-    Z80Bus::fillScreenAttributes(0);  // Clears screen attributes again.
-    currentAddress = 0x4000;
-    constexpr uint16_t amount = 6144 + 768;          // Total size of Spectrum display memory.
-    packetBuffer[0] = 'F';                           // 'Fill' command for Z80 memory operation.
-    packetBuffer[1] = (amount >> 8) & 0xFF;          // High byte of fill amount.
-    packetBuffer[2] = amount & 0xFF;                 // Low byte of fill amount.
-    packetBuffer[3] = (currentAddress >> 8) & 0xFF;  // High byte of fill start address.
-    packetBuffer[4] = currentAddress & 0xFF;         // Low byte of fill start address.
-    packetBuffer[5] = 0;                             // Value to fill memory with (0 for black).
-    Z80Bus::sendBytes(packetBuffer, 6);              // Sends fill command.
+    // about to go back to the menus - clear screen
+    Z80Bus::fillScreenAttributes(0); // attributes first for faster visual clear (768 bytes)
+    FILL_COMMAND(packetBuffer,/*amount*/ 6144, /*addr*/ 0x4000, /*value*/ 0);  // now the screens bitmap
+    Z80Bus::sendBytes(packetBuffer, 6);
 
   } else {
     if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE) {
@@ -150,7 +138,10 @@ void loop() {
     } else {
 
       int a = convertZ80toSNA();
-     	bootFromSnapshot_z80_end();
+
+      SdCardSupport::fileClose();
+     	bootFromSnapshot_z80_end();  
+
 //      oled.print("END:");
 //      oled.print(a);
       if (a == 0) {
@@ -159,9 +150,10 @@ void loop() {
           PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
           Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
         } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
-        Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-        while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
       }
+
+      Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
+      while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
     }
   }
 }
@@ -235,7 +227,7 @@ boolean bootFromSnapshot() {
   while (file.available()) {
     byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
     START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);  // 'G' command: Generic data upload to Z80.
-    END_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
+    ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
     currentAddress += packetBuffer[HEADER_PAYLOADSIZE];  // Advances target address.
   }
@@ -274,7 +266,7 @@ boolean bootFromSnapshot() {
 }
 
 
-
+/*  BEBUG ONLY
 bool setupOled() {
   Wire.begin();
   Wire.beginTransmission(I2C_ADDRESS);
@@ -295,7 +287,7 @@ bool setupOled() {
   }
   return result;  // is OLED hardware available 
 }
-
+*/
 
 
 /* DEBUG EXAMPLE TO SPECTRUM SCREEN

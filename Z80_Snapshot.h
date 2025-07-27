@@ -60,6 +60,7 @@ MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 	return MACHINE_UNKNOWN;
 }
 
+__attribute__((optimize("-Ofast"))) 
 int16_t readZ80Header(uint8_t* v1_header, uint8_t* pc_low, uint8_t* pc_high, uint8_t* hw_mode, bool* isV1Compressed) {
 	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
 		return -1;  // Error reading header
@@ -102,12 +103,10 @@ int16_t readZ80Header(uint8_t* v1_header, uint8_t* pc_low, uint8_t* pc_high, uin
 	}
 }
 
-
+__attribute__((optimize("-Ofast"))) 
 bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 	static const uint8_t MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
 	constexpr uint8_t MARKER_SIZE = 4;
-	// Use the dedicated file read buffer area in packetBuffer
-	// This ensures we're not clashing with the 'payload/command' area
 	uint8_t* search_buffer = &packetBuffer[FILE_READ_BUFFER_OFFSET];
 	constexpr uint16_t SEARCH_BUFFER_SIZE = FILE_READ_BUFFER_SIZE;
 
@@ -116,39 +115,28 @@ bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 	if (file_size != -1 && file_size >= (start_pos + MARKER_SIZE)) {
 		int32_t potential_marker_pos = file_size - MARKER_SIZE;
 		if (SdCardSupport::fileSeek(potential_marker_pos)) {
-			// Read into the search_buffer directly
 			if (SdCardSupport::fileRead(search_buffer, 0, MARKER_SIZE) == MARKER_SIZE && memcmp(search_buffer, MARKER, MARKER_SIZE) == 0) {
 				rle_data_length = (uint32_t)(potential_marker_pos - start_pos);
-
 				SdCardSupport::fileSeek(start_pos);  // Seek back to start position for caller
 				return true;
 			}
 		}
-		// Always seek back to start position
-		SdCardSupport::fileSeek(start_pos);
+		SdCardSupport::fileSeek(start_pos);  // Always seek back to start position
 	}
-
 	// Fallback to buffered search if marker not at end
 	int32_t current_pos = start_pos;
 	uint16_t overlap = 0;
-
 	while (SdCardSupport::fileAvailable()) {
-		// Read chunk into buffer, preserving overlap from previous iteration
 		uint16_t bytes_to_read = SEARCH_BUFFER_SIZE - overlap;
-		// Use the new fileRead overload to read into the specific offset of packetBuffer
 		int16_t bytes_read = SdCardSupport::fileRead(search_buffer, overlap, bytes_to_read);
 		if (bytes_read == 0) break;
-
 		uint16_t search_end = overlap + bytes_read;
-
-		// Search for marker in current buffer using memcmp for speed
 		for (uint16_t i = 0; i <= search_end - MARKER_SIZE; i++) {
 			if (memcmp(search_buffer + i, MARKER, MARKER_SIZE) == 0) {  // look for '0x00EDED00'
 				rle_data_length = (uint32_t)((current_pos + i) - start_pos);
 				return true;
 			}
 		}
-
 		// hold back 3 bytes for next time around as marker might span
 		if (search_end >= MARKER_SIZE - 1) {
 			memcpy(search_buffer, search_buffer + search_end - (MARKER_SIZE - 1), MARKER_SIZE - 1);
@@ -158,23 +146,17 @@ bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 			break;  // Not enough data left
 		}
 	}
-
 	return false;  // Marker not found
 }
 
-
-// Function to perform a quick pre-check of the '.Z80' file's validity
+__attribute__((optimize("-Ofast"))) 
 Z80CheckResult checkZ80FileValidity() {
 	bool isV1Compressed = false;
 	Z80CheckResult result = Z80_CHECK_SUCCESS;
-	// Use the packetBuffer for the v1_header
 	uint8_t* z80Header_v1 = &packetBuffer[0];
 	uint8_t ext_pc_low, ext_pc_high, ext_hw_mode = 0;
-
-	// Store current file position to restore it later
 	int32_t initial_file_pos = SdCardSupport::filePosition();
 	if (initial_file_pos == -1) return Z80_CHECK_ERROR_UNEXPECTED_EOF;  // Error getting position
-
 	int16_t header_result = readZ80Header(z80Header_v1, &ext_pc_low, &ext_pc_high, &ext_hw_mode, &isV1Compressed);
 
 	if (header_result < 0) {
@@ -185,7 +167,6 @@ Z80CheckResult checkZ80FileValidity() {
 		if (header_result >= Z80_VERSION_2) {  // V2 or V3
 			while (SdCardSupport::fileAvailable()) {
 				uint32_t current_pos = SdCardSupport::filePosition();
-				// Read into the file read buffer area of packetBuffer
 				if (SdCardSupport::fileRead(packetBuffer, FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
 					if (!SdCardSupport::fileAvailable()) break;                                  // After reading a full block, it's fine if EOF
 					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                    // Incomplete compressed_length
@@ -202,13 +183,11 @@ Z80CheckResult checkZ80FileValidity() {
 					break;  // unsupported page
 				}
 
-
-				{  // skip: The 3 bytes are for compressed_length (2) + page_number (1)
-					uint32_t target_pos = current_pos + 3 + compressed_length;
-					if (!SdCardSupport::fileSeek(target_pos)) {
-						result = Z80_CHECK_ERROR_EOF;  // Failed to seek, likely file too short for the stated compressed_length
-						break;
-					}
+				// skip: The 3 bytes are for compressed_length (2) + page_number (1)
+				uint32_t target_pos = current_pos + 3 + compressed_length;
+				if (!SdCardSupport::fileSeek(target_pos)) {
+					result = Z80_CHECK_ERROR_EOF;  // Failed to seek, likely file too short for the stated compressed_length
+					break;
 				}
 			}
 		} else {  // V1
@@ -234,41 +213,34 @@ Z80CheckResult checkZ80FileValidity() {
 	return result;
 }
 
-
+__attribute__((optimize("-Ofast"))) 
 static RLEDecodeResult decodeRLE_core(uint32_t sourceLengthLimit, uint32_t& bytesWrittenToOutput, uint16_t currentAddress) {
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;  // Max size for 'G' command payload
 	uint8_t* commandPayloadPtr = &packetBuffer[SIZE_OF_HEADER];           // Points to the payload area for commands
 	uint16_t commandPayloadPos = 0;                                       // Current position within the command payload buffer
-
-	uint8_t* fileReadBufferPtr = &packetBuffer[FILE_READ_BUFFER_OFFSET];  // Points to the file read buffer area
-	uint16_t fileReadBufferCurrentPos = 0;                                // Current read position within the fileReadBufferPtr
-	uint16_t fileReadBufferBytesAvailable = 0;                            // How many bytes are currently in the fileReadBufferPtr
-
+	uint8_t* fileReadBufferPtr = &packetBuffer[FILE_READ_BUFFER_OFFSET];  // File read buffer
+	uint16_t fileReadBufferCurrentPos = 0;
+	uint16_t fileReadBufferBytesAvailable = 0;
 	uint32_t bytesReadFromSource = 0;
 	bytesWrittenToOutput = 0;
 
-	auto getNextByteFromFile = [&]() -> int16_t {
+	auto getNextByteFromFile = [&]() -> uint8_t {
 		if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
-			uint16_t bytesToRead = min((uint16_t)FILE_READ_BUFFER_SIZE, (uint16_t)(sourceLengthLimit - bytesReadFromSource));  // Ensure consistent types
-			if (bytesToRead == 0) { return -1; }                                                                               // nothing left!
+			uint16_t bytesToRead = min((uint16_t)FILE_READ_BUFFER_SIZE, (uint16_t)(sourceLengthLimit - bytesReadFromSource));
+			if (bytesToRead == 0) return 0;  // Should not happen due to validation
 
 			int16_t bytesJustRead = SdCardSupport::fileRead(fileReadBufferPtr, bytesToRead);
-			if (bytesJustRead <= 0) { return -1; }  // Error reading or EOF
 			fileReadBufferBytesAvailable = (uint16_t)bytesJustRead;
-			fileReadBufferCurrentPos = 0;  // Reset for new chunk
+			fileReadBufferCurrentPos = 0;
 		}
-
-		if (fileReadBufferCurrentPos < fileReadBufferBytesAvailable) {
-			bytesReadFromSource++;
-			return fileReadBufferPtr[fileReadBufferCurrentPos++];
-		}
-		return -1;  // Should not happen if logic is correct
+		bytesReadFromSource++;
+		return fileReadBufferPtr[fileReadBufferCurrentPos++];
 	};
 
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
 			START_UPLOAD_COMMAND(packetBuffer, 'G', commandPayloadPos);
-			END_UPLOAD_COMMAND(packetBuffer, currentAddress);
+			ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);
 			Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + commandPayloadPos);
 			currentAddress += commandPayloadPos;
 			bytesWrittenToOutput += commandPayloadPos;
@@ -283,46 +255,18 @@ static RLEDecodeResult decodeRLE_core(uint32_t sourceLengthLimit, uint32_t& byte
 		}
 	};
 
-	int16_t b1_int, b2_int;
-
 	while (bytesReadFromSource < sourceLengthLimit) {
-		b1_int = getNextByteFromFile();
-		if (b1_int == -1) break;  // End of file or error
-
-		uint8_t b1 = (uint8_t)b1_int;
-
+		uint8_t b1 = getNextByteFromFile();
 		if (b1 == 0xED) {
-			b2_int = getNextByteFromFile();
-			if (b2_int == -1) {  // If ED is the last byte, use as data
-				addByteToCommandPayloadBuffer(b1);
-				oled.print("Truncated RLE");  // maybe treat as error ?!?!?   (needs to move/only exist in to validation)
-				break;
-			}
-			uint8_t b2 = (uint8_t)b2_int;
-
+			uint8_t b2 = getNextByteFromFile();
 			if (b2 == 0xED) {
-				flushCommandPayloadBuffer();  // Flush any data before a fill command
-
-				int16_t run_int = getNextByteFromFile();
-				int16_t value_int = getNextByteFromFile();
-				if (run_int == -1 || value_int == -1) {
-					oled.print("Unexpected RLE");
-					return RLE_ERROR_TRUNCATED_SEQUENCE;
-				}
-
-				uint8_t run = (uint8_t)run_int;
-				uint8_t value = (uint8_t)value_int;
-				const uint16_t amount = run;  // RLE run length is in 'run' byte
-
-				packetBuffer[0] = 'F';                           // 'Fill' command for Z80 memory operation.
-				packetBuffer[1] = (amount >> 8) & 0xFF;          // High byte of fill amount.
-				packetBuffer[2] = amount & 0xFF;                 // Low byte of fill amount.
-				packetBuffer[3] = (currentAddress >> 8) & 0xFF;  // High byte of fill start address.
-				packetBuffer[4] = currentAddress & 0xFF;         // Low byte of fill start address.
-				packetBuffer[5] = value;                         // Value to fill
-				Z80Bus::sendBytes(packetBuffer, 6);              // Sends fill command.
-				currentAddress += amount;
-				bytesWrittenToOutput += amount;
+				flushCommandPayloadBuffer();  // Flush any previous payload before a fill command
+				uint8_t runAmount = getNextByteFromFile();
+				uint8_t value = getNextByteFromFile();
+				FILL_COMMAND(packetBuffer,runAmount, currentAddress, value);
+				Z80Bus::sendBytes(packetBuffer, 6);
+				currentAddress += runAmount;
+				bytesWrittenToOutput += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
 				addByteToCommandPayloadBuffer(b2);
@@ -331,13 +275,11 @@ static RLEDecodeResult decodeRLE_core(uint32_t sourceLengthLimit, uint32_t& byte
 			addByteToCommandPayloadBuffer(b1);
 		}
 	}
-
 	flushCommandPayloadBuffer();
-
 	return RLE_OK;
 }
 
-
+__attribute__((optimize("-Ofast"))) 
 BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out, uint16_t* uncompressed_length_out) {
 	uint16_t compressed_length;
 	const uint16_t BLOCK_SIZE = 0x4000;  // 16 KB for memory pages (65536 bytes / 4 = 16384 bytes)
@@ -457,12 +399,12 @@ int16_t convertZ80toSNA_impl() {
 	//       This can be changed later to use a more effecient standard when sending to the Speccy.
 	uint8_t bytesRead = 2;
 	START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);
-	END_UPLOAD_COMMAND(packetBuffer, stackOffsetForPushingPC);
+	ADDR_UPLOAD_COMMAND(packetBuffer, stackOffsetForPushingPC);
 	packetBuffer[SIZE_OF_HEADER] = ext_pc_low;
 	packetBuffer[SIZE_OF_HEADER + 1] = ext_pc_high;
 	Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + 2);
 
-	SdCardSupport::fileClose();
+	//SdCardSupport::fileClose();
 	// Speccy memory loaded - after this we use the 'E' command to reuse for now the 27 byte .SNA header for the final part.
 
 	return 0;

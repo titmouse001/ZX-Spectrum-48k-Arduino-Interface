@@ -43,7 +43,8 @@ uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
 
       // compute bit-offset into the big output buffer
       const uint16_t bitPosition = (FNT_BUFFER_SIZE * row) * 8 + (i * (FNT_WIDTH + FNT_GAP));
-      Utils::joinBits(finalOutput,transposedRow, FNT_WIDTH + FNT_GAP, bitPosition);
+      //Utils::joinBits(finalOutput,transposedRow, FNT_WIDTH + FNT_GAP, bitPosition);
+      Utils::join6Bits(finalOutput,transposedRow, bitPosition);  // 6 bits as in FNT_WIDTH + FNT_GAP
     }
     charCount++;
   }

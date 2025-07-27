@@ -21,7 +21,7 @@ void textLine(int xpos, int ypos, const char *message) {
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    END_UPLOAD_COMMAND(packetBuffer, destAddr );
+    ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
     memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE);
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
   }
@@ -43,7 +43,7 @@ void text(int xpos, int ypos, const char *message) {
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    END_UPLOAD_COMMAND(packetBuffer, destAddr );
+    ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
     memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, byteCount);
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount); // send trimmed line
   }

@@ -49,9 +49,9 @@ uint8_t packetBuffer[TOTAL_PACKET_BUFFER_SIZE];
 uint8_t head27_Execute[27 + 1];
 
 // Buffer for rendering text with SmallFont.
-byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 };
+byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 }; // SmallFont 5x7
 
-// Generic buffer for storing file names, used by components like menu.h.
-char fileName[65];
+// Buffer for storing file names, used by components like menu.h.
+//char fileName[65];  // removed ... using global buffer now
 
 #endif

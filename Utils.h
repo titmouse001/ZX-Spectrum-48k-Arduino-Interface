@@ -1,7 +1,6 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-
 namespace Utils {
 
 constexpr uint16_t SCREEN_BASE = 0x4000;
@@ -50,14 +49,15 @@ constexpr uint8_t JOYSTICK_SELECT = B01000000;
   *
   * This splits the 16-bit address into high and low bytes.
   */
-#define END_UPLOAD_COMMAND(buf, address) \
+#define ADDR_UPLOAD_COMMAND(buf, address) \
   do { \
     (buf)[HEADER_HIGH_BYTE] = (uint8_t)(((address) >> 8) & 0xFF); \
     (buf)[HEADER_LOW_BYTE] = (uint8_t)((address)&0xFF); \
   } while (0)
 
 void memsetZero(byte* b, unsigned int len);
-void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
+void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
+//void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
 byte reverseBits(byte data);
 void swap(byte& a, byte& b);
 uint16_t getSnaFileCount();

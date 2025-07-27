@@ -18,7 +18,7 @@ void DemoScrFiles(FatFile& root, FatFile& file, byte* packetBuffer) {
           while (file.available()) {
             byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
             START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);
-            END_UPLOAD_COMMAND(packetBuffer, currentAddress);
+            ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);
             Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);
             currentAddress += bytesRead;
           }

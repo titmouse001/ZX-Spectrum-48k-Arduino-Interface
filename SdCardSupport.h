@@ -43,7 +43,7 @@ int fileRead(uint8_t* buf, uint16_t offset, uint16_t count) {  return file.read(
 int filePosition() {  return file.curPosition(); }
 bool fileSeek(uint32_t pos) {  return file.seekSet(pos); }
 
-//__attribute__((optimize("-Ofast")))
+__attribute__((optimize("-Ofast")))
 void openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
@@ -72,7 +72,7 @@ uint16_t fileSize() {  return file.fileSize(); }
 bool fileClose() {  return file.close(); }
 
 
-//__attribute__((optimize("-Ofast")))
+__attribute__((optimize("-Ofast")))
 uint16_t countSnapshotFiles() {
   uint16_t totalFiles = 0;
   root.rewind();

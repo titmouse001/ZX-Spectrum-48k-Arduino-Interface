@@ -86,9 +86,9 @@ void waitRelease_NMI() {
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
 }
 
-//__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Ofast"))) 
 void sendBytes(byte* data, uint16_t size) {
- // cli();  // Not really needed
+  cli();  // Not really needed
   for (uint16_t i = 0; i < size; i++) {
     // Wait for Z80 HALT line to go LOW (active low)
     while (digitalReadFast(Pin::Z80_HALT) != 0) {};
@@ -103,7 +103,7 @@ void sendBytes(byte* data, uint16_t size) {
     // Wait for HALT line to return HIGH again (shows Z80 has resumed)
     while (digitalReadFast(Pin::Z80_HALT) == 0) {};
   }
- // sei();
+  sei();
 }
 
 /* Send Snapshot Header Section */
