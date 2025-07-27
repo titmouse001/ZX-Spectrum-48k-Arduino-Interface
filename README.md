@@ -1,5 +1,11 @@
 # ZX Spectrum 48k Arduino Interface - 48k .sna Game Loader
 
+<i>Latest quick update: new PCB (v0.21) now uses a right-angle cartridge (90°). No pics just yet! 
+Code has been updated to support .z80 snapshots (now loads .sna, .z80, and .scr files).  
+For the PCB, see "Gerbers" under the docs section.  
+Currently, you need to compile the Speccy ASM for the ROM manually – I'll include a prebuilt image at some point.
+</i>
+
 #### This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost hardware interface built around an Arduino.
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Pictures0.14/setupview3_Version0_14.jpg" width="32%" height="32%">
