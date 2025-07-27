@@ -37,6 +37,9 @@ int fileAvailable() { return file.available(); }
 int fileRead() {  return file.read(); }
 void fileRead(uint8_t* b) { file.read(b, 1);  }
 int fileRead(uint8_t* buf, uint16_t count) {  return file.read((void*)buf, (size_t)count); }
+
+int fileRead(uint8_t* buf, uint16_t offset, uint16_t count) {  return file.read((void*)(buf + offset), (size_t)count); }
+
 int filePosition() {  return file.curPosition(); }
 bool fileSeek(uint32_t pos) {  return file.seekSet(pos); }
 

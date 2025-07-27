@@ -71,7 +71,7 @@ void setup() {
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-   setupOled();// ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
+  setupOled();             // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
 
   // ---------------------------------------------------------------------------
   // Use stock ROM- Select button or fire held at power up
@@ -90,24 +90,11 @@ void setup() {
   }
 
   Z80Bus::resetZ80();  // Ensures Z80 is reset before SD card/snapshot operations.
-
-
-  while (!SdCardSupport::init()) {                    // Loops until SD card is successfully initialized.
-     oled.println("SD card failed.");
+  while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
+    oled.println("SD card failed.");
     Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
     Draw::text(80, 90, "INSERT SD CARD");             // Displays SD card prompt on Spectrum screen.
   }
-
-
-/*
-   int a =  convertZ80toSNA("turtles.z80");
-   	 oled.print("END:'");
-	 oled.print(a);
-//	SdCardSupport::fileCloseForWrite();
-    delay(222222222);
-
-*/
-
 }
 
 void loop() {
@@ -128,7 +115,7 @@ void loop() {
     Z80Bus::fillScreenAttributes(0);                  // Clears screen attributes for direct screen data upload.
     uint16_t currentAddress = 0x4000;                 // Spectrum screen memory start.
     while (file.available()) {                        // Reads and sends file data in chunks to Spectrum.
-      byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+      byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
       START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);           // Prepares 'Copy' command for Z80.
       END_UPLOAD_COMMAND(packetBuffer, currentAddress);             // Appends target Spectrum RAM address.
       Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);  // Transmits command and data.
@@ -181,41 +168,6 @@ void loop() {
 
 
 boolean bootFromSnapshot_z80_end() {
-  //FatFile& root = (SdCardSupport::root);
-//  FatFile& file = (SdCardSupport::file);
-
-
-  // Send the set stack point command.
-  // Reuses a jump address in screen memory, unused until final execution.
-  // const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
-  // packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
-  // packetBuffer[1] = (uint8_t)(address >> 8);
-  // packetBuffer[2] = (uint8_t)(address & 0xFF);
-  // Z80Bus::sendBytes(packetBuffer, 3); // 3 = character command + 16bit address
-  // Z80Bus::waitRelease_NMI();  //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
-
-  //-----------------------------------------
-  // // Pe-load .sna 27-byte header (CPU registers)
-  // if (file.available()) {
-  //   byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);  // +1 leave room for command i.e. "E"
-  //   if (bytesReadHeader != 27) {                                        
-  //     file.close();
-  //     Draw::text(80, 90, "Invalid sna file");
-  //     delay(3000);
-  //     return false;  // Failed snapshot load.
-  //   }
-  // }
-  //-----------------------------------------
-  // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of PAYLOAD_BUFFER_SIZE bytes.
-  // uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
-  // while (file.available()) {
-  //   byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
-  //   START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);  // 'G' command: Generic data upload to Z80.
-  //   END_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
-  //   Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
-  //   currentAddress += packetBuffer[HEADER_PAYLOADSIZE];  // Advances target address.
-  // }
-  // file.close();
 
   //-----------------------------------------
   // Wait for the next vertial blank to synchronize (Enables Interrupt Mode and Halts).
@@ -277,10 +229,10 @@ boolean bootFromSnapshot() {
     }
   }
   //-----------------------------------------
-  // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of PAYLOAD_BUFFER_SIZE bytes.
+  // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of COMMAND_PAYLOAD_SECTION_SIZE bytes.
   uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
   while (file.available()) {
-    byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], PAYLOAD_BUFFER_SIZE);
+    byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
     START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);  // 'G' command: Generic data upload to Z80.
     END_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
     Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);

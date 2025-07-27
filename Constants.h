@@ -90,6 +90,7 @@ enum Z80CheckResult {
     Z80_CHECK_ERROR_UNSUPPORTED_TYPE = -6, // For machine type check
     Z80_CHECK_ERROR_EOF = -7,
     Z80_CHECK_ERROR_SEEK = -8
+    
 };
 
 enum RLEDecodeResult {
@@ -102,7 +103,9 @@ enum RLEDecodeResult {
     RLE_ERROR_UNEXPECTED_EOF,
     RLE_ERROR_SD_READ,
     RLE_ED_MARKER,
-    RLE_ERROR_SD_READ_FAILED
+    RLE_ERROR_SD_READ_FAILED,
+    RLE_ERROR_INSUFFICIENT_DATA,
+    RLE_ERROR_TRUNCATED_SEQUENCE
 };
 
 /*
