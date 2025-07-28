@@ -14,10 +14,12 @@
 // +-------+---------------------------------+----------------------------------------------------------------+------------------------------+---------------------+
 // | Cmd   | Description                     | Packet Structure (Index: Field Name / Data Type)               | Additional Data After Packet | Total Packet Length |
 // +-------+---------------------------------+----------------------------------------------------------------+------------------------------+---------------------+
-// | 'Z'   | Copy 32 Bytes                   | 0: 'Z', 1: <ignored_size> (8-bit), 2-3: <dest_addr> (16-bit)   | 32 bytes of data             | 4+<32> bytes        |
+// | 'Z'   | Copy 32 Bytes                   | 0: 'Z', 1: 1-2: <dest_addr> (16-bit)                           | 32 bytes of data             | 3+<32> bytes        |
 // | 'C'   | Copy Data                       | 0: 'C', 1: <payload_size> (8-bit), 2-3: <dest_addr> (16-bit)   | <payload_size> bytes of data | 4+<N> bytes         |
 // | 'F'   | Fill Memory Region              | 0: 'F', 1-2: <fill_amount> (16-bit), 3-4: <dest_addr> (16-bit) |                              |                     |
 // |       |                                 |         , 5: <fill_value> (8-bit)                              | None                         | 6 bytes             |
+// | 'f'   | Small Fill Memory Region        | 0: 'F', 1: <fill_amount> (16-bit), 2-3: <dest_addr> (16-bit)   |                              |                     |
+// |       |                                 |         , 4: <fill_value> (8-bit)                              | None                         | 5 bytes             |
 // | 'G'   | Transfer Data (Flashing Border) | 0: 'G', 1: <payload_size> (8-bit), 2-3: <dest_addr> (16-bit)   | <payload_size> bytes of data | 4+<N> bytes         |
 // | 'E'   | Execute Program / Restore SNA   | 0: 'E'                                                         | 27 bytes (SNA header)        | 1+<27> bytes        |
 // | 'W'   | Wait for 50Hz Interrupt         | 0: 'W'                                                         | None                         | 1 byte              |

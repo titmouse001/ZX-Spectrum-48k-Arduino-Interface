@@ -17,13 +17,17 @@ namespace Draw {
 __attribute__((optimize("-Ofast"))) 
 void textLine(int xpos, int ypos, const char *message) {
   SmallFont::prepareTextGraphics(TextBuffer, message);  // Pre-render text into TextBuffer (output count ignored)
-  START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE); // Z = command_Copy32
+  // START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE); // Z = command_Copy32
+
   uint8_t *outputLine = TextBuffer;
+  packetBuffer[0] = 'Z';
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
-    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, SmallFont::FNT_BUFFER_SIZE);
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
+  //  ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
+    packetBuffer[1] = (uint8_t)(destAddr >> 8);
+    packetBuffer[2] = (uint8_t)(destAddr & 0xFF);
+    memcpy(&packetBuffer[3], outputLine, SmallFont::FNT_BUFFER_SIZE);
+    Z80Bus::sendBytes(packetBuffer, 3 + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
   }
 }
 

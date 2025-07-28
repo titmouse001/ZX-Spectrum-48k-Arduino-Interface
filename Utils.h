@@ -28,6 +28,16 @@ constexpr uint8_t JOYSTICK_SELECT = B01000000;
     (buf)[5] = (uint8_t)(value); \
   } while (0)
 
+#define SMALL_FILL_COMMAND(buf, amount, address, value) \
+  do { \
+    (buf)[0] = 'f'; \
+    (buf)[1] = (uint8_t)(amount); \
+    (buf)[2] = (uint8_t)((address) >> 8); \
+    (buf)[3] = (uint8_t)((address)&0xFF); \
+    (buf)[4] = (uint8_t)(value); \
+  } while (0)
+
+
 /** 
   * Build the packet header for a 16-bit command:
   * @param buf          byte array to write into

@@ -102,10 +102,10 @@ L0038:
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
 ; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
-; After NMI line signals for the speccy to resume, the Arduino waits for 7μs to allow time for the ISR to complete.
+; After NMI line signals for the speccy to resume, the Arduino waits for 7microseconds to allow time for the ISR to complete.
 ; NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
 ;                    RETN Instruction:    14 T-states.
-; 					 24×0.2857=6.857μs (1/3.5MHz = 0.2857μs)
+; 					 24x0.2857=6.857microsecond  (1/3.5MHz = 0.2857microseconds)
 ORG $0066
 L0066:
 	RETN
@@ -123,12 +123,14 @@ check_initial:   	 ; command checking loop
 													
 	cp 'Z'
 	jp z, command_Copy32 		; Copy 32 bytes (optimized for screen updates)
-	cp 'F'            
-	jp z, command_Fill 			; Fill memory region
 	cp 'G' 
-	jp z, command_Transfer 	; Transfer with flashing border (SNA loading)
+	jp z, command_Transfer 		; Transfer with flashing border (SNA loading)
+	cp 'f'            
+	jp z, command_SmallFill 	; Small Fill memory region
 	cp 'C'           
 	jp z, command_Copy 			; Copy data (text/error messages)
+	cp 'F'            
+	jp z, command_Fill 			; Fill memory region
 	cp 'W'            
 	jp z, command_Wait 			; Wait for 50Hz interrupt
 	cp 'S'
@@ -180,6 +182,20 @@ fillLoop:
     JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
     JR mainloop 	; Return back for next transfer command
 
+;------------------------------------------------------
+command_SmallFill:  ; "f" - Small Fill
+;------------------------------------------------------
+	halt 
+	in b,(c)     			  ; Fill count (1 byte)
+	READ_PAIR_WITH_HALT h,l   ; HL = Destination address
+	halt                      ; Wait for Arduino
+	in a,(c)                  ; Read fill value into A
+smallfillLoop:
+	ld (hl),a                 ; Store fill byte
+	inc hl
+	djnz smallfillLoop             ; Loop until B == 0
+	jr mainloop
+
 ;---------------------------------------------------
 command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
 ;---------------------------------------------------
@@ -200,41 +216,33 @@ readDataLoop:
 command_Copy:  ; "C" - COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
-	halt					; Synchronizes with Arduino (NMI to continue)
+	halt							; Synchronizes with Arduino (NMI to continue)
 	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
 CopyLoop:
-	halt		 	; Synchronizes with Arduino (NMI to continue)
+	halt		 			; Synchronizes with Arduino (NMI to continue)
 
-;	in a,($1f)   	; Read a byte from the z80 I/O port [11]
-;	ld (hl),a	 	; write to memory					[7]
-;   inc hl			;									[6]	
-;	djnz CopyLoop  	; read loop							[13]
+;	in a,($1f)   		; Read a byte from the z80 I/O port [11]
+;	ld (hl),a	 		;	 write to memory				[7]
+;   inc hl				;									[6]	
+;	djnz CopyLoop  		; read loop							[13]
 ; TOTAL: [37 t-states]
 	
-	ini   			; (HL)<-(C), B<-B–1, HL<-HL+1		[16]
-	JP nz,CopyLoop	;									[10]
+	ini   				; (HL)<-(C), B<-B-1, HL<-HL+1		[16]
+	JP nz,CopyLoop		;									[10]
 
-    jp mainloop 	; done - back for next transfer command
+  jp mainloop 			; done - back for next transfer command
 
 ;------------------------------------------------------
 command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
 ;------------------------------------------------------
-	halt					; Synchronizes with Arduino (NMI to continue)
-	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
+;;;	halt					; Synchronizes with Arduino (NMI to continue)
+;;;;;;;;;;;;;;;;	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
-
-	; (64+192+56)*224 = 69888 T-states (One scanline takes 224 T-states)
-	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
-	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
-
-; https://github.com/rejunity/zx-racing-the-beam/blob/main/screen_timing.asm
-
 	REPT 32					; transfer x32 bytes [total:640 t-states]
 	halt					; [4]
 	ini						; [16]
 	ENDM
-
   JP mainloop 			; done - back for next transfer command
 
 ;--------------------------------------------------------
@@ -259,7 +267,7 @@ command_Stack:  ; 'S'  - restores snapshots stack
 	READ_PAIR_WITH_HALT h,l 
 	ld sp,hl
     halt  					; synchronization with Arduino
-    jp   mainloop          	; Done – jump back for next command
+    jp   mainloop          	; Done - jump back for next command
 
 ;-------------------------------------------------------------------------------------------
 command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
@@ -336,7 +344,7 @@ RestoreEI_IFFStateComplete:
 	; NOTE: The HALT instruction requires an active stack for synchronization. The 2 freed bytes is used 
 	; as a temporary single-level stack, just enough for the final "resource-critical" restore stages.
 	;
-	; Restore Program's Stack Pointer — the SNA format allows some magic here (see above)
+	; Restore Program's Stack Pointer - the SNA format allows some magic here (see above)
 	READ_PAIR_WITH_HALT l, h      ; Read stack pointer
 	ld sp, hl                     ; Restore sp from Snapshots_SP
 	pop hl                        ; SP += 2, move past RET location (now we can use this area as a tiny stack!)
@@ -384,7 +392,7 @@ RestoreInterruptModeComplete:
 	inc sp                   ; Skip the current_flags byte (SP now points to F_original)
 	pop af                   ; F = F_original (from stack), A = garbage (ignored)
 	dec sp                   ; Restore SP to its original position
-	READ_ACC_WITH_HALT       ; Load original A (accumulator) – AF is now fully restored
+	READ_ACC_WITH_HALT       ; Load original A (accumulator) - AF is now fully restored
 
 	JP SCREEN_START		 ; jump to relocated code in screen memory
 	
@@ -452,7 +460,7 @@ setIM0:
 ; RestoreEI_IFFState
 ; 	Sets: 'EI' - Enable Interrupt, flip-flop (IFF) 
 ; 	IN: A, enable = bit 2 set
-;	NOTE: JP back not RET as subroutine calls due to the one‐level stack constraint
+;	NOTE: JP back not RET as subroutine calls due to the one-level stack constraint
 RestoreEI_IFFState:
 	AND	%00000100   		 			; get bit 2
 	jp	z,RestoreEI_IFFStateComplete  	; disabled - skip 'EI'
@@ -487,6 +495,18 @@ rawKeyFound:
     JP      DONE_KEY
 ;------------------------------------------------------------------------
 
+
+;fill32:
+;    LD IX, 0        ; 14t
+;    ADD IX, SP      ; 15t
+;    LD SP, HL       ; 6t - HL points to END of 32-byte area
+;    LD H, A         ; 4t
+;    LD L, A         ; 4t
+;	 	 REPT 16			
+;	   PUSH HL
+;		 ENDM
+;    LD SP, IX       ; 10t
+;    JP mainloop     ; 12t
 
 ;------------------------------------------------------------------------
 ___UNUSED___GET_KEY:   ;; PUSH    BC            
@@ -582,7 +602,12 @@ DS  16384 - last	; leave rest of rom blank
 ; [26] BorderColour = 0x00       
 
 
+; usefull ASM tips
+; https://github.com/rejunity/zx-racing-the-beam/blob/main/screen_timing.asm
 
+; (64+192+56)*224 = 69888 T-states (One scanline takes 224 T-states)
+	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
+	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
 
 
 ; **** SCRATCH PAD ********
@@ -599,7 +624,7 @@ DS  16384 - last	; leave rest of rom blank
 ;     ld   sp, hl            ; 6t
 ;     ld   h, a              ; 4t
 ;     ld   l, a              ; 4t
-;     push hl                ; 16×11t = 176t
+;     push hl                ; 16x11t = 176t
 ;     push hl
 ;     push hl
 ;     push hl
