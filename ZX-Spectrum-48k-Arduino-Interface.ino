@@ -105,26 +105,31 @@ void loop() {
 
   SdCardSupport::openFileByIndex(doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
 
+  
   if (file.available() && file.fileSize() == 6912) {  // Checks if file is a standard 6912-byte raw screen dump.
+    // *****************
+    // *** SCR FILES ***
+    // *****************
     Z80Bus::fillScreenAttributes(0);                  // Clears screen attributes for direct screen data upload.
     uint16_t currentAddress = 0x4000;                 // Spectrum screen memory start.
     while (file.available()) {                        // Reads and sends file data in chunks to Spectrum.
       byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
       START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);           // Prepares 'Copy' command for Z80.
-      ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);             // Appends target Spectrum RAM address.
+      ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);            // Appends target Spectrum RAM address.
       Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);  // Transmits command and data.
       currentAddress += bytesRead;                                  // Advances target address.
     }
     file.close();
-
     while (getCommonButton() == 0) {}  // Waits for user input to view loaded screen.
-
     // about to go back to the menus - clear screen
-    Z80Bus::fillScreenAttributes(0); // attributes first for faster visual clear (768 bytes)
-    FILL_COMMAND(packetBuffer,/*amount*/ 6144, /*addr*/ 0x4000, /*value*/ 0);  // now the screens bitmap
+    Z80Bus::fillScreenAttributes(0);                                            // attributes first for faster visual clear (768 bytes)
+    FILL_COMMAND(packetBuffer, /*amount*/ 6144, /*addr*/ 0x4000, /*value*/ 0);  // now the screens bitmap
     Z80Bus::sendBytes(packetBuffer, 6);
 
   } else {
+    // *****************
+    // *** SNA FILES ***
+    // *****************
     if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE) {
       if (bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
         do {                     // Loop to monitor Spectrum joystick inputs during game.
@@ -136,24 +141,36 @@ void loop() {
         while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
       }
     } else {
+      // *****************
+      // *** TXT FILES ***  ... not yet implemented
+      // *****************
+      char* fileName = (char*)&packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
+      uint16_t len = file.getName7(fileName, 64);
+      char* dotPtr = strrchr(fileName, '.');
+      char* extension = dotPtr + 1;
+      if (strcmp(extension, "txt") == 0) {
+        Z80Bus::fillScreenAttributes(B00010000);
+        SdCardSupport::fileClose();
+      } else {
+        // *****************
+        // *** Z80 FILES ***
+        // *****************
+        if (convertZ80toSNA() == BLOCK_SUCCESS) {
+          SdCardSupport::fileClose();
+          bootFromSnapshot_z80_end();
 
-      int a = convertZ80toSNA();
+          do {  // Loop to monitor Spectrum joystick inputs during game.
+            unsigned long startTime = millis();
+            PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
+            Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
+          } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
 
-      SdCardSupport::fileClose();
-     	bootFromSnapshot_z80_end();  
-
-//      oled.print("END:");
-//      oled.print(a);
-      if (a == 0) {
-        do {  // Loop to monitor Spectrum joystick inputs during game.
-          unsigned long startTime = millis();
-          PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
-          Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-        } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+          Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
+          while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+        }else { // convert failed
+          SdCardSupport::fileClose();
+        }
       }
-
-      Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-      while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
     }
   }
 }

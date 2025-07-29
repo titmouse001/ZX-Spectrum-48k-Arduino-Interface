@@ -214,7 +214,7 @@ Z80CheckResult checkZ80FileValidity() {
 }
 
 __attribute__((optimize("-Ofast"))) 
-static void decodeRLE_core(uint32_t sourceLengthLimit, /* uint32_t& bytesWrittenToOutput, */ uint16_t currentAddress) {
+static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) {
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;  // Max size for 'G' command payload
 	uint8_t* commandPayloadPtr = &packetBuffer[SIZE_OF_HEADER];           // Points to the payload area for commands
 	uint16_t commandPayloadPos = 0;                                       // Current position within the command payload buffer
@@ -222,7 +222,6 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, /* uint32_t& bytesWritten
 	uint16_t fileReadBufferCurrentPos = 0;
 	uint16_t fileReadBufferBytesAvailable = 0;
 	uint32_t bytesReadFromSource = 0;
-//	uint16_t bytesWrittenToOutput = 0;
 
 	auto getNextByteFromFile = [&]() -> uint8_t {
 		if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
@@ -243,7 +242,6 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, /* uint32_t& bytesWritten
 			ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);
 			Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + commandPayloadPos);
 			currentAddress += commandPayloadPos;
-		//	bytesWrittenToOutput += commandPayloadPos;
 			commandPayloadPos = 0;
 		}
 	};
@@ -266,7 +264,6 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, /* uint32_t& bytesWritten
 				SMALL_FILL_COMMAND(packetBuffer,runAmount, currentAddress, value);
 				Z80Bus::sendBytes(packetBuffer, 5);
 				currentAddress += runAmount;
-			//	bytesWrittenToOutput += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
 				addByteToCommandPayloadBuffer(b2);
@@ -276,13 +273,11 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, /* uint32_t& bytesWritten
 		}
 	}
 	flushCommandPayloadBuffer();
-//	return bytesWrittenToOutput;
 }
 
 __attribute__((optimize("-Ofast"))) 
-BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) { //}, uint16_t* uncompressed_length_out) {
+BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) { 
 	uint16_t compressed_length;
-	//const uint16_t BLOCK_SIZE = 0x4000;  // 16 KB for memory pages (65536 bytes / 4 = 16384 bytes)
 
 	// Read compressed_length (2 bytes, little-endian) into the file read buffer
 	if (SdCardSupport::fileRead(packetBuffer, FILE_READ_BUFFER_OFFSET, 2) != 2) {
@@ -320,14 +315,7 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) { //}, uint16_t*
 		return BLOCK_UNSUPPORTED_PAGE;
 	}
 
-	//uint32_t bytesWrittenActual = 0;
-	//RLEDecodeResult decodingResult = 
-	//int16_t bytesWrittenActual = 
 	decodeRLE_core(compressed_length, /* bytesWrittenActual, */ (uint16_t)sna_offset);
-
-	//*uncompressed_length_out = (uint16_t)bytesWrittenActual;
-	//if (decodingResult != RLE_OK) { return BLOCK_ERROR_READ_DATA; }
-	//if (*uncompressed_length_out > BLOCK_SIZE) { return BLOCK_ERROR_READ_DATA; }
 	return BLOCK_SUCCESS;
 }
 
@@ -353,41 +341,23 @@ int16_t convertZ80toSNA_impl() {
 
 		while (true) {
 			uint8_t page_number;
-	//		uint16_t uncompressed_length = 0;
 			BlockReadResult block_result = z80_readAndWriteBlock(&page_number); //, &uncompressed_length);
 			if (block_result == BLOCK_END_OF_FILE) break;
 			if (block_result == BLOCK_UNSUPPORTED_PAGE) { continue; } // Skip to the next block
 			if (block_result<0) { return block_result; }  // negative critical errors
 		}
-//		while (true) {
-//			uint8_t page_number;
-//			uint16_t uncompressed_length = 0;
-//			BlockReadResult block_result = z80_readAndWriteBlock(&page_number, &uncompressed_length);
-//			if (block_result == BLOCK_END_OF_FILE) break;
-			//if (block_result != BLOCK_SUCCESS) return -1;
-		//}
 	} else {                                     // version 1
 		const uint32_t DEST_BUFFER_SIZE = 0xC000;  // Expected uncompressed size (48K machine)
 		stackOffsetForPushingPC = Z802SNA::convertHeaders(temp_z80Header_v1, snaHeader);
-	//	uint32_t bytesWrittenToOutput = 0;
 
 		if (isV1Compressed) {
 			int32_t start_of_rle_data = SdCardSupport::filePosition();
 			if (start_of_rle_data == -1) return -1;
-
 			uint32_t rle_data_length = 0;
-
 			if (!findMarkerOptimized(start_of_rle_data, rle_data_length) || rle_data_length == 0) {
 				return BLOCK_ERROR_NO_V1_MARKER;
 			}
-
-			// Marker found successfully, decode the RLE data
-			//RLEDecodeResult decodingResult = 
-		//	uint16_t bytesWrittenToOutput = 
 			decodeRLE_core(rle_data_length,/* bytesWrittenToOutput,*/ 0x4000);
-		//	if (decodingResult != RLE_OK || bytesWrittenToOutput != DEST_BUFFER_SIZE) {
-		//		return -1;
-		//	}
 
 			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
 			int32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
@@ -396,14 +366,8 @@ int16_t convertZ80toSNA_impl() {
 					return -1;  // Failed to seek past marker
 				}
 			}
-
 		} else {  	// Uncompressed V1 data
-			//RLEDecodeResult decodingResult =
-		//uint16_t	bytesWrittenToOutput =
-	  decodeRLE_core(DEST_BUFFER_SIZE, /*, bytesWrittenToOutput, */ 0x4000);
-		//	if (decodingResult != RLE_OK || bytesWrittenToOutput != DEST_BUFFER_SIZE) {
-		//		return -1;
-		//	}
+		  decodeRLE_core(DEST_BUFFER_SIZE, /*, bytesWrittenToOutput, */ 0x4000);
 		}
 	}
 
@@ -417,9 +381,6 @@ int16_t convertZ80toSNA_impl() {
 	packetBuffer[SIZE_OF_HEADER + 1] = ext_pc_high;
 	Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + 2);
 
-	//SdCardSupport::fileClose();
-	// Speccy memory loaded - after this we use the 'E' command to reuse for now the 27 byte .SNA header for the final part.
-
 	return BLOCK_SUCCESS;
 }
 
@@ -432,19 +393,14 @@ int16_t convertZ80toSNA() {
 	Z80Bus::sendBytes(packetBuffer, 3);  // 3 = character command + 16bit address
 	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
-	switch (checkZ80FileValidity()) {
-		case Z80_CHECK_SUCCESS: break;  //  oled.println("Z80 FILE OK"); break;
-		case Z80_CHECK_ERROR_OPEN_FILE: return 1;
-		case Z80_CHECK_ERROR_READ_HEADER: return 2;
-		case Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND: return 3;
-		case Z80_CHECK_ERROR_BLOCK_STRUCTURE: return 4;
-		case Z80_CHECK_ERROR_UNEXPECTED_EOF: return 5;
-		case Z80_CHECK_ERROR_UNSUPPORTED_TYPE: return 6;
-		default: return 7;
+	Z80CheckResult fileCheck=checkZ80FileValidity();
+	if (fileCheck!=Z80_CHECK_SUCCESS) { 
+		//SdCardSupport::fileClose();
+		return fileCheck;	
 	}
 
-	int16_t result = convertZ80toSNA_impl();
-
-
-	return result;
+ 	int16_t conversionResult = convertZ80toSNA_impl();
+	//SdCardSupport::fileClose();
+	if (conversionResult<0) { return conversionResult; }
+	return Z80_CHECK_SUCCESS;
 }

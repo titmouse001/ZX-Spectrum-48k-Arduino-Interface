@@ -38,7 +38,6 @@ const uint8_t HEADER_LOW_BYTE = 3;        // Index for low byte of destination a
 const uint16_t COMMAND_PAYLOAD_SECTION_SIZE = 255; // Maximum payload for 'C' and 'G' commands (0-255 bytes)
 const uint16_t FILE_READ_BUFFER_SIZE = 128; // Size for buffering file read operations
 const uint16_t TOTAL_PACKET_BUFFER_SIZE = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
-//const uint8_t PAYLOAD_BUFFER_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;
 
 // The byte offset where the file read buffer section begins within 'packetBuffer'.
 const uint16_t FILE_READ_BUFFER_OFFSET = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE;
@@ -52,8 +51,5 @@ uint8_t head27_Execute[27 + 1];
 
 // Buffer for rendering text with SmallFont.
 byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 }; // SmallFont 5x7
-
-// Buffer for storing file names, used by components like menu.h.
-//char fileName[65];  // removed ... using global buffer now
 
 #endif
