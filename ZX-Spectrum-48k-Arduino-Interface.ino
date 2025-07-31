@@ -54,6 +54,7 @@
 //SSD1306AsciiAvrI2c oled;
 //extern bool setupOled();
 // ----------------------------------------------------------------------------------
+void encodeSend( size_t input_len, uint16_t addr);
 
 void setup() {
 
@@ -145,7 +146,7 @@ void loop() {
       // *** TXT FILES ***  ... not yet implemented
       // *****************
       char* fileName = (char*)&packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
-      uint16_t len = file.getName7(fileName, 64);
+      /*uint16_t len = */file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
       if (strcmp(extension, "txt") == 0) {
@@ -242,11 +243,9 @@ boolean bootFromSnapshot() {
   // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of COMMAND_PAYLOAD_SECTION_SIZE bytes.
   uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
   while (file.available()) {
-    byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
-    START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);  // 'G' command: Generic data upload to Z80.
-    ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);    // Specifies destination address in Spectrum RAM.
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + (uint16_t)bytesRead);
-    currentAddress += packetBuffer[HEADER_PAYLOADSIZE];  // Advances target address.
+    uint16_t bytesRead = file.read(&packetBuffer[SIZE_OF_HEADER], TOTAL_PACKET_BUFFER_SIZE - (6 + SIZE_OF_HEADER));
+    encodeSend(/*&packetBuffer[SIZE_OF_HEADER],*/ bytesRead, currentAddress);
+    currentAddress += bytesRead; 
   }
   file.close();
   //-----------------------------------------
@@ -282,6 +281,54 @@ boolean bootFromSnapshot() {
   return true;  // Snapshot boot successful.
 }
 
+static const uint16_t MAX_RUN_LENGTH = 255 ; //TOTAL_PACKET_BUFFER_SIZE-(6+SIZE_OF_HEADER);;
+static const uint16_t MAX_RAW_LENGTH = 255;
+static const uint8_t MIN_RUN_LENGTH = 5; // 5 is where RLE pays off
+
+// RLE and send with - Transferring raw using 'G' and filling runs 'f' (both max send of 255 bytes)
+// The Speccy will reconstruct this data on its end.
+void encodeSend( /*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
+
+    uint8_t* input = &packetBuffer[SIZE_OF_HEADER];
+
+    if (input_len == 0) return;
+    uint16_t i = 0;
+    while (i < input_len) {
+        uint8_t value = input[i];
+        uint16_t remaining = input_len - i;
+        uint16_t max_run = (remaining > MAX_RUN_LENGTH) ? MAX_RUN_LENGTH : remaining;
+        uint16_t run_len = 1;
+
+        // Check for run 
+        while (run_len < max_run && input[i + run_len] == value) { 
+            run_len++;
+        }
+        if (run_len >= MIN_RUN_LENGTH) { // run found (with payoff)
+            SMALL_FILL_COMMAND(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], run_len, addr, value);  
+            Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], 5);
+            addr+=run_len;
+            i += run_len;
+        }
+        else { // No run found - raw data
+            uint16_t raw_start = i;
+            uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
+            uint16_t raw_len = 1;  // We know current byte isn't part of a run
+            i++;  
+            while (raw_len < max_raw && i < input_len) {
+                if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
+                    break;  // stop - run found
+                }
+                raw_len++;
+                i++;
+            }
+           uint8_t* p =  &packetBuffer[raw_start];
+           START_UPLOAD_COMMAND(p, 'G', raw_len);  // Command:'G' - transmit data
+           ADDR_UPLOAD_COMMAND(p, addr);           // Destination address in Spectrum RAM.
+           Z80Bus::sendBytes(p, SIZE_OF_HEADER + raw_len);
+          addr+=raw_len;
+        }
+    }
+}
 
 /*  BEBUG ONLY
 bool setupOled() {
