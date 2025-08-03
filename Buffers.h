@@ -28,28 +28,43 @@
 // +-------+---------------------------------+----------------------------------------------------------------+------------------------------+---------------------+
 */
 // Standard 4-byte header size used by Z, C, G, E:
-const uint8_t SIZE_OF_HEADER = 4;       // 4 is more common, this is our default use case
-const uint8_t HEADER_TOKEN = 0;           // Index for the command character
-const uint8_t HEADER_PAYLOADSIZE = 1;     // Index for payload size (bytes) for 'C' and 'G' commands
-const uint8_t HEADER_HIGH_BYTE = 2;       // Index for high byte of destination address for 'C' and 'G' commands
-const uint8_t HEADER_LOW_BYTE = 3;        // Index for low byte of destination address for 'C' and 'G' commands
+//const uint8_t SIZE_OF_HEADER = 4;       // 4 is more common, this is our default use case
+//const uint8_t HEADER_TOKEN = 0;           // Index for the command character
+//const uint8_t HEADER_PAYLOADSIZE = 1;     // Index for payload size (bytes) for 'C' and 'G' commands
+//const uint8_t HEADER_HIGH_BYTE = 2;       // Index for high byte of destination address for 'C' and 'G' commands
+//const uint8_t HEADER_LOW_BYTE = 3;        // Index for low byte of destination address for 'C' and 'G' commands
 // ----------------------------------------------------------------------------------
 // --- Buffer Segment Definitions ---
 const uint16_t COMMAND_PAYLOAD_SECTION_SIZE = 255; // Maximum payload for 'C' and 'G' commands (0-255 bytes)
 const uint16_t FILE_READ_BUFFER_SIZE = 128; // Size for buffering file read operations
-const uint16_t TOTAL_PACKET_BUFFER_SIZE = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
+//const uint16_t TOTAL_PACKET_BUFFER_SIZE = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
+const uint16_t TOTAL_PACKET_BUFFER_SIZE = 5 + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
 
 // The byte offset where the file read buffer section begins within 'packetBuffer'.
-const uint16_t FILE_READ_BUFFER_OFFSET = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE;
+//const uint16_t FILE_READ_BUFFER_OFFSET = SIZE_OF_HEADER + COMMAND_PAYLOAD_SECTION_SIZE;
+const uint16_t FILE_READ_BUFFER_OFFSET = 5 + COMMAND_PAYLOAD_SECTION_SIZE;
 
 // --- Global Buffers ---
 // The primary general-purpose buffer used for Z80 commands and file read operations.
 uint8_t packetBuffer[TOTAL_PACKET_BUFFER_SIZE];
 
 // Buffer for storing the 27-byte header of .sna files when using the 'E' (Execute) command.
-uint8_t head27_Execute[27 + 1];
+uint8_t head27_Execute[27 + 1 + 1];
 
 // Buffer for rendering text with SmallFont.
 byte TextBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 }; // SmallFont 5x7
+
+
+
+uint16_t command_TransmitKey;
+uint16_t command_Fill;
+uint16_t command_SmallFill;
+uint16_t command_Transfer;
+uint16_t command_Copy;
+uint16_t command_Copy32;
+uint16_t command_Wait;
+uint16_t command_Stack;
+uint16_t command_Execute;
+
 
 #endif

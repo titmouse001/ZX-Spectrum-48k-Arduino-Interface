@@ -216,7 +216,8 @@ Z80CheckResult checkZ80FileValidity() {
 __attribute__((optimize("-Ofast"))) 
 static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) {
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;  // Max size for 'G' command payload
-	uint8_t* commandPayloadPtr = &packetBuffer[SIZE_OF_HEADER];           // Points to the payload area for commands
+	//uint8_t* commandPayloadPtr = &packetBuffer[SIZE_OF_HEADER];           // Points to the payload area for commands
+  uint8_t* commandPayloadPtr = &packetBuffer[5];           // Points to the payload area for commands
 	uint16_t commandPayloadPos = 0;                                       // Current position within the command payload buffer
 	uint8_t* fileReadBufferPtr = &packetBuffer[FILE_READ_BUFFER_OFFSET];  // File read buffer
 	uint16_t fileReadBufferCurrentPos = 0;
@@ -238,9 +239,17 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) 
 
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
-			START_UPLOAD_COMMAND(packetBuffer, 'G', commandPayloadPos);
-			ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);
-			Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + commandPayloadPos);
+//			START_UPLOAD_COMMAND(packetBuffer, 'G', commandPayloadPos);
+//			ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);
+//			Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + commandPayloadPos);
+
+    packetBuffer[0] = (uint8_t)((command_Transfer) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Transfer)&0xFF); 
+	  packetBuffer[2] = commandPayloadPos; 
+    packetBuffer[3] = (uint8_t)((currentAddress) >> 8); 
+    packetBuffer[4] = (uint8_t)((currentAddress)&0xFF); 
+    Z80Bus::sendBytes(packetBuffer, 5 + commandPayloadPos);
+
 			currentAddress += commandPayloadPos;
 			commandPayloadPos = 0;
 		}
@@ -261,8 +270,19 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) 
 				flushCommandPayloadBuffer();  // Flush any previous payload before a fill command
 				uint8_t runAmount = getNextByteFromFile();
 				uint8_t value = getNextByteFromFile();
-				SMALL_FILL_COMMAND(packetBuffer,runAmount, currentAddress, value);
-				Z80Bus::sendBytes(packetBuffer, 5);
+//				SMALL_FILL_COMMAND(packetBuffer,runAmount, currentAddress, value);
+//				Z80Bus::sendBytes(packetBuffer, 5);
+
+
+   packetBuffer[0] = (uint8_t)((command_SmallFill) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_SmallFill)&0xFF); 
+    packetBuffer[2] = runAmount;
+    packetBuffer[3] = (uint8_t)((currentAddress) >> 8); 
+    packetBuffer[4] = (uint8_t)((currentAddress)&0xFF); 
+    packetBuffer[5] = (uint8_t)(value); 
+    Z80Bus::sendBytes(packetBuffer, 6);
+
+
 				currentAddress += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
@@ -323,8 +343,8 @@ int16_t convertZ80toSNA_impl() {
 	bool isV1Compressed = false;
 	uint8_t ext_pc_low = 0, ext_pc_high = 0, ext_hw_mode = 0;
 	uint16_t stackOffsetForPushingPC = 0;
-	uint8_t* temp_z80Header_v1 = &packetBuffer[0];  // Header will be read into the start of packetBuffer
-	uint8_t* snaHeader = &head27_Execute[0 + 1];    // +1 leaving room for 'E' command
+	uint8_t* temp_z80Header_v1 = &packetBuffer[0];  // .Z80 Header will be read into the start of packetBuffer
+	uint8_t* snaHeader = &head27_Execute[0 + 1 +1];    // +1 leaving room for 'E' command
 
 	int16_t z80_version = readZ80Header(temp_z80Header_v1, &ext_pc_low, &ext_pc_high, &ext_hw_mode, &isV1Compressed);
 	if (z80_version == Z80_VERSION_UNKNOWN) {
@@ -375,29 +395,45 @@ int16_t convertZ80toSNA_impl() {
 	// NOTE: We are currently reusing existing ".SNA" functionaliy for loading the final Z80's CPU registers.
 	//       This can be changed later to use a more effecient standard when sending to the Speccy.
 	uint8_t bytesRead = 2;
-	START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);
-	ADDR_UPLOAD_COMMAND(packetBuffer, stackOffsetForPushingPC);
-	packetBuffer[SIZE_OF_HEADER] = ext_pc_low;
-	packetBuffer[SIZE_OF_HEADER + 1] = ext_pc_high;
-	Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + 2);
+//	START_UPLOAD_COMMAND(packetBuffer, 'G', bytesRead);
+	//ADDR_UPLOAD_COMMAND(packetBuffer, stackOffsetForPushingPC);
+//	packetBuffer[SIZE_OF_HEADER] = ext_pc_low;
+	//packetBuffer[SIZE_OF_HEADER + 1] = ext_pc_high;
+//	Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + 2);
+
+    packetBuffer[0] = (uint8_t)((command_Transfer) >> 8); 
+	packetBuffer[1] = (uint8_t)((command_Transfer)&0xFF); 
+	packetBuffer[2] = bytesRead; 
+    packetBuffer[3] = (uint8_t)((stackOffsetForPushingPC) >> 8); 
+    packetBuffer[4] = (uint8_t)((stackOffsetForPushingPC)&0xFF); 
+
+    packetBuffer[5] = ext_pc_low;  // data - NOT PART OF HEADER
+    packetBuffer[6] = ext_pc_high;
+
+    Z80Bus::sendBytes(packetBuffer, 5 + 2);
+
+
+
 
 	return BLOCK_SUCCESS;
 }
 
 int16_t convertZ80toSNA() {
 
-	const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
-	packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
-	packetBuffer[1] = (uint8_t)(address >> 8);
-	packetBuffer[2] = (uint8_t)(address & 0xFF);
-	Z80Bus::sendBytes(packetBuffer, 3);  // 3 = character command + 16bit address
-	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
-
 	Z80CheckResult fileCheck=checkZ80FileValidity();
 	if (fileCheck!=Z80_CHECK_SUCCESS) { 
 		//SdCardSupport::fileClose();
 		return fileCheck;	
 	}
+
+		const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
+//	packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
+  packetBuffer[0] = (uint8_t)(command_Stack >> 8); 
+  packetBuffer[1] = (uint8_t)(command_Stack & 0xFF);
+	packetBuffer[2] = (uint8_t)(address >> 8);
+	packetBuffer[3] = (uint8_t)(address & 0xFF);
+	Z80Bus::sendBytes(packetBuffer, 4);  // 3 = character command + 16bit address
+	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
  	int16_t conversionResult = convertZ80toSNA_impl();
 	//SdCardSupport::fileClose();

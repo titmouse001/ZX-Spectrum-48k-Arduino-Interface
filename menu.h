@@ -37,7 +37,8 @@ void fileList(uint16_t startFileIndex) {
   //       'textLine' will process its characters long before it internaly needs access to the global packetBuffer.
   //         - extra note: We could use index [0] but that would mean extra work, well in this case it would mean having the 
   //           [0]...fileName[1] = '\0'; reset inside the loop.
-  char* fileName = (char*) &packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
+ // char* fileName = (char*) &packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
+  char* fileName = (char*) &packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
 
   root.rewind();
   uint8_t clr = 0;
@@ -151,6 +152,7 @@ uint16_t doFileMenu(uint16_t totalFiles) {
   while (true) {
     unsigned long start = millis();
     byte btn = processButtons(totalFiles);
+
     switch (btn) {
       case BUTTON_SELECT:
         return currentFileIndex;

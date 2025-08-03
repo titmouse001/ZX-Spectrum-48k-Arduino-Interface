@@ -71,8 +71,8 @@ void frameDelay(unsigned long start) {
 //    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
 __attribute__((optimize("-Ofast"))) 
 uint8_t readJoystick() {
-  PORTB |= (1 << PB2);      // Latch HIGH (enable shifting)
   PORTC |= (1 << PC2);      // Initial Clock HIGH
+  PORTB |= (1 << PB2);      // Latch HIGH (enable shifting)
   uint8_t data = 0;
   for (uint8_t i = 0; i < 8; i++) {
     data <<= 1;

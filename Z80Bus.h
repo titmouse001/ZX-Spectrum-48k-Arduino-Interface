@@ -88,7 +88,7 @@ void waitRelease_NMI() {
 
 __attribute__((optimize("-Ofast"))) 
 void sendBytes(byte* data, uint16_t size) {
-  cli();  // Not really needed
+// cli();  // Not really needed
   for (uint16_t i = 0; i < size; i++) {
     // Wait for Z80 HALT line to go LOW (active low)
     while (digitalReadFast(Pin::Z80_HALT) != 0) {};
@@ -103,69 +103,126 @@ void sendBytes(byte* data, uint16_t size) {
     // Wait for HALT line to return HIGH again (shows Z80 has resumed)
     while (digitalReadFast(Pin::Z80_HALT) == 0) {};
   }
-  sei();
+ // sei();
 }
 
 /* Send Snapshot Header Section */
 void sendSnaHeader(byte* info) {
   // head27_2[0] already contains "E" which informs the speccy this packets a execute command.
-  Z80Bus::sendBytes(&info[0], 1 + 1 + 2 + 2 + 2 + 2);  // Send command "E" then I,HL',DE',BC',AF'
-  Z80Bus::sendBytes(&info[1 + 15], 2 + 2 + 1 + 1);     // Send IY,IX,IFF2,R (packet data continued)
-  Z80Bus::sendBytes(&info[1 + 23], 2);                 // Send SP                     "
-  Z80Bus::sendBytes(&info[1 + 9], 2);                  // Send HL                     "
-  Z80Bus::sendBytes(&info[1 + 25], 1);                 // Send IM                     "
-  Z80Bus::sendBytes(&info[1 + 26], 1);                 // Send BorderColour           "
-  Z80Bus::sendBytes(&info[1 + 11], 2);                 // Send DE                     "
-  Z80Bus::sendBytes(&info[1 + 13], 2);                 // Send BC                     "
-  Z80Bus::sendBytes(&info[1 + 21], 2);                 // Send AF                     "
+  // Z80Bus::sendBytes(&info[0], 1 + 1 + 2 + 2 + 2 + 2);  // Send command "E" then I,HL',DE',BC',AF'
+  // Z80Bus::sendBytes(&info[1 + 15], 2 + 2 + 1 + 1);     // Send IY,IX,IFF2,R (packet data continued)
+  // Z80Bus::sendBytes(&info[1 + 23], 2);                 // Send SP                     "
+  // Z80Bus::sendBytes(&info[1 + 9], 2);                  // Send HL                     "
+  // Z80Bus::sendBytes(&info[1 + 25], 1);                 // Send IM                     "
+  // Z80Bus::sendBytes(&info[1 + 26], 1);                 // Send BorderColour           "
+  // Z80Bus::sendBytes(&info[1 + 11], 2);                 // Send DE                     "
+  // Z80Bus::sendBytes(&info[1 + 13], 2);                 // Send BC                     "
+  // Z80Bus::sendBytes(&info[1 + 21], 2);                 // Send AF                     "
+
+
+  Z80Bus::sendBytes(&info[0], 2 + 1 + 2 + 2 + 2 + 2);  // Send COMMAND ADDR then  I,HL',DE',BC',AF'
+  Z80Bus::sendBytes(&info[2 + 15], 2 + 2 + 1 + 1);     // Send IY,IX,IFF2,R (packet data continued)
+  Z80Bus::sendBytes(&info[2 + 23], 2);                 // Send SP                     "
+  Z80Bus::sendBytes(&info[2 + 9], 2);                  // Send HL                     "
+  Z80Bus::sendBytes(&info[2 + 25], 1);                 // Send IM                     "
+  Z80Bus::sendBytes(&info[2 + 26], 1);                 // Send BorderColour           "
+  Z80Bus::sendBytes(&info[2 + 11], 2);                 // Send DE                     "
+  Z80Bus::sendBytes(&info[2 + 13], 2);                 // Send BC                     "
+  Z80Bus::sendBytes(&info[2 + 21], 2);                 // Send AF                     "
+
+
 }
 
 void fillScreenAttributes(const uint8_t attributes) {
   const uint16_t amount = 768;
-  const uint16_t startAddress = 0x5800;
+  const uint16_t fillAddr = 0x5800;
   /* Fill mode */
-  FILL_COMMAND(packetBuffer, amount, startAddress, attributes);
-  Z80Bus::sendBytes(packetBuffer, 6);
+//  FILL_COMMAND(packetBuffer, amount, fillAddr, attributes);
+//  Z80Bus::sendBytes(packetBuffer, 6);
+
+    packetBuffer[0] = (uint8_t)((command_Fill) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Fill)&0xFF); 
+    packetBuffer[2] = (uint8_t)((amount) >> 8); 
+    packetBuffer[3] = (uint8_t)((amount)&0xFF); 
+    packetBuffer[4] = (uint8_t)((fillAddr) >> 8); 
+    packetBuffer[5] = (uint8_t)((fillAddr)&0xFF); 
+    packetBuffer[6] = (uint8_t)(attributes); 
+
+    Z80Bus::sendBytes(packetBuffer, 7);
 }
 
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
   const uint16_t amount = 32;
-  const uint16_t destAddr = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
+  const uint16_t fillAddr = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
 
-  if (oldHighlightAddress != destAddr) {
+  if (oldHighlightAddress != fillAddr) {
     /* Remove old highlight - B01000111: Restore white text/black background for future use */
-    FILL_COMMAND(packetBuffer, amount, oldHighlightAddress, B01000111);
-    Z80Bus::sendBytes(packetBuffer, 6);
-    oldHighlightAddress = destAddr;
+//    FILL_COMMAND(packetBuffer, amount, oldHighlightAddress, B01000111);
+//    Z80Bus::sendBytes(packetBuffer, 6);
+
+    packetBuffer[0] = (uint8_t)((command_Fill) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Fill)&0xFF); 
+    packetBuffer[2] = (uint8_t)((amount) >> 8); 
+    packetBuffer[3] = (uint8_t)((amount)&0xFF); 
+    packetBuffer[4] = (uint8_t)((oldHighlightAddress) >> 8); 
+    packetBuffer[5] = (uint8_t)((oldHighlightAddress)&0xFF); 
+    packetBuffer[6] = (uint8_t)(B01000111); 
+    Z80Bus::sendBytes(packetBuffer, 7);
+
+    oldHighlightAddress = fillAddr;
   }
 
   /* Highlight file selection - B00101000: Black text, Cyan background*/
-  FILL_COMMAND(packetBuffer, amount, destAddr, B00101000);
-  Z80Bus::sendBytes(packetBuffer, 6);
+  //FILL_COMMAND(packetBuffer, amount, destAddr, B00101000);
+ // Z80Bus::sendBytes(packetBuffer, 6);
+
+   packetBuffer[0] = (uint8_t)((command_Fill) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Fill)&0xFF); 
+    packetBuffer[2] = (uint8_t)((amount) >> 8); 
+    packetBuffer[3] = (uint8_t)((amount)&0xFF); 
+    packetBuffer[4] = (uint8_t)((fillAddr) >> 8); 
+    packetBuffer[5] = (uint8_t)((fillAddr)&0xFF); 
+    packetBuffer[6] = (uint8_t)(B00101000); 
+    Z80Bus::sendBytes(packetBuffer, 7);
 }
 
-
 uint8_t GetKeyPulses() {
-  constexpr uint8_t DELAY_CMD_VALUE = 20;  // 20 units ≈ 70 µs (20 / 0.285714)
+
+
+/* Timings sample: z80 code from Speccy side
+DELAY_LOOP:
+	NOP
+	NOP
+	NOP
+  DJNZ DELAY_LOOP				; 25t-states 
+
+  ; 25/35000000 = 7 microseconds (7.14)
+  ; say 20 iteration above will give :-
+  ; 1.428571428571429e-5 = 0.000011428 seconds
+   ;1.428571428571429e-5 * 1000000 = 11.428 microseconds
+*/  
+
+  constexpr uint8_t DELAY_ITERATIONS_PARAM= 20;  // 20 loops of 25 t-states
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
   uint8_t pulseCount = 0;
   uint32_t lastPulseTime = 0;
 
-  packetBuffer[0] = 'T';
-  packetBuffer[1] = DELAY_CMD_VALUE;  // delay after pulses
+  // packetBuffer[0] = 'T';
+  // packetBuffer[1] = DELAY_CMD_VALUE;  // delay after pulses
   // 20 / 0.285714 = 70 microseconds
-  Z80Bus::sendBytes(packetBuffer, 2);
 
-  while (1) {
-    // Service current HALT if active
-    if ((PINB & (1 << PINB0)) == 0) {
-      // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-//      WRITE_BIT(PORTC, DDC0, _LOW);
-//      WRITE_BIT(PORTC, DDC0, _HIGH);  // A0, pin14 high to Z80 /NMI
-      digitalWriteFast(Pin::Z80_NMI,LOW);
-      digitalWriteFast(Pin::Z80_NMI,HIGH);
-      pulseCount++;
+  packetBuffer[0] = (uint8_t)((command_TransmitKey) >> 8);
+  packetBuffer[1] = (uint8_t)((command_TransmitKey)&0xFF);
+  packetBuffer[2] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+  Z80Bus::sendBytes(packetBuffer, 3);
+
+  while (1) {                          // Tally halts, noting the end marker is just a time gap
+    if ((PINB & (1 << PINB0)) == 0) {  // halt active
+      // Signal the speccy to un-halt the Z80 - Pulse the Z80’s /NMI line: LOW -> HIGH
+      digitalWriteFast(Pin::Z80_NMI, LOW);
+      digitalWriteFast(Pin::Z80_NMI, HIGH);
       lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      pulseCount++;
     }
 
     // Detect end of transmission (delay timeout after last halt)

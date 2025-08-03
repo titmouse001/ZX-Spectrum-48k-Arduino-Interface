@@ -55,6 +55,7 @@
 //extern bool setupOled();
 // ----------------------------------------------------------------------------------
 void encodeSend( size_t input_len, uint16_t addr);
+uint16_t GetPulseCount() ;
 
 void setup() {
 
@@ -64,9 +65,11 @@ void setup() {
   Serial.println("DEBUG MODE - BREAKS Z80 TRANSFERS - ARDUINO SIDE DEBUGGING ONLY");  // Crucial warning for debug mode's impact on Z80.
 #endif
 
+  //delay(200);
+
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-//  setupOled();             // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
+ //setupOled();             // ! DEBUG ONLY ! Optional OLED can be installed for dev debugging (128x32 pixel oled) // Optional OLED setup for development debugging.
 
   // ---------------------------------------------------------------------------
   // Use stock ROM- Select button or fire held at power up
@@ -84,19 +87,21 @@ void setup() {
     }
   }
 
-  Z80Bus::resetZ80();  // Ensures Z80 is reset before SD card/snapshot operations.
+  Z80Bus::resetZ80();
+  setupFunctions();
+
   while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
     //oled.println("SD card failed");
     Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
     Draw::text(80, 90, "INSERT SD CARD");             // Displays SD card prompt on Spectrum screen.
   }
+
 }
 
 void loop() {
+
   // FatFile& root = (SdCardSupport::root);
   FatFile& file = (SdCardSupport::file);
-
-
   Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Resets screen colors for menu display.
 
   uint16_t totalFiles = 0;
@@ -106,26 +111,52 @@ void loop() {
 
   SdCardSupport::openFileByIndex(doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
 
-  
+
   if (file.available() && file.fileSize() == 6912) {  // Checks if file is a standard 6912-byte raw screen dump.
     // *****************
     // *** SCR FILES ***
     // *****************
-    Z80Bus::fillScreenAttributes(0);                  // Clears screen attributes for direct screen data upload.
-    uint16_t currentAddress = 0x4000;                 // Spectrum screen memory start.
-    while (file.available()) {                        // Reads and sends file data in chunks to Spectrum.
-      byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
-      START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);           // Prepares 'Copy' command for Z80.
-      ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);            // Appends target Spectrum RAM address.
-      Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);  // Transmits command and data.
-      currentAddress += bytesRead;                                  // Advances target address.
+    Z80Bus::fillScreenAttributes(0);   // Clears screen attributes for direct screen data upload.
+    uint16_t currentAddress = 0x4000;  // Spectrum screen memory start.
+    while (file.available()) {         // Reads and sends file data in chunks to Spectrum.
+                                       //      byte bytesRead = (byte)file.read(&packetBuffer[SIZE_OF_HEADER], COMMAND_PAYLOAD_SECTION_SIZE);
+
+      byte bytesRead = (byte)file.read(&packetBuffer[5], COMMAND_PAYLOAD_SECTION_SIZE);
+      //      START_UPLOAD_COMMAND(packetBuffer, 'C', bytesRead);           // Prepares 'Copy' command for Z80.
+      //      ADDR_UPLOAD_COMMAND(packetBuffer, currentAddress);            // Appends target Spectrum RAM address.
+      //      Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + bytesRead);  // Transmits command and data.
+      packetBuffer[0] = (uint8_t)((command_Copy) >> 8);
+      packetBuffer[1] = (uint8_t)((command_Copy)&0xFF);
+      packetBuffer[2] = bytesRead;
+      packetBuffer[3] = (uint8_t)((currentAddress) >> 8);
+      packetBuffer[4] = (uint8_t)((currentAddress)&0xFF);
+      Z80Bus::sendBytes(packetBuffer, 5 + bytesRead);
+      currentAddress += bytesRead;  // Advances target address.
     }
-    file.close();
-    while (getCommonButton() == 0) {}  // Waits for user input to view loaded screen.
+    //   file.close();
+    //   while (getCommonButton() == 0) {}  // Waits for user input to view loaded screen.
+
+    SdCardSupport::fileClose();
+    constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
+    while (getCommonButton() == 0) {
+      delay(maxButtonInputMilliseconds);
+    }  // while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+
     // about to go back to the menus - clear screen
-    Z80Bus::fillScreenAttributes(0);                                            // attributes first for faster visual clear (768 bytes)
-    FILL_COMMAND(packetBuffer, /*amount*/ 6144, /*addr*/ 0x4000, /*value*/ 0);  // now the screens bitmap
-    Z80Bus::sendBytes(packetBuffer, 6);
+    Z80Bus::fillScreenAttributes(0);  // attributes first for faster visual clear (768 bytes)
+                                      //    FILL_COMMAND(packetBuffer, /*amount*/ 6144, /*addr*/ 0x4000, /*value*/ 0);  // now the screens bitmap
+                                      //   Z80Bus::sendBytes(packetBuffer, 6);
+    uint16_t amount = 6144;
+    uint16_t fillAddr = 0x4000;
+    packetBuffer[0] = (uint8_t)((command_Fill) >> 8);
+    packetBuffer[1] = (uint8_t)((command_Fill)&0xFF);
+    packetBuffer[2] = (uint8_t)((amount) >> 8);
+    packetBuffer[3] = (uint8_t)((amount)&0xFF);
+    packetBuffer[4] = (uint8_t)((fillAddr) >> 8);
+    packetBuffer[5] = (uint8_t)((fillAddr)&0xFF);
+    packetBuffer[6] = (uint8_t)(0);
+    Z80Bus::sendBytes(packetBuffer, 7);
+
 
   } else {
     // *****************
@@ -133,25 +164,29 @@ void loop() {
     // *****************
     if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE) {
       if (bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
-        do {                     // Loop to monitor Spectrum joystick inputs during game.
+        SdCardSupport::fileClose();
+        do {  // Loop to monitor Spectrum joystick inputs during game.
           unsigned long startTime = millis();
           PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
           Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
         } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
         Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
         while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+        delay(20);
       }
+      setupFunctions();
     } else {
       // *****************
       // *** TXT FILES ***  ... not yet implemented
       // *****************
-      char* fileName = (char*)&packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
-      /*uint16_t len = */file.getName7(fileName, 64);
+      //   char* fileName = (char*)&packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
+      char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
+      /*uint16_t len = */ file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
       if (strcmp(extension, "txt") == 0) {
         Z80Bus::fillScreenAttributes(B00010000);
-        SdCardSupport::fileClose();
+        SdCardSupport::fileClose();  // back around to pick another file and don't reset speccy
       } else {
         // *****************
         // *** Z80 FILES ***
@@ -168,28 +203,54 @@ void loop() {
 
           Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
           while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
-        }else { // convert failed
+          setupFunctions();
+        } else {  // .z80 file failed
           SdCardSupport::fileClose();
         }
+        
       }
+
     }
   }
 }
 
+
+void setupFunctions(){
+  
+  // delay(200);
+  command_TransmitKey = GetPulseCount();
+  command_Fill = GetPulseCount();
+  command_SmallFill = GetPulseCount();
+  command_Transfer = GetPulseCount();
+  // oled.println(command_Transfer);
+  command_Copy = GetPulseCount();
+  // oled.println(command_Copy);
+  command_Copy32 = GetPulseCount();
+  command_Wait = GetPulseCount();
+  command_Stack = GetPulseCount();
+  command_Execute = GetPulseCount();
+  //  oled.println(command_TransmitKey);
+}
 
 
 boolean bootFromSnapshot_z80_end() {
 
   //-----------------------------------------
   // Wait for the next vertial blank to synchronize (Enables Interrupt Mode and Halts).
-  packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
-  Z80Bus::sendBytes(packetBuffer, 1);   // We just send the 1 character "W" command
+  //packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
+  packetBuffer[0] = (uint8_t)((command_Wait) >> 8); 
+  packetBuffer[1] = (uint8_t)((command_Wait)&0xFF); 
+  Z80Bus::sendBytes(packetBuffer, 2);
   //-----------------------------------------
   // Special: Here we wait for the ZX Spectrum's vertical blank interrupt (triggered automatically by the 50Hz screen refresh)
   Z80Bus::waitHalt();  // Continue after vertial blank interrupt
   //-----------------------------------------
   // 'E' command - Load Registers & Executes code
-  head27_Execute[0] = 'E';                    
+//  head27_Execute[0] = 'E';                    
+
+  head27_Execute[0] = (uint8_t)((command_Execute) >> 8); 
+  head27_Execute[1] = (uint8_t)((command_Execute)&0xFF); 
+
   Z80Bus::sendSnaHeader(&head27_Execute[0]);  // Internally reorganizes registers to help direct loading by the Z80 itself.
   //-----------------------------------------
   // Now we wait for the speccy to signal it's ready with a last final HALT.
@@ -207,7 +268,7 @@ boolean bootFromSnapshot_z80_end() {
   digitalWriteFast(Pin::ROM_HALF, HIGH);  
   //-----------------------------------------
   // Wait for the speccy to start executing code
-  while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming snapshot execution resumed.
+  while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming game started
   //
   // At this point the ZX Spectrum should be happly running the newly loaded snapshot code.
   return true;  // Snapshot boot successful.
@@ -222,16 +283,20 @@ boolean bootFromSnapshot() {
   // Send the set stack point command.
   // Reuses a jump address in screen memory, unused until final execution.
   const uint16_t address = 0x4004;  // Temporary Z80 jump target in screen memory.
-  packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
-  packetBuffer[1] = (uint8_t)(address >> 8);
-  packetBuffer[2] = (uint8_t)(address & 0xFF);
-  Z80Bus::sendBytes(packetBuffer, 3); // 3 = character command + 16bit address
+  //packetBuffer[0] = 'S';            // 'S' command: Set Stack Pointer (SP) on Z80.
+
+  packetBuffer[0] = (uint8_t)(command_Stack >> 8); 
+  packetBuffer[1] = (uint8_t)(command_Stack & 0xFF);
+  packetBuffer[2] = (uint8_t)(address >> 8);
+  packetBuffer[3] = (uint8_t)(address & 0xFF);
+  Z80Bus::sendBytes(packetBuffer, 4); 
+
   Z80Bus::waitRelease_NMI();  //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
   //-----------------------------------------
   // Pe-load .sna 27-byte header (CPU registers)
   if (file.available()) {
-    byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 1], 27);  // +1 leave room for command i.e. "E"
+    byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 2], 27);  // +1 leave room for command i.e. "E"
     if (bytesReadHeader != 27) {                                        
       file.close();
       Draw::text(80, 90, "Invalid sna file");
@@ -243,21 +308,38 @@ boolean bootFromSnapshot() {
   // Load .sna data into Speccy RAM (0x4000–0xFFFF) in chunks of COMMAND_PAYLOAD_SECTION_SIZE bytes.
   uint16_t currentAddress = 0x4000;  // Spectrum user RAM start.
   while (file.available()) {
-    uint16_t bytesRead = file.read(&packetBuffer[SIZE_OF_HEADER], TOTAL_PACKET_BUFFER_SIZE - (6 + SIZE_OF_HEADER));
+//    uint16_t bytesRead = file.read(&packetBuffer[SIZE_OF_HEADER], TOTAL_PACKET_BUFFER_SIZE - (6 + SIZE_OF_HEADER));
+  
+    uint16_t bytesRead = file.read(&packetBuffer[5], 255 );
+   //   uint16_t bytesRead = file.read(&packetBuffer[4+1], TOTAL_PACKET_BUFFER_SIZE - (6 + 6));
     encodeSend(/*&packetBuffer[SIZE_OF_HEADER],*/ bytesRead, currentAddress);
+
+
+  //  *** FOR TESTING WITHOUT RLE ***
+  //  packetBuffer[0] = (uint8_t)((command_Transfer) >> 8); 
+	//   packetBuffer[1] = (uint8_t)((command_Transfer)&0xFF); 
+	//   packetBuffer[2] = bytesRead; 
+  //   packetBuffer[3] = (uint8_t)((currentAddress) >> 8); 
+  //   packetBuffer[4] = (uint8_t)((currentAddress)&0xFF); 
+  //   Z80Bus::sendBytes(packetBuffer, 5 + bytesRead);
+
     currentAddress += bytesRead; 
   }
-  file.close();
+  //file.close();
   //-----------------------------------------
   // Wait for the next vertial blank to synchronize (Enables Interrupt Mode and Halts).
-  packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
-  Z80Bus::sendBytes(packetBuffer, 1);   // We just send the 1 character "W" command
+  // packetBuffer[0] = 'W';                // 'W' command: "Wait for vertical blank" 
+  packetBuffer[0] = (uint8_t)((command_Wait) >> 8); 
+  packetBuffer[1] = (uint8_t)((command_Wait)&0xFF); 
+  Z80Bus::sendBytes(packetBuffer, 2);   
   //-----------------------------------------
   // Special: Here we wait for the ZX Spectrum's vertical blank interrupt (triggered automatically by the 50Hz screen refresh)
   Z80Bus::waitHalt();  // Continue after vertial blank interrupt
   //-----------------------------------------
   // 'E' command - Load Registers & Executes code
-  head27_Execute[0] = 'E';                    
+  ///head27_Execute[0] = 'E';                    
+  head27_Execute[0] = (uint8_t)((command_Execute) >> 8); 
+  head27_Execute[1] = (uint8_t)((command_Execute)&0xFF); 
   Z80Bus::sendSnaHeader(&head27_Execute[0]);  // Internally reorganizes registers to help direct loading by the Z80 itself.
   //-----------------------------------------
   // Now we wait for the speccy to signal it's ready with a last final HALT.
@@ -275,7 +357,7 @@ boolean bootFromSnapshot() {
   digitalWriteFast(Pin::ROM_HALF, HIGH);  
   //-----------------------------------------
   // Wait for the speccy to start executing code
-  while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming snapshot execution resumed.
+  while ((PINB & (1 << PINB0)) == 0) {};  // Waits for Z80 HALT line to go HIGH, confirming game started.
   //
   // At this point the ZX Spectrum should be happly running the newly loaded snapshot code.
   return true;  // Snapshot boot successful.
@@ -289,7 +371,8 @@ static const uint8_t MIN_RUN_LENGTH = 5; // 5 is where RLE pays off
 // The Speccy will reconstruct this data on its end.
 void encodeSend( /*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
 
-    uint8_t* input = &packetBuffer[SIZE_OF_HEADER];
+//    uint8_t* input = &packetBuffer[SIZE_OF_HEADER];
+  uint8_t* input = &packetBuffer[5];
 
     if (input_len == 0) return;
     uint16_t i = 0;
@@ -304,8 +387,18 @@ void encodeSend( /*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
             run_len++;
         }
         if (run_len >= MIN_RUN_LENGTH) { // run found (with payoff)
-            SMALL_FILL_COMMAND(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], run_len, addr, value);  
-            Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], 5);
+//            SMALL_FILL_COMMAND(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], run_len, addr, value);  
+//            Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], 5);
+
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6] = (uint8_t)((command_SmallFill) >> 8); 
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-5] = (uint8_t)((command_SmallFill)&0xFF); 
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-4] = run_len;
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-3] = (uint8_t)((addr) >> 8); 
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-2] = (uint8_t)((addr)&0xFF); 
+    packetBuffer[TOTAL_PACKET_BUFFER_SIZE-1] = (uint8_t)(value); 
+    Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6], 6);
+
+
             addr+=run_len;
             i += run_len;
         }
@@ -322,15 +415,67 @@ void encodeSend( /*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
                 i++;
             }
            uint8_t* p =  &packetBuffer[raw_start];
-           START_UPLOAD_COMMAND(p, 'G', raw_len);  // Command:'G' - transmit data
-           ADDR_UPLOAD_COMMAND(p, addr);           // Destination address in Spectrum RAM.
-           Z80Bus::sendBytes(p, SIZE_OF_HEADER + raw_len);
+//           START_UPLOAD_COMMAND(p, 'G', raw_len);  // Command:'G' - transmit data
+//           ADDR_UPLOAD_COMMAND(p, addr);           // Destination address in Spectrum RAM.
+//           Z80Bus::sendBytes(p, SIZE_OF_HEADER + raw_len);
+
+
+    p[0] = (uint8_t)((command_Transfer) >> 8); 
+	  p[1] = (uint8_t)((command_Transfer)&0xFF); 
+	  p[2] = raw_len; 
+    p[3] = (uint8_t)((addr) >> 8); 
+    p[4] = (uint8_t)((addr)&0xFF); 
+    Z80Bus::sendBytes(p, 5 + raw_len);
+
+
+
+
           addr+=raw_len;
         }
     }
 }
+ 
+// 1,000,000 microseconds to a second
+// T-Staes: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
+// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
+// 20 T-States / 0.285714 = 70 t-states
 
-/*  BEBUG ONLY
+uint16_t GetPulseCount() {
+ // constexpr uint8_t DELAY_CMD_VALUE = 20;  // 20 iterations of 20 T-States
+  constexpr uint16_t PULSE_TIMEOUT_US = 70;
+
+
+  uint16_t value = 0;
+  ///  packetBuffer[0] = 'T';
+  ///  packetBuffer[1] = DELAY_CMD_VALUE;  // delay after pulses
+  ///  Z80Bus::sendBytes(packetBuffer, 2);
+  for (uint8_t i = 0; i < 16; i++) {
+    uint8_t pulseCount = 0;
+
+    uint32_t lastPulseTime = 0;
+    while (1) {
+      // Service current HALT if active
+      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
+        // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+        digitalWriteFast(Pin::Z80_NMI, LOW);
+        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        pulseCount++;
+        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      }
+
+      // Detect end of transmission (delay timeout after last halt)
+      if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
+        break;
+      }
+    }
+    if (pulseCount == 2) {
+      value += 1 << (15 - i);
+    }
+  }
+  return value;
+}
+
+/*   BEBUG ONLY
 bool setupOled() {
   Wire.begin();
   Wire.beginTransmission(I2C_ADDRESS);

@@ -86,8 +86,8 @@ L0000:
  	ld SP,0xFFFF  
 
 	;-----------------------------------------------------------------------------------	
-	jp ClearScreen
-;;	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
+	call ClearScreen
+	call sendFunctionList
 	jp mainloop
  
 ;----------------------------------------------------------------------------------
@@ -109,65 +109,174 @@ L0038:
 ORG $0066
 L0066:
 	RETN
-;----------------------------------------------------------------------------------
+
+;------------------------------------------------------
+
 
 ;******************
 ; *** MAIN LOOP ***
 ;******************
 mainloop:
 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
-; Command protocol: 
-; First byte indicates operation type, ordered by frequency of use.
-check_initial:   	 ; command checking loop
-	READ_ACC_WITH_HALT
-													
-	cp 'Z'
-	jp z, command_Copy32 		; Copy 32 bytes (optimized for screen updates)
-	cp 'G' 
-	jp z, command_Transfer 		; Transfer with flashing border (SNA loading)
-	cp 'f'            
-	jp z, command_SmallFill 	; Small Fill memory region
-	cp 'C'           
-	jp z, command_Copy 			; Copy data (text/error messages)
-	cp 'F'            
-	jp z, command_Fill 			; Fill memory region
-	cp 'W'            
-	jp z, command_Wait 			; Wait for 50Hz interrupt
-	cp 'S'
-	jp z, command_Stack 		; Set stack pointer for SNA loading
-	cp 'E'            
-	jp z, command_Execute 	; Execute program (includes restoring regesters)
-	cp 'T'            
-	jp z, command_Transmit 	; Send keypress via pulse-count protocol
 
-	jp check_initial
+check_initial:   
+
+	READ_PAIR_WITH_HALT h,l  ; HL = jump address
+	JP (hl) ; // FUTRE CHANGE... ARDUINO SENDS JUMP ADDRESS
+	jp check_initial	;	// FUTRE CHANGE
+
+	; READ_ACC_WITH_HALT ;  command - operation type
+	; cp 'Z'
+	; jp z, command_Copy32 		; Copy 32 bytes (optimized for screen updates)
+	; cp 'G' 
+	; jp z, command_Transfer 		; Transfer with flashing border (SNA loading)
+	; cp 'f'            
+	; jp z, command_SmallFill 	; Small Fill memory region
+	; cp 'C'           
+	; jp z, command_Copy 			; Copy data (text/error messages)
+	; cp 'F'            
+	; jp z, command_Fill 			; Fill memory region
+	; cp 'W'            
+	; jp z, command_Wait 			; Wait for 50Hz interrupt
+	; cp 'S'
+	; jp z, command_Stack 		; Set stack pointer for SNA loading
+	; cp 'E'            
+	; jp z, command_Execute 	; Execute program (includes restoring regesters)
+	; cp 'T'            
+	; jp z, command_TransmitKey 	; Send keypress via pulse-count protocol
+	; jp check_initial
+
+;----------------------------------------------------------------------------------
+
+sendFunctionList:
+	ld hl,command_TransmitKey
+	call transmit16bitValue
+;	ld a,%001	;Blue	
+;	out ($fe),a
+
+	ld hl,command_Fill
+	call transmit16bitValue
+;	ld a,%010	;Red	
+;	out ($fe),a
+
+	ld hl,command_SmallFill
+	call transmit16bitValue
+;	ld a,%011	;Magenta
+;	out ($fe),a
+
+	ld hl,command_Transfer
+	call transmit16bitValue
+;	ld a,%100	;Green
+;	out ($fe),a
+
+	ld hl,command_Copy
+	call transmit16bitValue
+;	ld a,%101	;Cyan		
+;	out ($fe),a
+
+	ld hl,command_Copy32
+	call transmit16bitValue
+;	ld a,%110	;Yellow	
+;	out ($fe),a
+
+	ld hl,command_Wait
+	call transmit16bitValue
+;	ld a,%111	;White	
+;	out ($fe),a
+
+	ld hl,command_Stack
+	call transmit16bitValue
+;	ld a,%000	;black	
+;	out ($fe),a
+
+	ld hl,command_Execute
+	call transmit16bitValue
+;	ld a,%010	;Red	
+;	out ($fe),a
+
+	ret
 
 ;------------------------------------------------------
-; --- Transmit key press using pulse-count protocol ---
-; Arduino counts the HALT pulses (1=no key, 2+=key index).
-command_Transmit:  ; "T" - TRANSMIT KEY PRESS
-;------------------------------------------------------
-	READ_ACC_WITH_HALT			 
-	ld b,a 	 			; b = delay 
-	;;;;;push bc	 
-	LD L, C
-    LD H, B	
- 	
-	JP GET_KEY_PULSES  	; RESULT A = key pulses (2 to N)
-DONE_KEY:
-	LD B, A                 
-TX: HALT   				; send fudge-pulse
-	DJNZ TX
 
-	;;;;;; pop bc  
-	LD L, C
-	LD H, B
-DELAY_LOOP:  ; end marker for pulses (one last final delay with halt)
+transmit16bitValue:  
+	; HL holds ROM function address to send 
+	; Will send 0 bit as 1 HALT
+	; Will send 1 bit as 2 HALTs
+;------------------------------------------------------
+	;;;;READ_ACC_WITH_HALT			 
+	ld b,20  			; b = delay value from accumulator	 
+	ld d,16				; Counter for 16 bits to transmit
+transmit_bit_loop:
+	bit 7,h				; Test bit 7 of H register
+	jr z,send_zero		; Jump if bit is 0
+send_one:
+	HALT   				; 
+	HALT   				; x2 halts signals bit '1'
+	jr continue_transmission
+send_zero:
+	HALT   				; x1 halt signals bit '0'
+continue_transmission:
+	ld e,b				; delay amount
+delay_between_bits:
 	NOP                    
-	DJNZ DELAY_LOOP		; ball park T-states: N * (4 + 13)
+	dec e
+	jr nz,delay_between_bits	; Inter-bit spacing delay
 	
-	ld c,$1F  			; re-setup for 'READ_PAIR_WITH_HALT'
-	jp mainloop         ; Return to main loop
+	add hl,hl			; Shift HL left (MSB goes to carry)
+	dec d
+	jr nz,transmit_bit_loop	
+	
+	ret
+
+
+; ;------------------------------------------------------
+; ; --- Transmit key press using pulse-count protocol ---
+; ; Arduino counts the HALT pulses (1=no key, 2+=key index).
+; command_TransmitKey:  ; "T" - TRANSMIT KEY PRESS
+; ;------------------------------------------------------
+; 	READ_ACC_WITH_HALT			 
+; 	ld b,a 	 			; b = delay 	 
+; ;;;;;;;;	LD L, C
+;  ;;;;;   LD H, B	
+; 	JP GET_KEY_PULSES  	; RESULT A = key pulses (2 to N)
+; DONE_KEY:
+; 	LD B, A                 
+; TX: HALT   				; send fudge-pulse
+; 	DJNZ TX
+; ;;;;;;;	LD L, C
+; ;;;;;;	LD H, B
+; DELAY_LOOP:  ; end marker for pulses (one last final delay with halt)
+	                    
+; 	DJNZ DELAY_LOOP		; ball park T-states: N * (4 + 13)
+	
+; 	ld c,$1F  			; re-setup for 'READ_PAIR_WITH_HALT'
+; 	jp mainloop         ; Return to main loop
+
+
+command_TransmitKey:
+    READ_ACC_WITH_HALT			 
+	ld IXL,a					; store delay 
+
+    JP GET_KEY_PULSES          ; RESULT A = key pulses (2 to N)
+DONE_KEY:
+
+    LD B, A                    ; b = number of key pulses to send
+TX: HALT                       ; send pulse
+    DJNZ TX
+    
+   	ld B,IXL                    ; End marker delay 
+DELAY_LOOP:
+	NOP
+	NOP
+	NOP
+    DJNZ DELAY_LOOP				; 25t-states 
+	; 25T/35000000(MHZ) = 7 microseconds (7.14)
+	; say 20 iterations in DELAY_LOOP above will give :-
+	; 1.428571428571429e-5 = 0.000011428 seconds
+	; 1.428571428571429e-5 * 1000000 = 11.428 microseconds
+    
+    ld c,$1F
+    jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
@@ -205,15 +314,33 @@ command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
 	halt
 	in b,(c)  					; B = transfer size
 	READ_PAIR_WITH_HALT h,l 	; HL = destination
+
 readDataLoop:
 	halt
-	in a,($1f)   				; Read data byte
-	ld (hl),a					; Store byte
-  	inc hl
+	ini   						; (HL)<-(C), B<-B-1, HL<-HL+1	[16]
+	JP nz,readDataLoop			;								[10]
+
+;	in a,($1f)   				; Read data byte [11]
+;	ld (hl),a					; Store byte	 [7]
+;  	inc hl						;				 [6]
+;	djnz readDataLoop			;			 	 [13]
+
+	ld a,R
 	AND LOADING_COLOUR_MASK  	; Use data for border flash
 	out ($fe), a
-	djnz readDataLoop
+
 	jp mainloop
+
+
+;	000	Black		
+;	001	Blue		
+;	010	Red		
+;	011	Magenta		
+;	100	Green		
+;	101	Cyan		
+;	110	Yellow		
+;	111	White		
+
 
 ;------------------------------------------------------
 command_Copy:  ; "C" - COPY DATA
@@ -444,7 +571,7 @@ ClearScreen:
     ld bc, 768-1				; Screen attributes
     ld (hl), a
     ldir
-    jp mainloop
+    ret
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	

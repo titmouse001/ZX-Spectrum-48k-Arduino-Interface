@@ -20,14 +20,23 @@ void textLine(int xpos, int ypos, const char *message) {
   // START_UPLOAD_COMMAND(packetBuffer, 'Z', SmallFont::FNT_BUFFER_SIZE); // Z = command_Copy32
 
   uint8_t *outputLine = TextBuffer;
-  packetBuffer[0] = 'Z';
+ // packetBuffer[0] = 'Z';
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
   //  ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
-    packetBuffer[1] = (uint8_t)(destAddr >> 8);
-    packetBuffer[2] = (uint8_t)(destAddr & 0xFF);
-    memcpy(&packetBuffer[3], outputLine, SmallFont::FNT_BUFFER_SIZE);
-    Z80Bus::sendBytes(packetBuffer, 3 + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
+//    packetBuffer[1] = (uint8_t)(destAddr >> 8);
+//    packetBuffer[2] = (uint8_t)(destAddr & 0xFF);
+//    memcpy(&packetBuffer[3], outputLine, SmallFont::FNT_BUFFER_SIZE);
+//    Z80Bus::sendBytes(packetBuffer, 3 + SmallFont::FNT_BUFFER_SIZE); // Send 32 byte line
+
+
+    packetBuffer[0] = (uint8_t)((command_Copy32) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Copy32)&0xFF); 
+    packetBuffer[2] = (uint8_t)((destAddr) >> 8); 
+    packetBuffer[3] = (uint8_t)((destAddr)&0xFF); 
+    memcpy(&packetBuffer[4], outputLine, SmallFont::FNT_BUFFER_SIZE);
+    Z80Bus::sendBytes(packetBuffer, 4  + SmallFont::FNT_BUFFER_SIZE);
+
   }
 }
 
@@ -43,15 +52,26 @@ __attribute__((optimize("-Os")))   // Optimized for size - not used in time crit
 void text(int xpos, int ypos, const char *message) {
   const uint8_t charCount = SmallFont::prepareTextGraphics(TextBuffer, message);
   const uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
-  START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);  // C = command_Copy
+ // START_UPLOAD_COMMAND(packetBuffer, 'C', byteCount);  // C = command_Copy
   uint8_t *outputLine = TextBuffer;
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
-    memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, byteCount);
-    Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount); // send trimmed line
+  //  ADDR_UPLOAD_COMMAND(packetBuffer, destAddr );
+  //  memcpy(&packetBuffer[SIZE_OF_HEADER], outputLine, byteCount);
+  //  Z80Bus::sendBytes(packetBuffer, SIZE_OF_HEADER + byteCount); // send trimmed line
+
+
+    packetBuffer[0] = (uint8_t)((command_Copy) >> 8); 
+    packetBuffer[1] = (uint8_t)((command_Copy)&0xFF); 
+    packetBuffer[2] = (uint8_t)byteCount ; 
+    packetBuffer[3] = (uint8_t)((destAddr) >> 8); 
+    packetBuffer[4] = (uint8_t)((destAddr)&0xFF); 
+
+    Z80Bus::sendBytes(packetBuffer, 5);
+
+
   }
-} // refactored DrawText... but not tested yet .. should be ok
+} 
 
 
 }
