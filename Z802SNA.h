@@ -9,7 +9,7 @@ namespace Z802SNA {
 
     // convertHeaders: It takes the Z80 V1 header, and fills the SNA header.
     // Returns the stack offset where PC should be pushed.
-    uint16_t convertHeaders(const uint8_t* z80Header_v1, uint8_t* snaHeader) {
+    uint16_t convertZ80HeaderToSna(const uint8_t* z80Header_v1, uint8_t* snaHeader) {
         // '.Z80' V1 header to '.SNA' header  (SNA header is 27 bytes)
         snaHeader[SNA_I] = z80Header_v1[Z80_V1_I];
         snaHeader[SNA_HL_PRIME_LOW] = z80Header_v1[Z80_V1_HL_PRIME_LOW];

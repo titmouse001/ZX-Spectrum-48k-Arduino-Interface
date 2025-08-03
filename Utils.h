@@ -10,60 +10,6 @@ constexpr uint8_t JOYSTICK_FIRE = B00100000;
 constexpr uint8_t JOYSTICK_DOWN = B00000100;
 constexpr uint8_t JOYSTICK_SELECT = B01000000;
 
-// /**
-//   * Setup the Fill Command
-//   *
-//   * @param buf       byte array with at least 6 bytes
-//   * @param amount    amount of memory to fill in bytes
-//   * @param address   16-bit destination address
-//   * @param value     fill value
-//   */
-// #define FILL_COMMAND(buf, amount, address, value) \
-//   do { \
-//     (buf)[0] = 'F'; \
-//     (buf)[1] = (uint8_t)((amount) >> 8); \
-//     (buf)[2] = (uint8_t)((amount)&0xFF); \
-//     (buf)[3] = (uint8_t)((address) >> 8); \
-//     (buf)[4] = (uint8_t)((address)&0xFF); \
-//     (buf)[5] = (uint8_t)(value); \
-//   } while (0)
-
-// #define SMALL_FILL_COMMAND(buf, amount, address, value) \
-//   do { \
-//     (buf)[0] = 'f'; \
-//     (buf)[1] = (uint8_t)(amount); \
-//     (buf)[2] = (uint8_t)((address) >> 8); \
-//     (buf)[3] = (uint8_t)((address)&0xFF); \
-//     (buf)[4] = (uint8_t)(value); \
-//   } while (0)
-
-
-// /** 
-//   * Build the packet header for a 16-bit command:
-//   * @param buf          byte array to write into
-//   * @param cmd          8-bit command letter
-//   * @param payloadSize  number of data bytes that follow (must fit in 8 bits)
-//   *
-//   * This macro writes the command letter and the payload length.
-//   */
-// #define START_UPLOAD_COMMAND(buf, cmd, payloadSize) \
-//   do { \
-//     (buf)[HEADER_TOKEN] = (uint8_t)(cmd); \
-//     (buf)[HEADER_PAYLOADSIZE] = (uint8_t)(payloadSize); \
-//   } while (0)
-
-/** 
-  * Insert a 16-bit address into the packet header:
-  *  @param buf       byte array holding the command header
-  *  @param address   16-bit target address (e.g., VRAM or register)
-  *
-  * This splits the 16-bit address into high and low bytes.
-  */
-#define ADDR_UPLOAD_COMMAND(buf, address) \
-  do { \
-    (buf)[HEADER_HIGH_BYTE] = (uint8_t)(((address) >> 8) & 0xFF); \
-    (buf)[HEADER_LOW_BYTE] = (uint8_t)((address)&0xFF); \
-  } while (0)
 
 void memsetZero(byte* b, unsigned int len);
 void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
