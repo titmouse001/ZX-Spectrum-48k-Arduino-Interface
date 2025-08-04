@@ -1,50 +1,35 @@
 #ifndef DRAW_H
 #define DRAW_H
 
-
 namespace Draw {
   
-/**
- * textLine:  Draws a full-width line of text (32 bytes per line).
- * The text is rendered into a buffer and sent row-by-row to the screen memory.
- * 
- * @param xpos     X coords
- * @param ypos     Y coords
- * @param message  String/null-terminated
- */
+ // textLine:  Draws a full-width line of text (32 bytes per line).
+ // Optimised to draw menu text row-by-row to the screen memory.
 __attribute__((optimize("-Ofast"))) 
 void textLine(int xpos, int ypos, const char *message) {
   SmallFont::prepareTextGraphics(TextBuffer, message);  // Pre-render text into TextBuffer (output count ignored)
   uint8_t *outputLine = TextBuffer;
+  packetBuffer[0] = (uint8_t)((Buffers::command_Copy32) >> 8); 
+  packetBuffer[1] = (uint8_t)((Buffers::command_Copy32)&0xFF); 
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    packetBuffer[0] = (uint8_t)((command_Copy32) >> 8); 
-    packetBuffer[1] = (uint8_t)((command_Copy32)&0xFF); 
     packetBuffer[2] = (uint8_t)((destAddr) >> 8); 
     packetBuffer[3] = (uint8_t)((destAddr)&0xFF); 
     memcpy(&packetBuffer[4], outputLine, SmallFont::FNT_BUFFER_SIZE);
     Z80Bus::sendBytes(packetBuffer, 4  + SmallFont::FNT_BUFFER_SIZE);
-
   }
 }
 
-/**
- * text: Draws only the required part of the screen buffer.
- * Useful for general-purpose text drawing.
- * 
- * @param xpos     X coords
- * @param ypos     Y coords
- * @param message  String/null-terminated
- */
-__attribute__((optimize("-Os")))   // Optimized for size - not used in time critical areas.
+// text: Draws only the required part of the screen buffer.
+// Slower but useful for general-purpose text drawing.
 void text(int xpos, int ypos, const char *message) {
   const uint8_t charCount = SmallFont::prepareTextGraphics(TextBuffer, message);
   const uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
   uint8_t *outputLine = TextBuffer;
+  packetBuffer[0] = (uint8_t)((Buffers::command_Copy) >> 8); 
+  packetBuffer[1] = (uint8_t)((Buffers::command_Copy)&0xFF); 
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr  = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    packetBuffer[0] = (uint8_t)((command_Copy) >> 8); 
-    packetBuffer[1] = (uint8_t)((command_Copy)&0xFF); 
     packetBuffer[2] = (uint8_t)byteCount ; 
     packetBuffer[3] = (uint8_t)((destAddr) >> 8); 
     packetBuffer[4] = (uint8_t)((destAddr)&0xFF); 

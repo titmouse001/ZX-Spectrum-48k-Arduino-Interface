@@ -40,7 +40,7 @@ namespace Z802SNA {
 
         // --- SP calculation ---
         uint16_t original_sp = (z80Header_v1[Z80_V1_SP_HIGH] << 8) | z80Header_v1[Z80_V1_SP_LOW];
-        uint16_t new_sp = original_sp - 2;
+        uint16_t new_sp = original_sp - 2;  // -2 as all .sna files have a fudged PC place in the stack
         snaHeader[SNA_SP_LOW] = (uint8_t)(new_sp & 0xFF);
         snaHeader[SNA_SP_HIGH] = (uint8_t)(new_sp >> 8);
 

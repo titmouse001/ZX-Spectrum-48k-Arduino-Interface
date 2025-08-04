@@ -20,16 +20,14 @@ void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
   uint8_t bitIndex  = bitPosition & 7;    // %8
   uint8_t maskedInput = input & ((1U << bitWidth) - 1);
   uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
-  uint8_t highByte = aligned >> 8;
-  uint8_t lowByte = aligned;
-  output[byteIndex] |= highByte;
-  if (lowByte) {  
-    output[byteIndex + 1] |= lowByte;
+  output[byteIndex] |= aligned >> 8;
+  if (aligned) {  
+    output[byteIndex + 1] |= aligned;
   }
 }
 
 __attribute__((optimize("-Ofast"))) 
-void joinBitsxxx(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
+void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
   uint16_t byteIndex = bitPosition >> 3;   // /8
   uint8_t  bitIndex  = bitPosition & 7;    // %8
   // Using a WORD to allow for a boundary crossing

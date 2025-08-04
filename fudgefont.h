@@ -10,17 +10,16 @@
 #define GLCDFONTDECL(_n) static const uint8_t _n[]
 #endif 
 
-//char fudged_Adafruit5x7[] = {
-  
+// Place font characters in flash
 GLCDFONTDECL(fudged_Adafruit5x7) = {
-   	0x0, 0x0, // size of zero indicates fixed width font,
+	
+	0x0, 0x0, // size of zero indicates fixed width font,
+ 	0x05, // width
+  0x07, // height
+  0x20, // first char
+  0x60, // char count
 
- 	  0x05, // width
-  	0x07, // height
-   	0x20, // first char
-  	0x60, // char count
-
-  	0x00, 0x00, 0x00, 0x00, 0x00, // SPACE	
+  0x00, 0x00, 0x00, 0x00, 0x00, // SPACE	
 
 	0x00, 0x00, 0x5F, 0x00, 0x00, // !
 	0x00, 0x07, 0x00, 0x07, 0x00, // "  

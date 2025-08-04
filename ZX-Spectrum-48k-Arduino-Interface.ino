@@ -90,7 +90,7 @@ void loop() {
     Draw::text(80, 90, PSTR("NO FILES FOUND"));                      // Displays error if no files found.
   }
 
-  SdCardSupport::openFileByIndex(doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
+  SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
 
   FatFile& file = (SdCardSupport::file);
   if (file.available() && file.fileSize() == 6912) {
@@ -105,7 +105,7 @@ void loop() {
 
     SdCardSupport::fileClose();
     constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
-    while (getCommonButton() == 0) {
+    while (Menu::getButton() == Menu::BUTTON_NONE) {
       delay(maxButtonInputMilliseconds);
     }
 
@@ -120,7 +120,7 @@ void loop() {
     // *****************
     // *** SNA FILES ***
     // *****************
-    if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE) {
+    if (file.fileSize() == SNAPSHOT_FILE_SIZE) {
       if (bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
         SdCardSupport::fileClose();
         do {  // Loop to monitor Spectrum joystick inputs during game.

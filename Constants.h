@@ -1,7 +1,5 @@
 #pragma once
 
-//#include <cstdint>
-
 constexpr uint8_t Z80_V1_AF_HIGH = 0;
 constexpr uint8_t Z80_V1_AF_LOW = 1;
 constexpr uint8_t Z80_V1_BC_LOW = 2;
@@ -77,6 +75,11 @@ constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 #define SNA_SP_HIGH     24
 #define SNA_IM_MODE     25
 #define SNA_BORDER_COLOUR 26
+#define SNA_TOTAL_ITEMS    27
+
+
+constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024UL * 48) + (SNA_TOTAL_ITEMS);  //49179 (.sna files)
+
 
 // New enum for Z80 file validity check results
 enum Z80CheckResult {

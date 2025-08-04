@@ -3,62 +3,63 @@
 
 #include "pin.h"
 #include "draw.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
 
-unsigned long lastButtonPress = 0;     // Store the last time a button press was processed
-unsigned long buttonDelay = 300;       // Initial delay between button actions in milliseconds
-unsigned long lastButtonHoldTime = 0;  // Track how long the button has been held
-bool buttonHeld = false;               // Track if the button is being held
+namespace Menu {
 
-uint16_t oldHighlightAddress = 0;      // Last highlighted screen position for clearing away
-uint16_t currentFileIndex = 0;         // The currently selected file index in the list
-uint16_t startFileIndex = 0;           // The start file index of the current viewing window
+uint32_t lastButtonPress = 0;
+uint32_t lastButtonHoldTime = 0;
+uint16_t buttonDelay = 300;
+uint16_t oldHighlightAddress = 0;
+uint16_t currentFileIndex = 0;
+uint16_t startFileIndex = 0;
+bool buttonHeld = false;
 
-#define SCREEN_TEXT_ROWS 24            // Number of on screen text list items
+constexpr uint8_t SCREEN_TEXT_ROWS = 24;
 
-enum { BUTTON_NONE,
-       BUTTON_BACK,
-       BUTTON_SELECT,
-       BUTTON_ADVANCE,
-       BUTTON_BACK_REFRESH_LIST,
-       BUTTON_ADVANCE_REFRESH_LIST };
+typedef enum {
+  BUTTON_NONE,
+  BUTTON_BACK,
+  BUTTON_SELECT,
+  BUTTON_ADVANCE
+} Button_t;
 
-//DEBUG ONLY
-//#include <Wire.h>  //  I2C devices
-//#include "SSD1306AsciiAvrI2c.h"  //  I2C displays, oled
-//extern SSD1306AsciiAvrI2c oled;
+typedef enum {
+  ACTION_NONE,
+  ACTION_SELECT_FILE,
+  ACTION_MOVE_UP,
+  ACTION_MOVE_DOWN,
+  ACTION_REFRESH_LIST
+} MenuAction_t;
 
 __attribute__((optimize("-Ofast"))) 
 void fileList(uint16_t startFileIndex) {
+  FatFile& root = SdCardSupport::root;
+  FatFile& file = SdCardSupport::file;
 
-  FatFile& root =  (SdCardSupport::root);
-  FatFile& file = (SdCardSupport::file);
-
-  // Note: It's safe to use this space for the filename without a care.
-  //       'textLine' will process its characters long before it internaly needs access to the global packetBuffer.
-  //         - extra note: We could use index [0] but that would mean extra work, well in this case it would mean having the 
-  //           [0]...fileName[1] = '\0'; reset inside the loop.
- // char* fileName = (char*) &packetBuffer[SIZE_OF_HEADER + SmallFont::FNT_BUFFER_SIZE];
-  char* fileName = (char*) &packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
+  char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
+  size_t clr = 0;
+  uint16_t count = 0;
 
   root.rewind();
-  uint8_t clr = 0;
-  uint8_t count = 0;
   while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {  // for now just list all files, will work out file types later on.
-   //   if (file.fileSize() == SdCardSupport::SNAPSHOT_FILE_SIZE || (file.fileSize() == 6912)  ) {
-        if ((count >= startFileIndex) && (count < startFileIndex + SCREEN_TEXT_ROWS)) {
-          uint16_t len = file.getName7(fileName, 64);
-          if (len == 0) { file.getSFN(fileName, 20); }
-          if (len > 42) {  // limit filename to fit speccy screen
-            fileName[40] = '.';
-            fileName[41] = '.';
-            fileName[42] = '\0';
-          }
-          Draw::textLine(0, ((count - startFileIndex) * 8), fileName);
-          clr++;
+    if (file.isFile()) {
+      if (count >= startFileIndex && count < startFileIndex + SCREEN_TEXT_ROWS) {
+
+        uint16_t len = file.getName7(fileName, 64);
+        if (len == 0) { file.getSFN(fileName, 20); }
+        if (len > 42) {  // limit filename to fit speccy screen
+          fileName[40] = '.';
+          fileName[41] = '.';
+          fileName[42] = '\0';
         }
-        count++;
- //     }
+
+        Draw::textLine(0, ((count - startFileIndex) * 8), fileName);
+        clr++;
+      }
+      count++;
     }
     file.close();
     if (clr == SCREEN_TEXT_ROWS) {
@@ -70,101 +71,113 @@ void fileList(uint16_t startFileIndex) {
   fileName[0] = ' ';  // Use blank filename to wipe each unused row
   fileName[1] = '\0';
   for (uint8_t i = clr; i < SCREEN_TEXT_ROWS; i++) {
-    Draw::textLine(0, (i * 8), fileName); // also clears unused
+    Draw::textLine(0, (i * 8), fileName);  // also clears unused
   }
 }
 
-byte getCommonButton() {
+Button_t getButton() {
   // Kempston joystick bitmask: "000FUDLR" (Fire, Up, Down, Left, Right)
   const uint8_t joy = Utils::readJoystick();
-  if (joy & (B00010000 | B01000000)) return BUTTON_SELECT;
-  if (joy & B00000100) return BUTTON_ADVANCE;
-  if (joy & B00001000) return BUTTON_BACK;
 
+  if (joy & (0x10 | 0x40)) { return BUTTON_SELECT; }  // Fire or select button
+  if (joy & 0x04) { return BUTTON_ADVANCE; }          // Down
+  if (joy & 0x08) { return BUTTON_BACK; }             // Up
+
+  // Process speccy keyboard
   switch (Z80Bus::GetKeyPulses()) {
-    case 11: return BUTTON_BACK;
-    case 6: return BUTTON_ADVANCE;
-    case 31: return BUTTON_SELECT;
+    case 11: return BUTTON_BACK;    // A
+    case 6: return BUTTON_ADVANCE;  // Q
+    case 31: return BUTTON_SELECT;  // ENTER
+    default: return BUTTON_NONE;
   }
-  return BUTTON_NONE;
 }
 
+MenuAction_t processButtonInput(uint16_t totalFiles) {
+  const Button_t button = getButton();
 
-byte processButtons(uint16_t totalFiles) {
- 
-  byte button = getCommonButton();
+  // Handle select button immediately - no repeat logic needed
   if (button == BUTTON_SELECT) {
-    return BUTTON_SELECT;
+    return ACTION_SELECT_FILE;
   }
 
+  // Handle button release
   if (button == BUTTON_NONE) {
     buttonHeld = false;
     buttonDelay = 300;  // Reset repeat delay
-  } else {
-    const unsigned long currentMillis = millis();
-    if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-      buttonDelay = (buttonDelay > 40) ? buttonDelay - 20 : 40;
-      lastButtonHoldTime = currentMillis;
-    }
-    if (!buttonHeld || (currentMillis - lastButtonPress >= buttonDelay)) {
-      byte action = BUTTON_NONE;
-      if ((button == BUTTON_ADVANCE)) {
-        if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < totalFiles - 1) {
-          currentFileIndex++;
-          action = BUTTON_ADVANCE;
-        } else {
-          action = BUTTON_ADVANCE_REFRESH_LIST;
-          startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
-          currentFileIndex = startFileIndex;
-        }
-      } else if ((button == BUTTON_BACK)) {
-        if (currentFileIndex > startFileIndex) {
-          currentFileIndex--;
-          action = BUTTON_BACK;
-        } else {
-          action = BUTTON_BACK_REFRESH_LIST;
-          if (startFileIndex >= SCREEN_TEXT_ROWS) {
-            startFileIndex -= SCREEN_TEXT_ROWS;
-            currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
-          } else {
-            startFileIndex = totalFiles - (totalFiles % SCREEN_TEXT_ROWS);
-            currentFileIndex = totalFiles - 1;
-          }
-        }
-      }
+    return ACTION_NONE;
+  }
 
-      if (action != BUTTON_NONE) {
-        buttonHeld = true;
-        lastButtonPress = currentMillis;
-        lastButtonHoldTime = currentMillis;
-        return action;
+  // Handle button timing and repeat logic
+  const uint32_t currentMillis = millis();
+  if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
+    buttonDelay = (buttonDelay > 40) ? buttonDelay - 20 : 40;
+    lastButtonHoldTime = currentMillis;
+  }
+
+  if (!buttonHeld || (currentMillis - lastButtonPress >= buttonDelay)) {
+    MenuAction_t action = ACTION_NONE;
+
+    if (button == BUTTON_ADVANCE) {
+      if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < totalFiles - 1) {
+        currentFileIndex++;
+        action = ACTION_MOVE_DOWN;
+      } else {
+        // Wrap to next page or beginning
+        startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < totalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
+        currentFileIndex = startFileIndex;
+        action = ACTION_REFRESH_LIST;
       }
+    } else if (button == BUTTON_BACK) {
+      if (currentFileIndex > startFileIndex) {
+        currentFileIndex--;
+        action = ACTION_MOVE_UP;
+      } else {
+        // Wrap to previous page or end
+        if (startFileIndex >= SCREEN_TEXT_ROWS) {
+          startFileIndex -= SCREEN_TEXT_ROWS;
+          currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
+        } else {
+          startFileIndex = totalFiles - (totalFiles % SCREEN_TEXT_ROWS);
+          currentFileIndex = totalFiles - 1;
+        }
+        action = ACTION_REFRESH_LIST;
+      }
+    }
+
+    if (action != ACTION_NONE) {
+      buttonHeld = true;
+      lastButtonPress = currentMillis;
+      lastButtonHoldTime = currentMillis;
+      return action;
     }
   }
-  return BUTTON_NONE;
-}
 
+  return ACTION_NONE;
+}
 
 uint16_t doFileMenu(uint16_t totalFiles) {
   fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
 
   while (true) {
-    unsigned long start = millis();
-    byte btn = processButtons(totalFiles);
+    const uint32_t start = millis();
+    const MenuAction_t action = processButtonInput(totalFiles);
 
-    switch (btn) {
-      case BUTTON_SELECT:
+    switch (action) {
+      case ACTION_SELECT_FILE:
         return currentFileIndex;
-      case BUTTON_ADVANCE:
-      case BUTTON_BACK:
+
+      case ACTION_MOVE_UP:
+      case ACTION_MOVE_DOWN:
         Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
         break;
-      case BUTTON_ADVANCE_REFRESH_LIST:
-      case BUTTON_BACK_REFRESH_LIST:
+
+      case ACTION_REFRESH_LIST:
         Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
         fileList(startFileIndex);
         break;
+
+      case ACTION_NONE:
       default:
         break;
     }
@@ -172,4 +185,5 @@ uint16_t doFileMenu(uint16_t totalFiles) {
   }
 }
 
+}
 #endif

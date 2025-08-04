@@ -15,8 +15,8 @@
  * pin 15/A1   ->  ROM:pin-27 (bank select)
  * pin 16/A2   ->  IC:74HC165 (clock pin-2)
  * pin 17/A3   ->  Z80:/RESET (active low)
- * pin 18/A4  <->  I2C:OLED SDA (data)
- * pin 19/A5   ->  I2C:OLED SCL (clock)
+ * pin 18/A4  <->  I2C:OLED SDA (data)    *** NOW DEBUG ONLY ***
+ * pin 19/A5   ->  I2C:OLED SCL (clock)   *** NOW DEBUG ONLY ***
  * pin 20/A6   -   *** NC (unused) ***
  * pin 21/A7  <-   VOLTAGE: analog input
  * GND         -   SD_CS
@@ -47,7 +47,7 @@ static constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 
 // ----------------------------------------------------------------------------------------------------
 // 74HC165 shift-register (parallel-in to serial-out)
-// Used to read 8 digital inputs (joystic) using only 3 Arduino pins
+// Used to read 8 digital inputs (joystick) using only 3 Arduino pins
 // ----------------------------------------------------------------------------------------------------
 // Arduino connections to 74HC165:
 // - PB1 (Arduino pin 9)  <- QH (pin 9 on 74HC165): Serial data output (read input bits here)
@@ -57,25 +57,9 @@ static constexpr uint8_t ShiftRegDataPin  = 9;    // PB1: Serial data in from 74
 static constexpr uint8_t ShiftRegClockPin = A2;   // PC2: Clock output to 74HC165 CLK
 static constexpr uint8_t ShiftRegLatchPin = 10;   // PB2: Latch control to 74HC165 SH/LD
 // ----------------------------------------------------------------------------------------------------
-
-
 // Analog input  (see "pins_arduino.h" pulled in by "Arduino.h" )
 static constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
 
-
-// -----------------------------------------------------------
-// Bit-level Write Macros for Direct Register Manipulation
-// 
-// Usage:
-//   WRITE_BIT(PORTB, PB2, _HIGH); // Sets bit PB2 in PORTB
-//   WRITE_BIT(PORTC, PC2, _LOW);  // Clears bit PC2 in PORTC
-
-// Section replaced with digitalWriteFast.h 
-//#define _HIGH 1
-//#define _LOW 0
-//#define WRITE_BIT(reg, bit, val) _INTERNAL_WRITE_BIT_##val(reg, bit)  // USE ME
-//#define _INTERNAL_WRITE_BIT__HIGH(reg, bit) ((reg) |= _BV(bit))       // SET
-//#define _INTERNAL_WRITE_BIT__LOW(reg, bit) ((reg) &= ~_BV(bit))       // CLEAR
 
 }
 
