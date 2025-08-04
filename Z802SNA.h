@@ -1,9 +1,12 @@
 #pragma once
 
-//#include <cstdint>
-
 #include "Constants.h"
 
+// SNAPSHOT (.SNA) FILE HEADER (27 bytes, no PC value stored):
+//      REG_I  =00, REG_HL'=01, REG_DE'=03, REG_BC'=05
+//      REG_AF'=07, REG_HL =09, REG_DE =11, REG_BC =13
+//      REG_IY =15, REG_IX =17, REG_IFF=19, REG_R  =20
+//      REG_AF =21, REG_SP =23, REG_IM =25, REG_BDR=26
 
 namespace Z802SNA {
 

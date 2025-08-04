@@ -103,6 +103,41 @@ static inline void buildStackCommand(uint8_t* buf,uint16_t address) {
 	buf[3] = (uint8_t)(address & 0xFF);
 }
 
+
+__attribute__((optimize("-Ofast")))
+static inline void buildCopyCommand(uint8_t* buf, uint16_t address, uint8_t length) {
+    buf[0] = (uint8_t)((command_Copy) >> 8);
+    buf[1] = (uint8_t)((command_Copy) & 0xFF);
+    buf[2] = length;
+    buf[3] = (uint8_t)((address) >> 8);
+    buf[4] = (uint8_t)((address) & 0xFF);
 }
+
+__attribute__((optimize("-Ofast")))
+static inline void buildFillCommand(uint8_t* buf, uint16_t amount, uint16_t address, uint8_t value) {
+    buf[0] = (uint8_t)((command_Fill) >> 8);
+    buf[1] = (uint8_t)((command_Fill) & 0xFF);
+    buf[2] = (uint8_t)((amount) >> 8);
+    buf[3] = (uint8_t)((amount) & 0xFF);
+    buf[4] = (uint8_t)((address) >> 8);
+    buf[5] = (uint8_t)((address) & 0xFF);
+    buf[6] = value;
+}
+
+__attribute__((optimize("-Ofast")))
+static inline void buildWaitCommand(uint8_t* buf) {
+    buf[0] = (uint8_t)((command_Wait) >> 8);
+    buf[1] = (uint8_t)((command_Wait) & 0xFF);
+}
+
+__attribute__((optimize("-Ofast")))
+static inline void buildExecuteCommand(uint8_t* buf) {
+    buf[0] = (uint8_t)((command_Execute) >> 8);
+    buf[1] = (uint8_t)((command_Execute) & 0xFF);
+}
+
+
+
+}  // namespace Buffers
 
 #endif
