@@ -17,7 +17,9 @@ uint16_t currentFileIndex = 0;
 uint16_t startFileIndex = 0;
 bool buttonHeld = false;
 
-constexpr uint8_t SCREEN_TEXT_ROWS = 24;
+constexpr uint8_t SCREEN_TEXT_ROWS = 24;  // 192/8
+constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = 42;
+constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
 
 typedef enum {
   BUTTON_NONE,
@@ -34,8 +36,52 @@ typedef enum {
   ACTION_REFRESH_LIST
 } MenuAction_t;
 
+
 __attribute__((optimize("-Ofast"))) 
 void fileList(uint16_t startFileIndex) {
+ 
+  FatFile& file = SdCardSupport::file;
+  FatFile& root = SdCardSupport::root;
+  root.rewind();
+
+  uint16_t count = 0;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (file.isFile()) {
+      if (count >= startFileIndex) { break; }
+      count++;
+    }
+    file.close();
+  }
+
+  char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];   // TO DO uses command_Copy32 = 4 !!!!!
+  count = 0;
+  do {
+    if (!file.isFile()) break;
+    if (count < SCREEN_TEXT_ROWS) {
+      uint16_t len = file.getName7(fileName, 64);
+      if (len == 0) { file.getSFN(fileName, 20); }
+      if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {  // limit to fit screen
+        fileName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
+        fileName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
+        fileName[ZX_FILENAME_MAX_DISPLAY_LEN - 0] = '\0';
+      }
+      Draw::textLine(0, count * 8, fileName); // 
+      count++;
+    }
+    file.close();
+  } while (file.openNext(&root, O_RDONLY));
+  file.close();  // as we broke out early
+
+  fileName[0] = ' ';  // blank filename
+  fileName[1] = '\0';
+  for (uint8_t i = count; i < SCREEN_TEXT_ROWS; i++) {
+    Draw::textLine(0, i * FONT_HEIGHT_WITH_GAP, fileName);  // clear unused space
+  }
+}
+
+
+__attribute__((optimize("-Ofast"))) 
+void fileListxx(uint16_t startFileIndex) {
   FatFile& root = SdCardSupport::root;
   FatFile& file = SdCardSupport::file;
 
@@ -92,7 +138,7 @@ Button_t getButton() {
   }
 }
 
-MenuAction_t processButtonInput(uint16_t totalFiles) {
+MenuAction_t getMenuAction(uint16_t totalFiles) {
   const Button_t button = getButton();
 
   // Handle select button immediately - no repeat logic needed
@@ -161,7 +207,7 @@ uint16_t doFileMenu(uint16_t totalFiles) {
 
   while (true) {
     const uint32_t start = millis();
-    const MenuAction_t action = processButtonInput(totalFiles);
+    const MenuAction_t action = getMenuAction(totalFiles);
 
     switch (action) {
       case ACTION_SELECT_FILE:
