@@ -79,48 +79,6 @@ void fileList(uint16_t startFileIndex) {
   }
 }
 
-
-__attribute__((optimize("-Ofast"))) 
-void fileListxx(uint16_t startFileIndex) {
-  FatFile& root = SdCardSupport::root;
-  FatFile& file = SdCardSupport::file;
-
-  char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
-  size_t clr = 0;
-  uint16_t count = 0;
-
-  root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
-      if (count >= startFileIndex && count < startFileIndex + SCREEN_TEXT_ROWS) {
-
-        uint16_t len = file.getName7(fileName, 64);
-        if (len == 0) { file.getSFN(fileName, 20); }
-        if (len > 42) {  // limit filename to fit speccy screen
-          fileName[40] = '.';
-          fileName[41] = '.';
-          fileName[42] = '\0';
-        }
-
-        Draw::textLine(0, ((count - startFileIndex) * 8), fileName);
-        clr++;
-      }
-      count++;
-    }
-    file.close();
-    if (clr == SCREEN_TEXT_ROWS) {
-      break;
-    }
-  }
-
-  // Clear the remaining screen for shorter lists.
-  fileName[0] = ' ';  // Use blank filename to wipe each unused row
-  fileName[1] = '\0';
-  for (uint8_t i = clr; i < SCREEN_TEXT_ROWS; i++) {
-    Draw::textLine(0, (i * 8), fileName);  // also clears unused
-  }
-}
-
 Button_t getButton() {
   // Kempston joystick bitmask: "000FUDLR" (Fire, Up, Down, Left, Right)
   const uint8_t joy = Utils::readJoystick();
@@ -209,24 +167,15 @@ uint16_t doFileMenu(uint16_t totalFiles) {
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
 
-    switch (action) {
-      case ACTION_SELECT_FILE:
-        return currentFileIndex;
-
-      case ACTION_MOVE_UP:
-      case ACTION_MOVE_DOWN:
-        Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-        break;
-
-      case ACTION_REFRESH_LIST:
-        Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-        fileList(startFileIndex);
-        break;
-
-      case ACTION_NONE:
-      default:
-        break;
+    if (action != ACTION_NONE) { // do highlight before fileList for best feedback response 
+      Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
     }
+    if (action == ACTION_SELECT_FILE) {
+      return currentFileIndex;
+    }else if (action == ACTION_REFRESH_LIST) {
+      fileList(startFileIndex);  // takes a few frames to update
+    }
+
     Utils::frameDelay(start);
   }
 }
