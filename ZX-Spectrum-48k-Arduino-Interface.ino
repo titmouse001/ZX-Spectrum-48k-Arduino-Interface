@@ -99,7 +99,7 @@ void loop() {
     while (file.available()) {
       byte bytesRead = (byte)file.read(&packetBuffer[5], COMMAND_PAYLOAD_SECTION_SIZE);
       Buffers::buildCopyCommand(packetBuffer, currentAddress, bytesRead);
-      Z80Bus::sendBytes(packetBuffer, 5 + bytesRead);
+      Z80Bus::sendBytes(packetBuffer, E(CopyPacket::PACKET_LEN) + bytesRead);
       currentAddress += bytesRead;
     }
 
@@ -114,7 +114,7 @@ void loop() {
     uint16_t amount = 6144;
     uint16_t fillAddr = 0x4000;
     Buffers::buildFillCommand(packetBuffer, amount, fillAddr, 0);
-    Z80Bus::sendBytes(packetBuffer, 7);
+    Z80Bus::sendBytes(packetBuffer, E(FillPacket::PACKET_LEN));
 
   } else {
     // *****************
@@ -170,14 +170,18 @@ void loop() {
 }
 
 boolean bootFromSnapshot_z80_end() {
+    
     Buffers::buildWaitCommand(packetBuffer);
-    Z80Bus::sendBytes(packetBuffer, 2);
+    Z80Bus::sendBytes(packetBuffer, E(WaitPacket::PACKET_LEN));
     Z80Bus::waitHalt();
+
     Buffers::buildExecuteCommand(head27_Execute);
-    Z80Bus::sendSnaHeader(&head27_Execute[0]);
+    Z80Bus::sendSnaHeader(head27_Execute);
     Z80Bus::waitRelease_NMI();
+
     delayMicroseconds(7);
     digitalWriteFast(Pin::ROM_HALF, HIGH);
+
     while ((PINB & (1 << PINB0)) == 0) {};
     return true;
 }
@@ -186,7 +190,7 @@ boolean bootFromSnapshot() {
 
     const uint16_t address = 0x4004;  // startup stack pointer (screen RAM)
     Buffers::buildStackCommand(packetBuffer, address);
-    Z80Bus::sendBytes(packetBuffer, 4);
+    Z80Bus::sendBytes(packetBuffer, E(StackPacket::PACKET_LEN));
     Z80Bus::waitRelease_NMI();  //Synchronize: Speccy will halt after loading SP
 
     FatFile& file = (SdCardSupport::file);
@@ -211,11 +215,11 @@ boolean bootFromSnapshot() {
     // We need to create a useful time gap before the next h/w interrupt by doing one now.
     // Why syncronise : About to restore code - having the interupt use the stack would be bad.
     Buffers::buildWaitCommand(packetBuffer);  // RENAME THIS TO "BuildWait_VBL_Command"
-    Z80Bus::sendBytes(packetBuffer, 2);     
+    Z80Bus::sendBytes(packetBuffer, E(WaitPacket::PACKET_LEN));     
     Z80Bus::waitHalt();           
 
     Buffers::buildExecuteCommand(head27_Execute);
-    Z80Bus::sendSnaHeader(&head27_Execute[0]);   // Restore registers & execute code (ROM)
+    Z80Bus::sendSnaHeader(head27_Execute);   // Restore registers & execute code (ROM)
 
     // Final HALT called from screen RAM 
     Z80Bus::waitRelease_NMI();    // Wait for speccy to signal ready
@@ -240,7 +244,7 @@ static const uint8_t MIN_RUN_LENGTH = 5;  // 5 is where RLE pays off
 // The Speccy will reconstruct this data on its end.
 void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
 
-  uint8_t* input = &packetBuffer[5];
+  uint8_t* input = &packetBuffer[E(TransferPacket::PACKET_LEN)];
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -256,7 +260,7 @@ void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
       Buffers::buildSmallFillCommand(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6],addr, run_len, value);
-      Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - 6], 6);
+      Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], E(SmallFillPacket::PACKET_LEN));
       addr += run_len;
       i += run_len;
     } else {  // No run found - raw data
@@ -273,7 +277,7 @@ void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
       }
       uint8_t* p = &packetBuffer[raw_start];
       Buffers::buildTransferCommand(p, addr, raw_len);
-      Z80Bus::sendBytes(p, 5 + raw_len);
+      Z80Bus::sendBytes(p, E(TransferPacket::PACKET_LEN) + raw_len);
       addr += raw_len;
     }
   }
