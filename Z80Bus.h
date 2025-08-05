@@ -5,22 +5,6 @@
 #include "buffers.h"
 #include "digitalWriteFast.h"
 
-/* -------------------------------------------------
- * ZX Spectrum Screen Attribute Byte Format
- * -------------------------------------------------
- * Format: [F | B | P2 | P1 | P0 | I2 | I1 | I0]
- *
- * Bit Fields:
- *   F  - FLASH mode (1 = flash, 0 = steady)
- *   B  - BRIGHT mode (1 = bright, 0 = normal)
- *   P2-P0 - PAPER colour (background)
- *   I2-I0 - INK colour (foreground)
- *
- * Colour Key (FBPPPIII): 
- *   000 = Black, 001 = Blue, 010 = Red, 011 = Magenta,
- *   100 = Green, 101 = Cyan, 110 = Yellow, 111 = White
- */
-
 namespace Z80Bus {
 
 constexpr uint8_t COMMAND_ADDR_SIZE = 2;

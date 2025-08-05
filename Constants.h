@@ -1,5 +1,29 @@
 #pragma once
 
+/* -------------------------------------------------
+ * ZX Spectrum Screen Attribute Byte Format
+ * -------------------------------------------------
+ * Bit:   7   6   5    4    3    2    1    0
+ *       [F | B | P2 | P1 | P0 | I2 | I1 | I0]
+ *        |   |  PAPER (3bits) |  INK (3 bits)
+ *     FLASH BRIGHT
+ *
+ *   000 = Black, 001 = Blue, 010 = Red, 011 = Magenta,
+ *   100 = Green, 101 = Cyan, 110 = Yellow, 111 = White
+ */
+ 
+ //-----------------------------------------
+// ZX SPECTRUM 48k MACHINE CONSTANTS
+//-----------------------------------------
+constexpr uint16_t ZX_SCREEN_ADDRESS_START      = 0x4000;
+constexpr uint16_t ZX_SCREEN_BITMAP_SIZE        = 6144;  // 192 x (255/8)
+constexpr uint16_t ZX_SCREEN_ATTR_ADDRESS_START = ZX_SCREEN_ADDRESS_START + ZX_SCREEN_BITMAP_SIZE;  
+constexpr uint16_t ZX_SCREEN_ATTR_SIZE          = 768;   // (192/8) x (255/8);
+constexpr uint16_t ZX_SCREEN_TOTAL_SIZE         = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;
+constexpr uint16_t ZX_SPECTRUM_48K_TOTAL_MEMORY = 1024UL * 48;   // 48k (above 16k ROM) 
+//-----------------------------------------
+// .Z80 FILE FORMAT - HEADER ver1
+//-----------------------------------------
 constexpr uint8_t Z80_V1_AF_HIGH = 0;
 constexpr uint8_t Z80_V1_AF_LOW = 1;
 constexpr uint8_t Z80_V1_BC_LOW = 2;
@@ -30,10 +54,11 @@ constexpr uint8_t Z80_V1_IX_HIGH = 26;
 constexpr uint8_t Z80_V1_IFF1 = 27;
 constexpr uint8_t Z80_V1_IFF2 = 28;
 constexpr uint8_t Z80_V1_IM_AND_FLAGS2 = 29; // Bits 0-1: IM; Bit 2: Issue 2; Bit 3: Double int; Bits 4-5: Video sync; Bits 6-7: Joystick
+constexpr uint8_t Z80_V1_HEADERLENGTH = 30;  // TOTAL Ver1 ITEMS
 
-constexpr uint8_t Z80_V1_HEADERLENGTH = 30; // CORRECTED length from constants.h
-
-// Z80 Snapshot Header V2/V3 extended header offsets (for picking out specific bytes)
+//-----------------------------------------
+// .Z80 FILE FORMAT - EXTENDED HEADERS ver2/3
+//-----------------------------------------
 constexpr uint8_t Z80_EXT_PC_LOW = 0;
 constexpr uint8_t Z80_EXT_PC_HIGH = 1;
 constexpr uint8_t Z80_EXT_HW_MODE = 2;
@@ -47,7 +72,10 @@ constexpr uint8_t Z80_V2_HEADERLENGTH = 23; // Length of the extended header for
 constexpr uint8_t Z80_V3_HEADERLENGTH = 54; // Length of the extended header for V3
 constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 
-// SNA header defines (from constants.h)
+//-----------------------------------------
+// .SNA FILE FORMAT - (27 byte header)
+//-----------------------------------------
+
 #define SNA_I           0
 #define SNA_HL_PRIME_LOW 1
 #define SNA_HL_PRIME_HIGH 2
@@ -75,11 +103,11 @@ constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 #define SNA_SP_HIGH     24
 #define SNA_IM_MODE     25
 #define SNA_BORDER_COLOUR 26
-#define SNA_TOTAL_ITEMS    27
+#define SNA_TOTAL_ITEMS    27  // TOTAL ITEMS
 
+constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL_ITEMS;  // total: 49179 for all .sna files
 
-constexpr uint16_t SNAPSHOT_FILE_SIZE = (1024UL * 48) + (SNA_TOTAL_ITEMS);  //49179 (.sna files)
-
+//-----------------------------------------
 
 // New enum for Z80 file validity check results
 enum Z80CheckResult {

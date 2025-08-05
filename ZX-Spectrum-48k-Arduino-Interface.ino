@@ -43,7 +43,7 @@ extern bool setupOled();          // debugging with a 128x32 pixel oled
 
 void encodeSend(size_t input_len, uint16_t addr);
 uint16_t GetValueFromPulseStream();
-
+void encodeTransferPacket(uint16_t input_len, uint16_t addr);
 
 void setup() {
 
@@ -93,9 +93,12 @@ void loop() {
   SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
 
   FatFile& file = (SdCardSupport::file);
-  if (file.available() && file.fileSize() == 6912) {
+  // *****************
+  // *** SCR FILES ***
+  // *****************
+  if (file.available() && file.fileSize() == ZX_SCREEN_TOTAL_SIZE) { // qualifies as a .SCR file
     Z80Bus::fillScreenAttributes(0);
-    uint16_t currentAddress = 0x4000;
+    uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
       byte bytesRead = (byte)file.read(&packetBuffer[5], COMMAND_PAYLOAD_SECTION_SIZE);
       Buffers::buildCopyCommand(packetBuffer, currentAddress, bytesRead);
@@ -111,9 +114,7 @@ void loop() {
 
     // Clear screen before returning to menu
     Z80Bus::fillScreenAttributes(0);  
-    uint16_t amount = 6144;
-    uint16_t fillAddr = 0x4000;
-    Buffers::buildFillCommand(packetBuffer, amount, fillAddr, 0);
+    Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_BITMAP_SIZE, ZX_SCREEN_ADDRESS_START, 0);
     Z80Bus::sendBytes(packetBuffer, E(FillPacket::PACKET_LEN));
 
   } else {
@@ -188,15 +189,14 @@ boolean bootFromSnapshot_z80_end() {
 
 boolean bootFromSnapshot() {
 
-    const uint16_t address = 0x4004;  // startup stack pointer (screen RAM)
-    Buffers::buildStackCommand(packetBuffer, address);
+    Buffers::buildStackCommand(packetBuffer, ZX_SCREEN_ADDRESS_START + 4);   // stack pointer (screen RAM)
     Z80Bus::sendBytes(packetBuffer, E(StackPacket::PACKET_LEN));
     Z80Bus::waitRelease_NMI();  //Synchronize: Speccy will halt after loading SP
 
     FatFile& file = (SdCardSupport::file);
     if (file.available()) {   
-        byte bytesReadHeader = (byte)file.read(&head27_Execute[0 + 2], 27);  // Pre-load .sna 27-byte header (CPU registers)
-        if (bytesReadHeader != 27) {
+        byte bytesReadHeader = (byte)file.read(&head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
+        if (bytesReadHeader != SNA_TOTAL_ITEMS) {
             file.close();
             Draw::text(80, 90, PSTR("Invalid sna file"));
             delay(3000);
@@ -204,10 +204,10 @@ boolean bootFromSnapshot() {
         }
     }
     
-    uint16_t currentAddress = 0x4000;  // Spectrum RAM start
+    uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;  // Spectrum RAM start
     while (file.available()) {        // Load .sna data into Speccy RAM in chunks
-        uint16_t bytesRead = file.read(&packetBuffer[5], 255);
-        encodeSend(bytesRead, currentAddress);
+        uint16_t bytesRead = file.read(&packetBuffer[E(TransferPacket::PACKET_LEN)], 255);
+        encodeTransferPacket(bytesRead, currentAddress);
         currentAddress += bytesRead;
     }
 
@@ -236,13 +236,13 @@ boolean bootFromSnapshot() {
 }
 
 
-static const uint16_t MAX_RUN_LENGTH = 255;  //TOTAL_PACKET_BUFFER_SIZE-(6+SIZE_OF_HEADER);;
-static const uint16_t MAX_RAW_LENGTH = 255;
-static const uint8_t MIN_RUN_LENGTH = 5;  // 5 is where RLE pays off
 
-// RLE and send with - Transferring raw using 'G' and filling runs 'f' (both max send of 255 bytes)
-// The Speccy will reconstruct this data on its end.
-void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
+// RLE and send with - TransferPacket and FillPacket (both send max of 255 bytes)
+// The Speccy will reconstruct the RLE at its end.
+void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
+  constexpr uint16_t MAX_RUN_LENGTH = 255;
+  constexpr uint16_t MAX_RAW_LENGTH = 255;
+  constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
 
   uint8_t* input = &packetBuffer[E(TransferPacket::PACKET_LEN)];
 
@@ -259,8 +259,11 @@ void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      Buffers::buildSmallFillCommand(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE-6],addr, run_len, value);
-      Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], E(SmallFillPacket::PACKET_LEN));
+      uint8_t* pFill = &packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
+     // Buffers::buildSmallFillCommand(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], addr, run_len, value);
+    //  Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], E(SmallFillPacket::PACKET_LEN));
+      Buffers::buildSmallFillCommand(pFill, addr, run_len, value);
+      Z80Bus::sendBytes(pFill, E(SmallFillPacket::PACKET_LEN));
       addr += run_len;
       i += run_len;
     } else {  // No run found - raw data
@@ -275,9 +278,9 @@ void encodeSend(/*const uint8_t* input,*/ uint16_t input_len, uint16_t addr) {
         raw_len++;
         i++;
       }
-      uint8_t* p = &packetBuffer[raw_start];
-      Buffers::buildTransferCommand(p, addr, raw_len);
-      Z80Bus::sendBytes(p, E(TransferPacket::PACKET_LEN) + raw_len);
+      uint8_t* pTransfer = &packetBuffer[raw_start];      // send [0] to [255]
+      Buffers::buildTransferCommand(pTransfer, addr, raw_len);
+      Z80Bus::sendBytes(pTransfer, E(TransferPacket::PACKET_LEN) + raw_len);
       addr += raw_len;
     }
   }
