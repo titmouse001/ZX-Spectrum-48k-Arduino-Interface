@@ -49,8 +49,8 @@ void setup() {
 
 #if (SERIAL_DEBUG == 1)
   Serial.begin(9600);
-  while (!Serial) {};                                                                 // Waits for serial monitor connection.
-  Serial.println("DEBUG MODE - BREAKS Z80 TRANSFERS - ARDUINO SIDE DEBUGGING ONLY");  // Crucial warning for debug mode's impact on Z80.
+  while (!Serial) {};                             
+  Serial.println("DEBUG MODE BREAKS TRANSFERS");  
 #endif
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
@@ -74,10 +74,13 @@ void setup() {
   Z80Bus::resetZ80();
   Buffers::setupFunctions();
 
+  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
+  Draw::text_P(256-24, 192-8, F(VERSION) );         
+
   while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
     //oled.println("SD card failed");
     Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
-    Draw::text(80, 90, PSTR("INSERT SD CARD"));             // Displays SD card prompt on Spectrum screen.
+    Draw::text_P(80, 90, F("INSERT SD CARD"));             // Displays SD card prompt on Spectrum screen.
   }
 }
 
@@ -87,7 +90,7 @@ void loop() {
 
   uint16_t totalFiles = 0;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {  // Waits until snapshot files are found on SD.
-    Draw::text(80, 90, PSTR("NO FILES FOUND"));                      // Displays error if no files found.
+    Draw::text_P(80, 90, F("NO FILES FOUND"));                      // Displays error if no files found.
   }
 
   SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
@@ -114,8 +117,8 @@ void loop() {
 
     // Clear screen before returning to menu
     Z80Bus::fillScreenAttributes(0);  
-    Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_BITMAP_SIZE, ZX_SCREEN_ADDRESS_START, 0);
-    Z80Bus::sendBytes(packetBuffer, E(FillPacket::PACKET_LEN));
+    uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_BITMAP_SIZE, ZX_SCREEN_ADDRESS_START, 0);
+    Z80Bus::sendBytes(packetBuffer, packetLen );
 
   } else {
     // *****************
@@ -198,7 +201,7 @@ boolean bootFromSnapshot() {
         byte bytesReadHeader = (byte)file.read(&head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
         if (bytesReadHeader != SNA_TOTAL_ITEMS) {
             file.close();
-            Draw::text(80, 90, PSTR("Invalid sna file"));
+            Draw::text_P(80, 90, F("Invalid sna file"));
             delay(3000);
             return false;
         }

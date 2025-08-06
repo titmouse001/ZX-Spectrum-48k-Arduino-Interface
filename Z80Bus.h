@@ -35,14 +35,12 @@ void setupPins() {
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
 
-/*
- * waitHalt:
- * Waits for Z80 HALT line to go LOW then HIGH (active low)
- * This shows the Z80 has resumed
-*/
-void waitHalt() {
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};
+// waitHalt: Waits for the Z80 CPU to complete a HALT cycle
+// The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
+void waitHalt() {   
+  // Together these synchronise with the end of the Z80's HALT state
+  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // wait until HALT goes LOW (Z80 is halted)
+  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // wait until HALT goes HIGH (Z80 resumes)
 }
 
 void resetZ80() {
@@ -93,15 +91,15 @@ __attribute__((optimize("-Ofast"))) void sendBytes(byte* data, uint16_t size) {
 
 void sendSnaHeader(byte* header) {
   constexpr uint8_t PKT_LEN = static_cast<uint8_t>(ExecutePacket::PACKET_LEN);
-  Z80Bus::sendBytes(&header[0], PKT_LEN + 1 + 2 + 2 + 2 + 2);  // Send COMMAND ADDR then  I,HL',DE',BC',AF'
-  Z80Bus::sendBytes(&header[PKT_LEN + 15], 2 + 2 + 1 + 1);     // Send IY,IX,IFF2,R (packet data continued)
-  Z80Bus::sendBytes(&header[PKT_LEN + 23], 2);                 // Send SP                     "
-  Z80Bus::sendBytes(&header[PKT_LEN + 9], 2);                  // Send HL                     "
-  Z80Bus::sendBytes(&header[PKT_LEN + 25], 1);                 // Send IM                     "
-  Z80Bus::sendBytes(&header[PKT_LEN + 26], 1);                 // Send BorderColour           "
-  Z80Bus::sendBytes(&header[PKT_LEN + 11], 2);                 // Send DE                     "
-  Z80Bus::sendBytes(&header[PKT_LEN + 13], 2);                 // Send BC                     "
-  Z80Bus::sendBytes(&header[PKT_LEN + 21], 2);                 // Send AF                     "
+  Z80Bus::sendBytes(&header[0       +      SNA_I], PKT_LEN + 1 + 2 + 2 + 2 + 2);  // Send COMMAND ADDR then  I,HL',DE',BC',AF'
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IY_LOW], 2 + 2 + 1 + 1);                // Send IY,IX,IFF2,R (packet data continued)
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_SP_LOW], 2);             
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_HL_LOW], 2);             
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IM_MODE], 1);            
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_BORDER_COLOUR], 1);      
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_DE_LOW], 2);             
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_BC_LOW], 2);             
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_AF_LOW], 2);             
 }
 
 void fillScreenAttributes(const uint8_t attributes) {

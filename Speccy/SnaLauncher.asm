@@ -347,7 +347,7 @@ command_Copy:  ; "C" - COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
 	halt							; Synchronizes with Arduino (NMI to continue)
-	in b,(c)  				; The transfer size: 1 byte (size must be >=1)
+	in b,(c)  				; The transfer size: 1 byte
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
 CopyLoop:
 	halt		 			; Synchronizes with Arduino (NMI to continue)
