@@ -44,16 +44,15 @@ void waitHalt() {
 }
 
 void resetZ80() {
-  digitalWriteFast(Pin::Z80_REST, LOW);   // z80 reset-line "LOW"
-  delay(250);                             // reset line needs a delay (this is way more than needed!)
-  digitalWriteFast(Pin::Z80_REST, HIGH);  // z80 reset-line "HIGH" - reboot
+  digitalWriteFast(Pin::Z80_REST, LOW);   // 
+  // REDUCE THIS... SPECCY WILL BE POWERED, NO CAPS TO DRAIN.
+  delay(10);                              // 3 speccy T-States!!!
+  digitalWriteFast(Pin::Z80_REST, HIGH);  // reboot
 }
 
 inline void resetToSnaRom() {
-  digitalWriteFast(Pin::ROM_HALF, LOW);   // pin15 (A1) - Switch over to Sna ROM.
-  digitalWriteFast(Pin::Z80_REST, LOW);   // pin17 to z80 reset-line active low
-  delay(250);                             // reset line needs a delay (this is way more than needed!)
-  digitalWriteFast(Pin::Z80_REST, HIGH);  // pin17 to z80 reset-line (now low to high) - reboot
+  digitalWriteFast(Pin::ROM_HALF, LOW);   // LOW = Custom ROM
+  resetZ80();
 }
 
 void waitRelease_NMI() {
@@ -70,8 +69,10 @@ void waitRelease_NMI() {
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
 }
 
-__attribute__((optimize("-Ofast"))) void sendBytes(byte* data, uint16_t size) {
-  // cli();  // Not really needed
+// TO-DO: measure the difference with cheap oscilloscope , would be interesting to see! (or call tons - results to screen or SD card)
+__attribute__((optimize("-Ofast"))) 
+void sendBytes(byte* data, uint16_t size) {
+  cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
     // Wait for Z80 HALT line to go LOW (active low)
     while (digitalReadFast(Pin::Z80_HALT) != 0) {};
@@ -86,42 +87,41 @@ __attribute__((optimize("-Ofast"))) void sendBytes(byte* data, uint16_t size) {
     // Wait for HALT line to return HIGH again (shows Z80 has resumed)
     while (digitalReadFast(Pin::Z80_HALT) == 0) {};
   }
-  // sei();
+  sei();
 }
 
 void sendSnaHeader(byte* header) {
+  // NOTE: Order is critical - restoring registers destroys others needed for the restoration process
+  // Each byte sent is a planned maneuver to keep the deck of cards from falling over
   constexpr uint8_t PKT_LEN = static_cast<uint8_t>(ExecutePacket::PACKET_LEN);
-  Z80Bus::sendBytes(&header[0       +      SNA_I], PKT_LEN + 1 + 2 + 2 + 2 + 2);  // Send COMMAND ADDR then  I,HL',DE',BC',AF'
-  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IY_LOW], 2 + 2 + 1 + 1);                // Send IY,IX,IFF2,R (packet data continued)
-  Z80Bus::sendBytes(&header[PKT_LEN + SNA_SP_LOW], 2);             
-  Z80Bus::sendBytes(&header[PKT_LEN + SNA_HL_LOW], 2);             
-  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IM_MODE], 1);            
-  Z80Bus::sendBytes(&header[PKT_LEN + SNA_BORDER_COLOUR], 1);      
+  Z80Bus::sendBytes(&header[0       +      SNA_I], PKT_LEN+1+2+2+2+2);  // COMMAND ADDR, I,HL',DE',BC',AF'
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IY_LOW], 2+2+1+1);            // IY,IX,IFF2,R 
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_SP_LOW], 2);                  // The rest aren't in sequence...   
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_HL_LOW], 2);                   
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_IM_MODE], 1);                  
+  Z80Bus::sendBytes(&header[PKT_LEN + SNA_BORDER_COLOUR], 1);            
   Z80Bus::sendBytes(&header[PKT_LEN + SNA_DE_LOW], 2);             
   Z80Bus::sendBytes(&header[PKT_LEN + SNA_BC_LOW], 2);             
   Z80Bus::sendBytes(&header[PKT_LEN + SNA_AF_LOW], 2);             
 }
 
-void fillScreenAttributes(const uint8_t attributes) {
-  const uint16_t amount = 768;
-  const uint16_t fillAddr = 0x5800;
-  Buffers::buildFillCommand(packetBuffer, amount, fillAddr, attributes);
-  Z80Bus::sendBytes(packetBuffer, 7);
+void fillScreenAttributes(const uint8_t col) {
+  uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
+  Z80Bus::sendBytes(packetBuffer, packetLen);
 }
 
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
-  const uint16_t amount = 32;
-  const uint16_t fillAddr = 0x5800 + ((currentFileIndex - startFileIndex) * 32);
+  const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
   constexpr uint8_t BlackSelector = B01000111;
   constexpr uint8_t CyanSelector = B00101000;
 
   if (oldHighlightAddress != fillAddr) {
-    Buffers::buildFillCommand(packetBuffer, amount, oldHighlightAddress, BlackSelector);
-    Z80Bus::sendBytes(packetBuffer, 7);
+    uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_WIDTH_BYTES, oldHighlightAddress, BlackSelector);
+    Z80Bus::sendBytes(packetBuffer,packetLen);
     oldHighlightAddress = fillAddr;
   }
-  Buffers::buildFillCommand(packetBuffer, amount, fillAddr, CyanSelector);
-  Z80Bus::sendBytes(packetBuffer, 7);
+  uint8_t packetLen =Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_WIDTH_BYTES, fillAddr, CyanSelector);
+  Z80Bus::sendBytes(packetBuffer, packetLen);
 }
 
 // TO DO - upgrade to use 6bit binary

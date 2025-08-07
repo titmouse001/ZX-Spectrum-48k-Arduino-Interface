@@ -231,24 +231,36 @@ Z80CheckResult checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 	return result;
 }
 
+/*  NOTES ABOUT COMMAND HEADER, COMMAND_PAYLOAD_SECTION_SIZE, FILE_READ_BUFFER_SIZE :-
++-----------------------+---------------------------+-------------------------+
+|   Header (5)          |   Payload (255)           |  File Read Buffer (128) |
+|   [0..4]              |   [5..259]                |   [260..387]            |
++-----------------------+---------------------------+-------------------------+
+^                       ^                           ^
+|                       |                           |
+|                       |                           └── fileReadBufferPtr
+|                       └── commandPayloadPtr
+└── Used by all command builders (Transfer, SmallFill, etc.)
+*/
+
+
 __attribute__((optimize("-Ofast"))) 
-static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) {
-	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;  // Max size for 'G' command payload
-	                                                                      //uint8_t* commandPayloadPtr = &packetBuffer[SIZE_OF_HEADER];           // Points to the payload area for commands
-	uint8_t* commandPayloadPtr = &packetBuffer[5];                        // Points to the payload area for commands
-	uint16_t commandPayloadPos = 0;                                       // Current position within the command payload buffer
-	uint8_t* fileReadBufferPtr = &packetBuffer[FILE_READ_BUFFER_OFFSET];  // File read buffer
+static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
+
+	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE; 
+
+	uint8_t* commandPayloadPtr = &packetBuffer[E(TransferPacket::PACKET_LEN)];                        
+	uint8_t* fileReadBufferPtr = &packetBuffer[FILE_READ_BUFFER_OFFSET];  
+	uint16_t commandPayloadPos = 0;                                      
 	uint16_t fileReadBufferCurrentPos = 0;
 	uint16_t fileReadBufferBytesAvailable = 0;
 	uint32_t bytesReadFromSource = 0;
 
 	auto getNextByteFromFile = [&]() -> uint8_t {
 		if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
-			uint16_t bytesToRead = min((uint16_t)FILE_READ_BUFFER_SIZE, (uint16_t)(sourceLengthLimit - bytesReadFromSource));
-			if (bytesToRead == 0) return 0;  // Should not happen due to validation
-
-			int16_t bytesJustRead = SdCardSupport::fileRead(fileReadBufferPtr, bytesToRead);
-			fileReadBufferBytesAvailable = (uint16_t)bytesJustRead;
+			uint16_t bytesToRead = min(FILE_READ_BUFFER_SIZE, sourceLengthLimit - bytesReadFromSource);
+			//if (bytesToRead == 0) return 0;  // Should not happen due to validation
+			fileReadBufferBytesAvailable = SdCardSupport::fileRead(fileReadBufferPtr, bytesToRead);
 			fileReadBufferCurrentPos = 0;
 		}
 		bytesReadFromSource++;
@@ -258,8 +270,7 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) 
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
 			Buffers::buildTransferCommand(packetBuffer,currentAddress, commandPayloadPos);
-			Z80Bus::sendBytes(packetBuffer, 5 + commandPayloadPos);
-
+			Z80Bus::sendBytes(packetBuffer, E(TransferPacket::PACKET_LEN) + commandPayloadPos);
 			currentAddress += commandPayloadPos;
 			commandPayloadPos = 0;
 		}
@@ -277,13 +288,11 @@ static void decodeRLE_core(uint32_t sourceLengthLimit, uint16_t currentAddress) 
 		if (b1 == 0xED) {
 			uint8_t b2 = getNextByteFromFile();
 			if (b2 == 0xED) {
-				flushCommandPayloadBuffer();  // Flush any previous payload before a fill command
+				flushCommandPayloadBuffer(); 
 				uint8_t runAmount = getNextByteFromFile();
 				uint8_t value = getNextByteFromFile();
-
-				Buffers::buildSmallFillCommand(packetBuffer,currentAddress, runAmount, value);
-				Z80Bus::sendBytes(packetBuffer, 6);
-
+				uint8_t packetLen = Buffers::buildSmallFillCommand(packetBuffer, runAmount, currentAddress, value);
+				Z80Bus::sendBytes(packetBuffer, packetLen);
 				currentAddress += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
@@ -335,7 +344,7 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 		return BLOCK_UNSUPPORTED_PAGE;
 	}
 
-	decodeRLE_core(compressed_length, /* bytesWrittenActual, */ (uint16_t)sna_offset);
+	decodeRLE_core(compressed_length,  (uint16_t)sna_offset);
 	return BLOCK_SUCCESS;
 }
 

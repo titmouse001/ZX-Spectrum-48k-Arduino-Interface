@@ -104,8 +104,8 @@ void loop() {
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
       byte bytesRead = (byte)file.read(&packetBuffer[5], COMMAND_PAYLOAD_SECTION_SIZE);
-      Buffers::buildCopyCommand(packetBuffer, currentAddress, bytesRead);
-      Z80Bus::sendBytes(packetBuffer, E(CopyPacket::PACKET_LEN) + bytesRead);
+      uint8_t packetLen = Buffers::buildCopyCommand(packetBuffer, currentAddress, bytesRead);
+      Z80Bus::sendBytes(packetBuffer, packetLen + bytesRead);
       currentAddress += bytesRead;
     }
 
@@ -175,8 +175,8 @@ void loop() {
 
 boolean bootFromSnapshot_z80_end() {
     
-    Buffers::buildWaitCommand(packetBuffer);
-    Z80Bus::sendBytes(packetBuffer, E(WaitPacket::PACKET_LEN));
+    uint8_t packetLen = Buffers::buildWaitCommand(packetBuffer);
+    Z80Bus::sendBytes(packetBuffer,packetLen);
     Z80Bus::waitHalt();
 
     Buffers::buildExecuteCommand(head27_Execute);
@@ -192,8 +192,8 @@ boolean bootFromSnapshot_z80_end() {
 
 boolean bootFromSnapshot() {
 
-    Buffers::buildStackCommand(packetBuffer, ZX_SCREEN_ADDRESS_START + 4);   // stack pointer (screen RAM)
-    Z80Bus::sendBytes(packetBuffer, E(StackPacket::PACKET_LEN));
+    uint8_t packetLen = Buffers::buildStackCommand(packetBuffer, ZX_SCREEN_ADDRESS_START + 4);   // stack pointer (screen RAM)
+    Z80Bus::sendBytes(packetBuffer, packetLen );
     Z80Bus::waitRelease_NMI();  //Synchronize: Speccy will halt after loading SP
 
     FatFile& file = (SdCardSupport::file);
@@ -263,10 +263,8 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
       uint8_t* pFill = &packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
-     // Buffers::buildSmallFillCommand(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], addr, run_len, value);
-    //  Z80Bus::sendBytes(&packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)], E(SmallFillPacket::PACKET_LEN));
-      Buffers::buildSmallFillCommand(pFill, addr, run_len, value);
-      Z80Bus::sendBytes(pFill, E(SmallFillPacket::PACKET_LEN));
+      uint8_t packetLen = Buffers::buildSmallFillCommand(pFill, run_len,addr, value);
+      Z80Bus::sendBytes(pFill, packetLen);
       addr += run_len;
       i += run_len;
     } else {  // No run found - raw data
@@ -282,8 +280,8 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
         i++;
       }
       uint8_t* pTransfer = &packetBuffer[raw_start];      // send [0] to [255]
-      Buffers::buildTransferCommand(pTransfer, addr, raw_len);
-      Z80Bus::sendBytes(pTransfer, E(TransferPacket::PACKET_LEN) + raw_len);
+      uint8_t packetLen = Buffers::buildTransferCommand(pTransfer, addr, raw_len);
+      Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
       addr += raw_len;
     }
   }

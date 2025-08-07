@@ -20,6 +20,7 @@ bool buttonHeld = false;
 constexpr uint8_t SCREEN_TEXT_ROWS = 24;  // 192/8
 constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = 42;
 constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
 
 typedef enum {
   BUTTON_NONE,
@@ -53,7 +54,10 @@ void fileList(uint16_t startFileIndex) {
     file.close();
   }
 
-  char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];   // TO DO uses command_Copy32 = 4 !!!!!
+  //char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];   // TO DO uses command_Copy32 = 4 !!!!!
+  // NOTE: File name uses the space just after the one for Draw::textLine which uses [0] to [4+32-1]
+  // We are free to use [+35] while fileList is going on. 
+  char* fileName = (char*)&packetBuffer[ E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE];  
   count = 0;
   do {
     if (!file.isFile()) break;
@@ -107,7 +111,7 @@ MenuAction_t getMenuAction(uint16_t totalFiles) {
   // Handle button release
   if (button == BUTTON_NONE) {
     buttonHeld = false;
-    buttonDelay = 300;  // Reset repeat delay
+    buttonDelay = MAX_REPEAT_KEY_DELAY;
     return ACTION_NONE;
   }
 
