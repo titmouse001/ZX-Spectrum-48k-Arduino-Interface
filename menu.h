@@ -69,7 +69,7 @@ void fileList(uint16_t startFileIndex) {
         fileName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
         fileName[ZX_FILENAME_MAX_DISPLAY_LEN - 0] = '\0';
       }
-      Draw::textLine(0, count * 8, fileName); // 
+      Draw::textLine(count * 8, fileName); // 
       count++;
     }
     file.close();
@@ -79,7 +79,7 @@ void fileList(uint16_t startFileIndex) {
   fileName[0] = ' ';  // blank filename
   fileName[1] = '\0';
   for (uint8_t i = count; i < SCREEN_TEXT_ROWS; i++) {
-    Draw::textLine(0, i * FONT_HEIGHT_WITH_GAP, fileName);  // clear unused space
+    Draw::textLine(i * FONT_HEIGHT_WITH_GAP, fileName);  // clear unused space
   }
 }
 

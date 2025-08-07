@@ -74,19 +74,19 @@ void setup() {
   Z80Bus::resetZ80();
   Buffers::setupFunctions();
 
-  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
+  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);  // Sets default screen colors for error message.
   Draw::text_P(256-24, 192-8, F(VERSION) );         
 
   while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
     //oled.println("SD card failed");
-    Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Sets default screen colors for error message.
+    Z80Bus::fillScreenAttributes(Paper0Ink7);  // Sets default screen colors for error message.
     Draw::text_P(80, 90, F("INSERT SD CARD"));             // Displays SD card prompt on Spectrum screen.
   }
 }
 
 void loop() {
 
-  Z80Bus::fillScreenAttributes(Utils::Ink7Paper0);  // Resets screen colors for menu display.
+  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);  // Resets screen colors for menu display.
 
   uint16_t totalFiles = 0;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {  // Waits until snapshot files are found on SD.
@@ -103,9 +103,8 @@ void loop() {
     Z80Bus::fillScreenAttributes(0);
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
-      byte bytesRead = (byte)file.read(&packetBuffer[5], COMMAND_PAYLOAD_SECTION_SIZE);
-      uint8_t packetLen = Buffers::buildCopyCommand(packetBuffer, currentAddress, bytesRead);
-      Z80Bus::sendBytes(packetBuffer, packetLen + bytesRead);
+      byte bytesRead = (byte)file.read(&packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
+      Z80Bus::sendCopyCommand(currentAddress, bytesRead);
       currentAddress += bytesRead;
     }
 
@@ -117,9 +116,7 @@ void loop() {
 
     // Clear screen before returning to menu
     Z80Bus::fillScreenAttributes(0);  
-    uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_BITMAP_SIZE, ZX_SCREEN_ADDRESS_START, 0);
-    Z80Bus::sendBytes(packetBuffer, packetLen );
-
+    Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
   } else {
     // *****************
     // *** SNA FILES ***
@@ -141,12 +138,13 @@ void loop() {
       // *****************
       // *** TXT FILES ***  ... not yet implemented
       // *****************
-      char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];
+      char* fileName = (char*) &packetBuffer[FILE_READ_BUFFER_OFFSET];
       /*uint16_t len = */ file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
       if (strcmp(extension, "txt") == 0) {
         Z80Bus::fillScreenAttributes(B00010000);
+        delay(500);
         SdCardSupport::fileClose();  // back around to pick another file and don't reset speccy
       } else {
         // *****************
@@ -192,8 +190,7 @@ boolean bootFromSnapshot_z80_end() {
 
 boolean bootFromSnapshot() {
 
-    uint8_t packetLen = Buffers::buildStackCommand(packetBuffer, ZX_SCREEN_ADDRESS_START + 4);   // stack pointer (screen RAM)
-    Z80Bus::sendBytes(packetBuffer, packetLen );
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START+4);  // stack pointer (screen RAM)
     Z80Bus::waitRelease_NMI();  //Synchronize: Speccy will halt after loading SP
 
     FatFile& file = (SdCardSupport::file);
@@ -217,8 +214,7 @@ boolean bootFromSnapshot() {
     // Special syncronise case: Enable speccys hardware 50Hz maskable interrupt (i.e. "IM 1" , "EI")
     // We need to create a useful time gap before the next h/w interrupt by doing one now.
     // Why syncronise : About to restore code - having the interupt use the stack would be bad.
-    Buffers::buildWaitCommand(packetBuffer);  // RENAME THIS TO "BuildWait_VBL_Command"
-    Z80Bus::sendBytes(packetBuffer, E(WaitPacket::PACKET_LEN));     
+    Z80Bus::sendWaitVBLCommand();
     Z80Bus::waitHalt();           
 
     Buffers::buildExecuteCommand(head27_Execute);
@@ -265,6 +261,7 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
       uint8_t* pFill = &packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
       uint8_t packetLen = Buffers::buildSmallFillCommand(pFill, run_len,addr, value);
       Z80Bus::sendBytes(pFill, packetLen);
+    
       addr += run_len;
       i += run_len;
     } else {  // No run found - raw data

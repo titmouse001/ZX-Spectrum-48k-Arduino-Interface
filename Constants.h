@@ -11,7 +11,18 @@
  *   000 = Black, 001 = Blue, 010 = Red, 011 = Magenta,
  *   100 = Green, 101 = Cyan, 110 = Yellow, 111 = White
  */
- 
+
+
+constexpr uint8_t Paper0Ink7     = 0b01000111;
+constexpr uint8_t Paper5Ink0     = 0b00101000;
+constexpr uint8_t Paper0Ink0     = 0b00000000;
+namespace COL {
+constexpr uint8_t BLACK_WHITE = Paper0Ink7;  
+constexpr uint8_t CYAN_BLACK  = Paper5Ink0; 
+
+}
+
+
  //-----------------------------------------
 // ZX SPECTRUM 48k MACHINE CONSTANTS
 //-----------------------------------------

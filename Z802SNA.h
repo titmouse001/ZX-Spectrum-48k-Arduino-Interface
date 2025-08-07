@@ -10,8 +10,8 @@
 
 namespace Z802SNA {
 
-    // convertHeaders: It takes the Z80 V1 header, and fills the SNA header.
-    // Returns the stack offset where PC should be pushed.
+    // convertHeaders: It takes the Z80 V1 header, and fillout the SNA header.
+    // Returns the stack offset to the caller where PC should be pushed.
     uint16_t convertZ80HeaderToSna(const uint8_t* z80Header_v1, uint8_t* snaHeader) {
         // '.Z80' V1 header to '.SNA' header  (SNA header is 27 bytes)
         snaHeader[SNA_I] = z80Header_v1[Z80_V1_I];
@@ -37,17 +37,21 @@ namespace Z802SNA {
         snaHeader[SNA_R_REGISTER] = z80Header_v1[Z80_V1_R_7BITS];
         snaHeader[SNA_AF_LOW] = z80Header_v1[Z80_V1_AF_LOW];
         snaHeader[SNA_AF_HIGH] = z80Header_v1[Z80_V1_AF_HIGH];
-
-        // --- SP calculation ---
-        uint16_t original_sp = (z80Header_v1[Z80_V1_SP_HIGH] << 8) | z80Header_v1[Z80_V1_SP_LOW];
-        uint16_t new_sp = original_sp - 2;  // -2 as all .sna files have a fudged PC place in the stack
+        // -----------------------------------------------------------------------------------------
+        // Modify stack to use the .SNA format style 
+        // -2 as all .sna files by design have a fudged PC placed next in the stack, 
+        // this allows the sna format to use the return instruction (RET) to start the game. 
+        const uint16_t original_sp = (z80Header_v1[Z80_V1_SP_HIGH] << 8) | z80Header_v1[Z80_V1_SP_LOW];
+        const uint16_t new_sp = original_sp - 2;  
         snaHeader[SNA_SP_LOW] = (uint8_t)(new_sp & 0xFF);
         snaHeader[SNA_SP_HIGH] = (uint8_t)(new_sp >> 8);
-
-        snaHeader[SNA_IM_MODE] = (z80Header_v1[Z80_V1_IM_AND_FLAGS2] & 0x03); // IM mode is bits 0-1 of IM_AND_FLAGS2
-        snaHeader[SNA_BORDER_COLOUR] = (z80Header_v1[Z80_V1_FLAGS1] & 0x0E) >> 1; // Border color is bits 1-3 of FLAGS1
-
-        return (uint16_t)(new_sp); // - 0x4000); // Return offset relative to 0x4000 for PC write
+        // -----------------------------------------------------------------------------------------
+        // IM mode is bits 0-1 of IM_AND_FLAGS2
+        snaHeader[SNA_IM_MODE] = z80Header_v1[Z80_V1_IM_AND_FLAGS2] & 0b0011; 
+        // Border color is bits 1-3 of FLAGS1
+        snaHeader[SNA_BORDER_COLOUR] = (z80Header_v1[Z80_V1_FLAGS1] & 0b1110) >> 1; 
+        return new_sp;   // Caller will use this to place PC on stack
     }
+
 } // namespace Z802SNA
 

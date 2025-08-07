@@ -80,7 +80,7 @@ int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
 		return Z80_VERSION_UNKNOWN;  // Error reading header
 	}
 
-	if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) {
+	if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) {  // V1: PC!=0
 		headerInfo->pc_low = v1_header[Z80_V1_PC_LOW];
 		headerInfo->pc_high = v1_header[Z80_V1_PC_HIGH];
 		headerInfo->hw_mode = 0;
@@ -349,17 +349,19 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 }
 
 int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
-	uint16_t stackOffsetForPushingPC = 0;
-	uint8_t* snaHeader = &head27_Execute[0 +2];  			// +2 for Addr Command header
+	uint16_t stackAddrForPushingPC = 0;
+	uint8_t* snaHeader = &head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
 	uint8_t* v1_header = &packetBuffer[0]; // Use global buffer where header is stored
 
-	if (headerInfo->version >= 2) {
-		// Patch PC and R from extended header
-		v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;
-		v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
-		v1_header[Z80_V1_R_7BITS] &= ~0x80;
+		if (headerInfo->version >= 2) {  // V2 or V3 format
+			// V2/V3 save states store PC as zero in the main header
+			// Restore PC from extended header and convert to V1 format for processing
+			v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;		
+			v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
+			// Clear bit 7 of R register
+			v1_header[Z80_V1_R_7BITS] &= ~0x80;
 
-		stackOffsetForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
+		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader); 
 
 		while (true) {
 			uint8_t page_number;
@@ -369,8 +371,8 @@ int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 			if (block_result < 0) { return block_result; }             // negative critical errors
 		}
 	} else {   // version 1
-		const uint32_t DEST_BUFFER_SIZE = 0xC000;  // Expected uncompressed size (48K machine)
-		stackOffsetForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
+		const uint32_t DEST_BUFFER_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY;  // Expected uncompressed size (48K machine)
+		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		if (headerInfo->isV1Compressed) {
 			int32_t start_of_rle_data = SdCardSupport::filePosition();
@@ -379,7 +381,7 @@ int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 			if (!findMarkerOptimized(start_of_rle_data, rle_data_length) || rle_data_length == 0) {
 				return BLOCK_ERROR_NO_V1_MARKER;
 			}
-			decodeRLE_core(rle_data_length, 0x4000);
+			decodeRLE_core(rle_data_length, ZX_SCREEN_ADDRESS_START);
 
 			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
 			int32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
@@ -389,17 +391,18 @@ int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 				}
 			}
 		} else {  // Uncompressed V1 data
-			decodeRLE_core(DEST_BUFFER_SIZE, 0x4000);
+			decodeRLE_core(DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
 		}
 	}
 
 	// Fake push 'PC' onto the stack
 	// NOTE: We are currently reusing existing ".SNA" functionaliy for loading the final Z80's CPU registers.
 	//       This can be changed later to use a more effecient standard when sending to the Speccy.
-	Buffers::buildTransferCommand(packetBuffer,stackOffsetForPushingPC, 2);
-	packetBuffer[5] = headerInfo->pc_low;  // data - NOT PART OF HEADER
-	packetBuffer[6] = headerInfo->pc_high;
-	Z80Bus::sendBytes(packetBuffer, 5 + 2);
+	uint8_t payloadAmount=0;
+	packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_low; 
+	packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_high;  
+	uint8_t packetLen = Buffers::buildTransferCommand(packetBuffer,stackAddrForPushingPC, payloadAmount);
+	Z80Bus::sendBytes(packetBuffer, packetLen + payloadAmount);
 
 	return BLOCK_SUCCESS;
 }

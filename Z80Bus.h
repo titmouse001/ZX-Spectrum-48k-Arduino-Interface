@@ -110,18 +110,38 @@ void fillScreenAttributes(const uint8_t col) {
   Z80Bus::sendBytes(packetBuffer, packetLen);
 }
 
+void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
+  uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(packetBuffer, packetLen);
+}
+
+void sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color) {
+  uint8_t packetLen = Buffers::buildSmallFillCommand(packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(packetBuffer, packetLen);
+}
+
+void sendCopyCommand( uint16_t address, uint8_t amount) {
+  uint8_t packetLen = Buffers::buildCopyCommand(packetBuffer, address, amount);
+  Z80Bus::sendBytes(packetBuffer, packetLen + amount);
+}
+
+void sendWaitVBLCommand() {
+    uint8_t packetLen = Buffers::buildWaitCommand(packetBuffer);  
+    Z80Bus::sendBytes(packetBuffer, packetLen);     
+}
+
+void sendStackCommand(uint16_t addr) {
+    uint8_t packetLen = Buffers::buildStackCommand(packetBuffer, addr);   
+    Z80Bus::sendBytes(packetBuffer, packetLen );
+}
+
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
   const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
-  constexpr uint8_t BlackSelector = B01000111;
-  constexpr uint8_t CyanSelector = B00101000;
-
-  if (oldHighlightAddress != fillAddr) {
-    uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_WIDTH_BYTES, oldHighlightAddress, BlackSelector);
-    Z80Bus::sendBytes(packetBuffer,packetLen);
+  if (oldHighlightAddress != fillAddr) {   // Clear old highlight if it's different
+    sendFillCommand(oldHighlightAddress, ZX_SCREEN_WIDTH_BYTES, COL::BLACK_WHITE);
     oldHighlightAddress = fillAddr;
   }
-  uint8_t packetLen =Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_WIDTH_BYTES, fillAddr, CyanSelector);
-  Z80Bus::sendBytes(packetBuffer, packetLen);
+  sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
 // TO DO - upgrade to use 6bit binary
