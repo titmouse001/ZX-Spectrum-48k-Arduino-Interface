@@ -9,12 +9,12 @@ static SdFat32 sd;
 static FatFile root;
 static FatFile file;
 
-boolean init() {
+boolean init(uint8_t csPin) {
   if (root.isOpen()) {
     root.close();
     sd.end();
   }
-  if (!sd.begin()) {
+  if (!sd.begin(csPin)) {
     return false;
   }
   if (!root.open("/")) {

@@ -15,8 +15,9 @@
  * pin 15/A1   ->  ROM:pin-27 (bank select)
  * pin 16/A2   ->  IC:74HC165 (clock pin-2)
  * pin 17/A3   ->  Z80:/RESET (active low)
- * pin 18/A4  <->  I2C:OLED SDA (data)    *** NOW DEBUG ONLY ***
- * pin 19/A5   ->  I2C:OLED SCL (clock)   *** NOW DEBUG ONLY ***
+ * pin 18/A4  <->  SD-CARD CS          *** NOW DEBUG ONLY *** I2C:OLED SDA (data)
+                   (for logic only as SDFat expects a pin but my SD card is fixed to ground)
+ * pin 19/A5   ->  UNUSED              *** NOW DEBUG ONLY *** I2C:OLED SCL (clock)
  * pin 20/A6   -   *** NC (unused) ***
  * pin 21/A7  <-   VOLTAGE: analog input
  * GND         -   SD_CS

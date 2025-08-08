@@ -93,7 +93,8 @@ void sendBytes(byte* data, uint16_t size) {
 void sendSnaHeader(byte* header) {
   // NOTE: Order is critical - restoring registers destroys others needed for the restoration process
   // Each byte sent is a planned maneuver to keep the deck of cards from falling over
-  constexpr uint8_t PKT_LEN = static_cast<uint8_t>(ExecutePacket::PACKET_LEN);
+
+  constexpr uint8_t PKT_LEN = E(ExecutePacket::PACKET_LEN);
   Z80Bus::sendBytes(&header[0       +      SNA_I], PKT_LEN+1+2+2+2+2);  // COMMAND ADDR, I,HL',DE',BC',AF'
   Z80Bus::sendBytes(&header[PKT_LEN + SNA_IY_LOW], 2+2+1+1);            // IY,IX,IFF2,R 
   Z80Bus::sendBytes(&header[PKT_LEN + SNA_SP_LOW], 2);                  // The rest aren't in sequence...   
@@ -106,33 +107,33 @@ void sendSnaHeader(byte* header) {
 }
 
 void fillScreenAttributes(const uint8_t col) {
-  uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
-  Z80Bus::sendBytes(packetBuffer, packetLen);
+  uint8_t packetLen = Buffers::buildFillCommand(Buffers::packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
+  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
 }
 
 void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
-  uint8_t packetLen = Buffers::buildFillCommand(packetBuffer, amount, address, color);
-  Z80Bus::sendBytes(packetBuffer, packetLen);
+  uint8_t packetLen = Buffers::buildFillCommand(Buffers::packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
 }
 
 void sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color) {
-  uint8_t packetLen = Buffers::buildSmallFillCommand(packetBuffer, amount, address, color);
-  Z80Bus::sendBytes(packetBuffer, packetLen);
+  uint8_t packetLen = Buffers::buildSmallFillCommand(Buffers::packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
 }
 
 void sendCopyCommand( uint16_t address, uint8_t amount) {
-  uint8_t packetLen = Buffers::buildCopyCommand(packetBuffer, address, amount);
-  Z80Bus::sendBytes(packetBuffer, packetLen + amount);
+  uint8_t packetLen = Buffers::buildCopyCommand(Buffers::packetBuffer, address, amount);
+  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen + amount);
 }
 
 void sendWaitVBLCommand() {
-    uint8_t packetLen = Buffers::buildWaitCommand(packetBuffer);  
-    Z80Bus::sendBytes(packetBuffer, packetLen);     
+    uint8_t packetLen = Buffers::buildWaitCommand(Buffers::packetBuffer);  
+    Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);     
 }
 
 void sendStackCommand(uint16_t addr) {
-    uint8_t packetLen = Buffers::buildStackCommand(packetBuffer, addr);   
-    Z80Bus::sendBytes(packetBuffer, packetLen );
+    uint8_t packetLen = Buffers::buildStackCommand(Buffers::packetBuffer, addr);   
+    Z80Bus::sendBytes(Buffers::packetBuffer, packetLen );
 }
 
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
@@ -150,10 +151,10 @@ uint8_t GetKeyPulses() {
   constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
 
-  packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((Buffers::command_TransmitKey) >> 8);
-  packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((Buffers::command_TransmitKey)&0xFF);
-  packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
-  Z80Bus::sendBytes(packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
+  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((Buffers::command_TransmitKey) >> 8);
+  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((Buffers::command_TransmitKey)&0xFF);
+  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+  Z80Bus::sendBytes(Buffers::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
 
   uint8_t pulseCount = 0;
   uint32_t lastPulseTime = 0;

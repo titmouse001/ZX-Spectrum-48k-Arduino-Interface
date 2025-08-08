@@ -32,7 +32,18 @@
 #endif
 // ----------------------------------------------------------------------------------
 #if (DEBUG_OLED == 1)
-#warning "*** DEBUG_OLED is enabled ***"
+#warning "*** DEBUG_OLED enabled: Pin A4 conflict with SD card CS! ***"
+// 
+// OLED Configuration:
+//   - Uses I2C pins: A4 (SDA) & A5 (SCL)
+//   - Display: 128x32 pixel SSD1306
+//   - I2C Address: 0x3C (alternative: 0x3D)
+//
+// WARNING: Pin A4 serves dual purpose:
+//   - OLED SDA (when DEBUG_OLED enabled)
+//   - SD card Chip Select (in main code)
+//   This creates a hardware conflict!
+//
 #include <Wire.h>                 // I2C for OLED.
 #include "SSD1306AsciiAvrI2c.h"   // SSD1306 OLED displays on AVR.
 #define I2C_ADDRESS 0x3C          // 0x3C or 0x3D
@@ -41,8 +52,6 @@ extern bool setupOled();          // debugging with a 128x32 pixel oled
 #endif
 // ----------------------------------------------------------------------------------
 
-void encodeSend(size_t input_len, uint16_t addr);
-uint16_t GetValueFromPulseStream();
 void encodeTransferPacket(uint16_t input_len, uint16_t addr);
 
 void setup() {
@@ -74,13 +83,16 @@ void setup() {
   Z80Bus::resetZ80();
   Buffers::setupFunctions();
 
-  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);  // Sets default screen colors for error message.
+  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
   Draw::text_P(256-24, 192-8, F(VERSION) );         
 
-  while (!SdCardSupport::init()) {  // Loops until SD card is successfully initialized.
+// !!! Whoops... 
+// PIN CONFLICT: DSFat's init() defaults to pin 10 (PIN_SPI_SS) which conflicts with ShiftRegLatchPin
+// used for button reading. This causes random button presses after startup when 
+// SDFat disables the SD card. Fix: Use the free OLED debug pin A4.
+  while (!SdCardSupport::init(PIN_A4)) { 
     //oled.println("SD card failed");
-    Z80Bus::fillScreenAttributes(Paper0Ink7);  // Sets default screen colors for error message.
-    Draw::text_P(80, 90, F("INSERT SD CARD"));             // Displays SD card prompt on Spectrum screen.
+    Draw::text_P(80, 90, F("INSERT SD CARD")); 
   }
 }
 
@@ -103,7 +115,7 @@ void loop() {
     Z80Bus::fillScreenAttributes(0);
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
-      byte bytesRead = (byte)file.read(&packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
+      byte bytesRead = (byte)file.read(&Buffers::packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
       Z80Bus::sendCopyCommand(currentAddress, bytesRead);
       currentAddress += bytesRead;
     }
@@ -138,7 +150,7 @@ void loop() {
       // *****************
       // *** TXT FILES ***  ... not yet implemented
       // *****************
-      char* fileName = (char*) &packetBuffer[FILE_READ_BUFFER_OFFSET];
+      char* fileName = (char*) &Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
       /*uint16_t len = */ file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
@@ -173,12 +185,12 @@ void loop() {
 
 boolean bootFromSnapshot_z80_end() {
     
-    uint8_t packetLen = Buffers::buildWaitCommand(packetBuffer);
-    Z80Bus::sendBytes(packetBuffer,packetLen);
+    uint8_t packetLen = Buffers::buildWaitCommand(Buffers::packetBuffer);
+    Z80Bus::sendBytes(Buffers::packetBuffer,packetLen);
     Z80Bus::waitHalt();
 
-    Buffers::buildExecuteCommand(head27_Execute);
-    Z80Bus::sendSnaHeader(head27_Execute);
+    Buffers::buildExecuteCommand(Buffers::head27_Execute);
+    Z80Bus::sendSnaHeader(Buffers::head27_Execute);
     Z80Bus::waitRelease_NMI();
 
     delayMicroseconds(7);
@@ -195,7 +207,7 @@ boolean bootFromSnapshot() {
 
     FatFile& file = (SdCardSupport::file);
     if (file.available()) {   
-        byte bytesReadHeader = (byte)file.read(&head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
+        byte bytesReadHeader = (byte)file.read(&Buffers::head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
         if (bytesReadHeader != SNA_TOTAL_ITEMS) {
             file.close();
             Draw::text_P(80, 90, F("Invalid sna file"));
@@ -206,7 +218,7 @@ boolean bootFromSnapshot() {
     
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;  // Spectrum RAM start
     while (file.available()) {        // Load .sna data into Speccy RAM in chunks
-        uint16_t bytesRead = file.read(&packetBuffer[E(TransferPacket::PACKET_LEN)], 255);
+        uint16_t bytesRead = file.read(&Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)], 255);
         encodeTransferPacket(bytesRead, currentAddress);
         currentAddress += bytesRead;
     }
@@ -217,8 +229,8 @@ boolean bootFromSnapshot() {
     Z80Bus::sendWaitVBLCommand();
     Z80Bus::waitHalt();           
 
-    Buffers::buildExecuteCommand(head27_Execute);
-    Z80Bus::sendSnaHeader(head27_Execute);   // Restore registers & execute code (ROM)
+    Buffers::buildExecuteCommand(Buffers::head27_Execute);
+    Z80Bus::sendSnaHeader(Buffers::head27_Execute);   // Restore registers & execute code (ROM)
 
     // Final HALT called from screen RAM 
     Z80Bus::waitRelease_NMI();    // Wait for speccy to signal ready
@@ -243,7 +255,7 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
   constexpr uint16_t MAX_RAW_LENGTH = 255;
   constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
 
-  uint8_t* input = &packetBuffer[E(TransferPacket::PACKET_LEN)];
+  uint8_t* input = &Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)];
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -258,7 +270,7 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      uint8_t* pFill = &packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
+      uint8_t* pFill = &Buffers::packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
       uint8_t packetLen = Buffers::buildSmallFillCommand(pFill, run_len,addr, value);
       Z80Bus::sendBytes(pFill, packetLen);
     
@@ -276,14 +288,13 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
         raw_len++;
         i++;
       }
-      uint8_t* pTransfer = &packetBuffer[raw_start];      // send [0] to [255]
+      uint8_t* pTransfer = &Buffers::packetBuffer[raw_start];      // send [0] to [255]
       uint8_t packetLen = Buffers::buildTransferCommand(pTransfer, addr, raw_len);
       Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
       addr += raw_len;
     }
   }
 }
-
 
 #if (DEBUG_OLED == 1)
 // DEBUG USE ONLY
