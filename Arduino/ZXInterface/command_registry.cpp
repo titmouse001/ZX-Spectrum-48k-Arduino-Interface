@@ -8,19 +8,19 @@ namespace CommandRegistry {
     uint16_t command_Transfer;
     uint16_t command_Copy;
     uint16_t command_Copy32;
-    uint16_t command_Wait;
+    uint16_t command_VBL_Wait;
     uint16_t command_Stack;
     uint16_t command_Execute;
 
     void initialize() {
-        command_TransmitKey = Utils::GetValueFromPulseStream();
-        command_Fill = Utils::GetValueFromPulseStream();
-        command_SmallFill = Utils::GetValueFromPulseStream();
-        command_Transfer = Utils::GetValueFromPulseStream();
-        command_Copy = Utils::GetValueFromPulseStream();
-        command_Copy32 = Utils::GetValueFromPulseStream();
-        command_Wait = Utils::GetValueFromPulseStream();
-        command_Stack = Utils::GetValueFromPulseStream();
-        command_Execute = Utils::GetValueFromPulseStream();
+        command_TransmitKey = Utils::readPulseEncodedValue();
+        command_Fill = Utils::readPulseEncodedValue();
+        command_SmallFill = Utils::readPulseEncodedValue();
+        command_Transfer = Utils::readPulseEncodedValue();
+        command_Copy = Utils::readPulseEncodedValue();
+        command_Copy32 = Utils::readPulseEncodedValue();
+        command_VBL_Wait = Utils::readPulseEncodedValue();
+        command_Stack = Utils::readPulseEncodedValue();
+        command_Execute = Utils::readPulseEncodedValue();
     }
 }

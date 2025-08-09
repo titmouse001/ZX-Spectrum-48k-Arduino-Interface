@@ -131,7 +131,7 @@ void sendCopyCommand( uint16_t address, uint8_t amount) {
 }
 
 void sendWaitVBLCommand() {
-    uint8_t packetLen = PacketBuilder::buildWaitCommand(BufferManager::packetBuffer);  
+    uint8_t packetLen = PacketBuilder::buildWaitVBLCommand(BufferManager::packetBuffer);  
     Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);     
 }
 

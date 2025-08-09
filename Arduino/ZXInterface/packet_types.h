@@ -73,7 +73,7 @@ enum class Copy32Packet : uint8_t {
   PACKET_LEN
 };
 
-enum class WaitPacket : uint8_t {
+enum class WaitVBLPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
   PACKET_LEN

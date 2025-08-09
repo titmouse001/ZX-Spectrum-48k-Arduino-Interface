@@ -4,8 +4,8 @@ namespace Utils {
 
 void frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
-  if (timeSpent < maxButtonInputMilliseconds) {
-    delay(maxButtonInputMilliseconds - timeSpent);  // aiming for 50 FPS
+  if (timeSpent < MAX_BUTTON_READ_MILLISECONDS) {
+    delay(MAX_BUTTON_READ_MILLISECONDS - timeSpent);  // aiming for 50 FPS
   }
 }
 
@@ -48,7 +48,7 @@ void setupJoystick() {
 
 // GetValueFromPulseStream: Used to get the command functions (addresses) from the speccy.
 // The speccy broadcasts all the functions at power up.
-uint16_t GetValueFromPulseStream() {
+uint16_t readPulseEncodedValue() {
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
   uint16_t value = 0;
   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes

@@ -2,11 +2,12 @@
 #define SMALLFONT_H
 
 #include <Arduino.h>
-#include "smallfont_config.h"
 #include "fudgefont.h"
 #include "utils.h"
+#include "constants.h"
 
-namespace SmallFont {
+
+namespace RenderFont {
 
 __attribute__((optimize("-Ofast")))
 inline void processCharacter(byte* finalOutput, const uint8_t *fontPtr, uint16_t basePos) {
@@ -23,7 +24,7 @@ inline void processCharacter(byte* finalOutput, const uint8_t *fontPtr, uint16_t
             (((d2 >> r) & 1) << 2) | \
             (((d3 >> r) & 1) << 1) | \
             ((d4 >> r) & 1); \
-        const uint16_t bitPosition = (FNT_BUFFER_SIZE * r) * 8 + basePos; \
+        const uint16_t bitPosition = (SmallFont::FNT_BUFFER_SIZE * r) * 8 + basePos; \
         Utils::join6Bits(finalOutput, transposedRow, bitPosition); \
     } while(0)
 
@@ -35,12 +36,12 @@ inline void processCharacter(byte* finalOutput, const uint8_t *fontPtr, uint16_t
 
 __attribute__((optimize("-Ofast")))
 inline uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
-    Utils::memsetZero(&finalOutput[0], FNT_BUFFER_SIZE * FNT_HEIGHT);
+    Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
     
     uint8_t charCount = 0;
     for (uint8_t i = 0; message[i] != '\0'; i++) {   
-        const uint8_t *fontPtr = &fudged_Adafruit5x7[((message[i] - 0x20) * FNT_WIDTH) + 6];
-        const uint16_t basePos = i * CHAR_PITCH;
+        const uint8_t *fontPtr = &fudged_Adafruit5x7[((message[i] - 0x20) * SmallFont::FNT_WIDTH) + 6];
+        const uint16_t basePos = i * SmallFont::CHAR_PITCH;
         
         processCharacter(finalOutput, fontPtr, basePos);
         charCount++;
@@ -49,15 +50,15 @@ inline uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
 }
 
 inline uint8_t prepareTextGraphics_P(byte* finalOutput, const __FlashStringHelper *flashStr) {
-    Utils::memsetZero(&finalOutput[0], FNT_BUFFER_SIZE * FNT_HEIGHT);
+    Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
     
     const char *message = (const char *)flashStr;
     uint8_t charCount = 0;
     
     char ch;
     while ((ch = pgm_read_byte(message++)) != 0) {
-        const uint8_t *fontPtr = &fudged_Adafruit5x7[((ch - 0x20) * FNT_WIDTH) + 6];
-        const uint16_t basePos = charCount * CHAR_PITCH;
+        const uint8_t *fontPtr = &fudged_Adafruit5x7[((ch - 0x20) * SmallFont::FNT_WIDTH) + 6];
+        const uint16_t basePos = charCount * SmallFont::CHAR_PITCH;
         
         processCharacter(finalOutput, fontPtr, basePos);
         charCount++;

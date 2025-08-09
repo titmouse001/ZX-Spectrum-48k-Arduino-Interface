@@ -1,5 +1,4 @@
 #include "buffer_manager.h"
-#include "buffer_config.h"
 #include "constants.h"
 #include "command_registry.h"
 

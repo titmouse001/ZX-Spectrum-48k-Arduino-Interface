@@ -10,7 +10,7 @@ namespace CommandRegistry {
     extern uint16_t command_Transfer;
     extern uint16_t command_Copy;
     extern uint16_t command_Copy32;
-    extern uint16_t command_Wait;
+    extern uint16_t command_VBL_Wait;
     extern uint16_t command_Stack;
     extern uint16_t command_Execute;
 

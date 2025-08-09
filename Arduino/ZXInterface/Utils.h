@@ -8,12 +8,6 @@
 
 namespace Utils {
 
-constexpr uint8_t JOYSTICK_MASK = B00111111;
-constexpr uint8_t JOYSTICK_FIRE = B00100000;
-constexpr uint8_t JOYSTICK_DOWN = B00000100;
-constexpr uint8_t JOYSTICK_SELECT = B01000000;
-constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;  
-
 __attribute__((optimize("-Ofast")))
 inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
@@ -51,7 +45,7 @@ inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
 void frameDelay(unsigned long start);
 void setupJoystick();
 uint8_t readJoystick();
-uint16_t GetValueFromPulseStream();
+uint16_t readPulseEncodedValue();
 
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);

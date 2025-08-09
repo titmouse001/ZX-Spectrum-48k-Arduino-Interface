@@ -68,12 +68,12 @@ void setup() {
   //setupOled();          
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
-  if (Utils::readJoystick() & (Utils::JOYSTICK_FIRE | Utils::JOYSTICK_SELECT)) {
+  if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
     digitalWriteFast(Pin::ROM_HALF, HIGH);                            //Switches Spectrum to internal ROM.
     Z80Bus::resetZ80();                                               // Resets Z80 for a clean boot from internal ROM.
-    while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Debounces button release.
+    while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Debounces button release.
     while (true) {
-      if (Utils::readJoystick() & Utils::JOYSTICK_SELECT) {
+      if (Utils::readJoystick() & JOYSTICK_SELECT) {
         digitalWriteFast(Pin::ROM_HALF, LOW);  //Switches back to Sna ROM.
         break;                                 // Returns to Sna loader.
       }
@@ -117,7 +117,7 @@ void loop() {
     Z80Bus::fillScreenAttributes(0);
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
-// move BufferManager away from code this level ???
+      // Pre-load data into the packetBuffer making sure it goes after the header
       byte bytesRead = (byte)file.read(&BufferManager::packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
       Z80Bus::sendCopyCommand(currentAddress, bytesRead);
       currentAddress += bytesRead;
@@ -141,11 +141,11 @@ void loop() {
         SdCardSupport::fileClose();
         do {  // Loop to monitor Spectrum joystick inputs during game.
           unsigned long startTime = millis();
-          PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
+          PORTD = Utils::readJoystick() & JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
           Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-        } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+        } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
         Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-        while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+        while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
         delay(20);
       }
       //Buffers::setupFunctions();
@@ -172,12 +172,12 @@ void loop() {
 
           do {  // Loop to monitor Spectrum joystick inputs during game.
             unsigned long startTime = millis();
-            PORTD = Utils::readJoystick() & Utils::JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
+            PORTD = Utils::readJoystick() & JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
             Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-          } while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
+          } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
 
           Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-          while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
+          while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
           //Buffers::setupFunctions();
           CommandRegistry::initialize();
         } else {  // .z80 file failed
@@ -190,8 +190,7 @@ void loop() {
 
 boolean bootFromSnapshot_z80_end() {
     
-    uint8_t packetLen = PacketBuilder::buildWaitCommand(BufferManager::packetBuffer);
-    Z80Bus::sendBytes(BufferManager::packetBuffer,packetLen);
+    Z80Bus::sendWaitVBLCommand();
     Z80Bus::waitHalt();
 
     PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);

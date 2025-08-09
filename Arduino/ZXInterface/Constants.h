@@ -1,6 +1,14 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stdint.h>
+
+namespace SmallFont {
+    constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
+    constexpr uint8_t FNT_HEIGHT        = 7;   // character height in pixels
+    constexpr uint8_t FNT_GAP           = 1;   // horizontal spacing
+    constexpr uint8_t FNT_BUFFER_SIZE   = 32;  // size of the on‐screen text buffer
+    constexpr uint8_t CHAR_PITCH        = FNT_WIDTH + FNT_GAP; // 6 pixels per character slot
+}
 
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
@@ -14,18 +22,23 @@
  *   100 = Green, 101 = Cyan, 110 = Yellow, 111 = White
  */
 
-
-constexpr uint8_t Paper0Ink7     = 0b01000111;
-constexpr uint8_t Paper5Ink0     = 0b00101000;
-constexpr uint8_t Paper0Ink0     = 0b00000000;
 namespace COL {
-constexpr uint8_t BLACK_WHITE = Paper0Ink7;  
-constexpr uint8_t CYAN_BLACK  = Paper5Ink0; 
-
+    constexpr uint8_t Paper0Ink7  = 0b01000111;
+    constexpr uint8_t Paper5Ink0  = 0b00101000;
+    constexpr uint8_t Paper0Ink0  = 0b00000000;
+    constexpr uint8_t BLACK_WHITE = Paper0Ink7;  
+    constexpr uint8_t CYAN_BLACK  = Paper5Ink0; 
 }
 
+//-----------------------------------------
+// BUTTON INPUTS
+constexpr uint8_t JOYSTICK_MASK = 0b00111111;
+constexpr uint8_t JOYSTICK_FIRE = 0b00100000;
+constexpr uint8_t JOYSTICK_DOWN = 0b00000100;
+constexpr uint8_t JOYSTICK_SELECT = 0b01000000;
+constexpr uint8_t MAX_BUTTON_READ_MILLISECONDS  = 1000 / 50;  // 50 FPS
 
- //-----------------------------------------
+//-----------------------------------------
 // ZX SPECTRUM 48k MACHINE CONSTANTS
 //-----------------------------------------
 constexpr uint16_t ZX_SCREEN_ADDRESS_START      = 0x4000;
