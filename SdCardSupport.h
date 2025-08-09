@@ -1,6 +1,7 @@
 #ifndef SDCARD_H
 #define SDCARD_H
 
+#include <Arduino.h>
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 
 namespace SdCardSupport {

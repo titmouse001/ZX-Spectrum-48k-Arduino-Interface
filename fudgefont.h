@@ -1,6 +1,7 @@
 #ifndef fudgedfont5x7_h
 #define fudgedfont5x7_h
 
+#include <Arduino.h>
 
 // MACRO taken from here:- "SSD1306AsciiAvrI2c.h"
 #ifdef __AVR__

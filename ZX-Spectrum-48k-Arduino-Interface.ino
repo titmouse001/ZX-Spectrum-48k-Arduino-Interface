@@ -5,20 +5,18 @@
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
 // -------------------------------------------------------------------------------------
 
-#include <Arduino.h>
 
+#include <Arduino.h>
 #include "digitalWriteFast.h"
-#include "utils.h"
-#include "smallfont.h"
-#include "pin.h"
-#include "Z80Bus.h"
-#include "Buffers.h"
-#include "SdCardSupport.h"
-#include "Draw.h"
-#include "Menu.h"
-#include "Constants.h"
-#include "Z802SNA.h"
 #include "Z80_Snapshot.h"
+#include "Menu.h"
+#include "Utils.h"
+
+//#include "Buffers.h"
+//#include "Draw.h"
+//#include "Constants.h"
+//#include "SdCardSupport.h"
+
 
 #define VERSION ("0.22")  // Arduino firmware
 #define DEBUG_OLED   0
@@ -52,7 +50,7 @@ extern bool setupOled();          // debugging with a 128x32 pixel oled
 #endif
 // ----------------------------------------------------------------------------------
 
-void encodeTransferPacket(uint16_t input_len, uint16_t addr);
+//void encodeTransferPacket(uint16_t input_len, uint16_t addr);
 
 void setup() {
 
@@ -81,7 +79,8 @@ void setup() {
   }
 
   Z80Bus::resetZ80();
-  Buffers::setupFunctions();
+  //BufferManager::setupFunctions();
+  CommandRegistry::initialize();
 
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
   Draw::text_P(256-24, 192-8, F(VERSION) );         
@@ -115,7 +114,8 @@ void loop() {
     Z80Bus::fillScreenAttributes(0);
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
     while (file.available()) {
-      byte bytesRead = (byte)file.read(&Buffers::packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
+// move BufferManager away from code this level ???
+      byte bytesRead = (byte)file.read(&BufferManager::packetBuffer[E(CopyPacket::PACKET_LEN)], COMMAND_PAYLOAD_SECTION_SIZE);
       Z80Bus::sendCopyCommand(currentAddress, bytesRead);
       currentAddress += bytesRead;
     }
@@ -145,12 +145,13 @@ void loop() {
         while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
         delay(20);
       }
-      Buffers::setupFunctions();
+      //Buffers::setupFunctions();
+      CommandRegistry::initialize();
     } else {
       // *****************
       // *** TXT FILES ***  ... not yet implemented
       // *****************
-      char* fileName = (char*) &Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
+      char* fileName = (char*) &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
       /*uint16_t len = */ file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
@@ -174,7 +175,8 @@ void loop() {
 
           Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
           while ((Utils::readJoystick() & Utils::JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
-          Buffers::setupFunctions();
+          //Buffers::setupFunctions();
+          CommandRegistry::initialize();
         } else {  // .z80 file failed
           SdCardSupport::fileClose();
         }
@@ -185,12 +187,12 @@ void loop() {
 
 boolean bootFromSnapshot_z80_end() {
     
-    uint8_t packetLen = Buffers::buildWaitCommand(Buffers::packetBuffer);
-    Z80Bus::sendBytes(Buffers::packetBuffer,packetLen);
+    uint8_t packetLen = PacketBuilder::buildWaitCommand(BufferManager::packetBuffer);
+    Z80Bus::sendBytes(BufferManager::packetBuffer,packetLen);
     Z80Bus::waitHalt();
 
-    Buffers::buildExecuteCommand(Buffers::head27_Execute);
-    Z80Bus::sendSnaHeader(Buffers::head27_Execute);
+    PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
+    Z80Bus::sendSnaHeader(BufferManager::head27_Execute);
     Z80Bus::waitRelease_NMI();
 
     delayMicroseconds(7);
@@ -207,7 +209,7 @@ boolean bootFromSnapshot() {
 
     FatFile& file = (SdCardSupport::file);
     if (file.available()) {   
-        byte bytesReadHeader = (byte)file.read(&Buffers::head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
+        byte bytesReadHeader = (byte)file.read(&BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)], SNA_TOTAL_ITEMS);  // Pre-load .sna 27-byte header (CPU registers)
         if (bytesReadHeader != SNA_TOTAL_ITEMS) {
             file.close();
             Draw::text_P(80, 90, F("Invalid sna file"));
@@ -218,8 +220,8 @@ boolean bootFromSnapshot() {
     
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;  // Spectrum RAM start
     while (file.available()) {        // Load .sna data into Speccy RAM in chunks
-        uint16_t bytesRead = file.read(&Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)], 255);
-        encodeTransferPacket(bytesRead, currentAddress);
+        uint16_t bytesRead = file.read(&BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)], 255);
+        Z80Bus::encodeTransferPacket(bytesRead, currentAddress);
         currentAddress += bytesRead;
     }
 
@@ -229,8 +231,8 @@ boolean bootFromSnapshot() {
     Z80Bus::sendWaitVBLCommand();
     Z80Bus::waitHalt();           
 
-    Buffers::buildExecuteCommand(Buffers::head27_Execute);
-    Z80Bus::sendSnaHeader(Buffers::head27_Execute);   // Restore registers & execute code (ROM)
+    PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
+    Z80Bus::sendSnaHeader(BufferManager::head27_Execute);   // Restore registers & execute code (ROM)
 
     // Final HALT called from screen RAM 
     Z80Bus::waitRelease_NMI();    // Wait for speccy to signal ready
@@ -248,53 +250,53 @@ boolean bootFromSnapshot() {
 
 
 
-// RLE and send with - TransferPacket and FillPacket (both send max of 255 bytes)
-// The Speccy will reconstruct the RLE at its end.
-void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
-  constexpr uint16_t MAX_RUN_LENGTH = 255;
-  constexpr uint16_t MAX_RAW_LENGTH = 255;
-  constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
+// // RLE and send with - TransferPacket and FillPacket (both send max of 255 bytes)
+// // The Speccy will reconstruct the RLE at its end.
+// void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
+//   constexpr uint16_t MAX_RUN_LENGTH = 255;
+//   constexpr uint16_t MAX_RAW_LENGTH = 255;
+//   constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
 
-  uint8_t* input = &Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)];
+//   uint8_t* input = &Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)];
 
-  if (input_len == 0) return;
-  uint16_t i = 0;
-  while (i < input_len) {
-    uint8_t value = input[i];
-    uint16_t remaining = input_len - i;
-    uint16_t max_run = (remaining > MAX_RUN_LENGTH) ? MAX_RUN_LENGTH : remaining;
-    uint16_t run_len = 1;
+//   if (input_len == 0) return;
+//   uint16_t i = 0;
+//   while (i < input_len) {
+//     uint8_t value = input[i];
+//     uint16_t remaining = input_len - i;
+//     uint16_t max_run = (remaining > MAX_RUN_LENGTH) ? MAX_RUN_LENGTH : remaining;
+//     uint16_t run_len = 1;
 
-    // Check for run
-    while (run_len < max_run && input[i + run_len] == value) {
-      run_len++;
-    }
-    if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      uint8_t* pFill = &Buffers::packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
-      uint8_t packetLen = Buffers::buildSmallFillCommand(pFill, run_len,addr, value);
-      Z80Bus::sendBytes(pFill, packetLen);
+//     // Check for run
+//     while (run_len < max_run && input[i + run_len] == value) {
+//       run_len++;
+//     }
+//     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
+//       uint8_t* pFill = &Buffers::packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
+//       uint8_t packetLen = Buffers::buildSmallFillCommand(pFill, run_len,addr, value);
+//       Z80Bus::sendBytes(pFill, packetLen);
     
-      addr += run_len;
-      i += run_len;
-    } else {  // No run found - raw data
-      uint16_t raw_start = i;
-      uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
-      uint16_t raw_len = 1;  // We know current byte isn't part of a run
-      i++;
-      while (raw_len < max_raw && i < input_len) {
-        if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
-          break;  // stop - run found
-        }
-        raw_len++;
-        i++;
-      }
-      uint8_t* pTransfer = &Buffers::packetBuffer[raw_start];      // send [0] to [255]
-      uint8_t packetLen = Buffers::buildTransferCommand(pTransfer, addr, raw_len);
-      Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
-      addr += raw_len;
-    }
-  }
-}
+//       addr += run_len;
+//       i += run_len;
+//     } else {  // No run found - raw data
+//       uint16_t raw_start = i;
+//       uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
+//       uint16_t raw_len = 1;  // We know current byte isn't part of a run
+//       i++;
+//       while (raw_len < max_raw && i < input_len) {
+//         if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
+//           break;  // stop - run found
+//         }
+//         raw_len++;
+//         i++;
+//       }
+//       uint8_t* pTransfer = &Buffers::packetBuffer[raw_start];      // send [0] to [255]
+//       uint8_t packetLen = Buffers::buildTransferCommand(pTransfer, addr, raw_len);
+//       Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
+//       addr += raw_len;
+//     }
+//   }
+// }
 
 #if (DEBUG_OLED == 1)
 // DEBUG USE ONLY

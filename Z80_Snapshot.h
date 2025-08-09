@@ -1,7 +1,11 @@
+#ifndef Z80_NAPSHOT_H
+#define Z80_NAPSHOT_H
+
+#include <Arduino.h>
 #include "Constants.h"
 #include "Z802SNA.h"
 #include "SdCardSupport.h"
-#include "Buffers.h" 
+#include "buffer_manager.h" 
 #include "Z80Bus.h" 
 
 /*
@@ -74,7 +78,7 @@ MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 
 __attribute__((optimize("-Ofast")))
 int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
-	uint8_t* v1_header = &Buffers::packetBuffer[0]; // Use global buffer for header storage
+	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer for header storage
 	
 	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
 		return Z80_VERSION_UNKNOWN;  // Error reading header
@@ -89,10 +93,10 @@ int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
 		return Z80_VERSION_1;  // ... here we know PC must hold a valid address
 	} else {                 // (PC==0) check for a valid V2/V3
 		// Read into the file read buffer area
-		if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) return -1;
+		if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) return -1;
 
-		uint8_t len_lo = Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
-		uint8_t len_hi = Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET + 1];
+		uint8_t len_lo = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+		uint8_t len_hi = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1];
 		uint16_t ext_len = len_lo | ((uint16_t)len_hi << 8);
 
 		uint16_t bytes_to_read_ext_header = ext_len;
@@ -105,13 +109,13 @@ int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
 
 		while (bytes_read_so_far < bytes_to_read_ext_header) {
 			uint16_t chunk_size = min(FILE_READ_BUFFER_SIZE, (uint16_t)(bytes_to_read_ext_header - bytes_read_so_far));
-			if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
+			if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
 				return Z80_VERSION_UNKNOWN;  // Error reading extended header
 			}
 
 			for (uint16_t i = 0; i < chunk_size; i++) {
 				uint16_t current_ext_byte_index = bytes_read_so_far + i;
-				uint8_t b = Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET + i];
+				uint8_t b = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + i];
 				switch (current_ext_byte_index) {  // Extracting only the needed bytes from extended header
 					case Z80_EXT_PC_LOW: headerInfo->pc_low = b; break;
 					case Z80_EXT_PC_HIGH: headerInfo->pc_high = b; break;
@@ -131,7 +135,7 @@ __attribute__((optimize("-Ofast")))
 bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 	static const uint8_t MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
 	constexpr uint8_t MARKER_SIZE = 4;
-	uint8_t* search_buffer = &Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
+	uint8_t* search_buffer = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 	constexpr uint16_t SEARCH_BUFFER_SIZE = FILE_READ_BUFFER_SIZE;
 
 	// Quick end-of-file check first
@@ -185,18 +189,18 @@ Z80CheckResult checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 		if (headerInfo->version >= Z80_VERSION_2) {  // V2 or V3
 			while (SdCardSupport::fileAvailable()) {
 				uint32_t current_pos = SdCardSupport::filePosition();
-				if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
+				if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
 					if (!SdCardSupport::fileAvailable()) break;                                   // After reading a full block, it's fine if EOF
 					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete compressed_length
 					break;
 				}
-				uint16_t compressed_length = (uint16_t)Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
+				uint16_t compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
-				if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {  // Read 1 byte for page_number
+				if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {  // Read 1 byte for page_number
 					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete block (missing page number)
 					break;
 				}
-				//uint8_t page_number = Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
+				//uint8_t page_number = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 				//if (!(page_number == 8 || page_number == 4 || page_number == 5)) {
 					  // not a critical error //break;  // unsupported 48k page
 						// main reader (z80_readAndWriteBlock) must skip over this
@@ -250,8 +254,8 @@ static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) 
 
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE; 
 
-	uint8_t* commandPayloadPtr = &Buffers::packetBuffer[E(TransferPacket::PACKET_LEN)];                        
-	uint8_t* fileReadBufferPtr = &Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];  
+	uint8_t* commandPayloadPtr = &BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)];                        
+	uint8_t* fileReadBufferPtr = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];  
 	uint16_t commandPayloadPos = 0;                                      
 	uint16_t fileReadBufferCurrentPos = 0;
 	uint16_t fileReadBufferBytesAvailable = 0;
@@ -270,8 +274,8 @@ static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) 
 
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
-			Buffers::buildTransferCommand(Buffers::packetBuffer,currentAddress, commandPayloadPos);
-			Z80Bus::sendBytes(Buffers::packetBuffer, E(TransferPacket::PACKET_LEN) + commandPayloadPos);
+			PacketBuilder::buildTransferCommand(BufferManager::packetBuffer,currentAddress, commandPayloadPos);
+			Z80Bus::sendBytes(BufferManager::packetBuffer, E(TransferPacket::PACKET_LEN) + commandPayloadPos);
 			currentAddress += commandPayloadPos;
 			commandPayloadPos = 0;
 		}
@@ -292,8 +296,8 @@ static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) 
 				flushCommandPayloadBuffer(); 
 				uint8_t runAmount = getNextByteFromFile();
 				uint8_t value = getNextByteFromFile();
-				uint8_t packetLen = Buffers::buildSmallFillCommand(Buffers::packetBuffer, runAmount, currentAddress, value);
-				Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
+				uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, runAmount, currentAddress, value);
+				Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 				currentAddress += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
@@ -311,21 +315,21 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 	uint16_t compressed_length;
 
 	// Read compressed_length (2 bytes, little-endian) into the file read buffer
-	if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
+	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
 		*page_number_out = (uint8_t)-1;         // Indicate end of file or read error for page number
 		if (!SdCardSupport::fileAvailable()) {  // Check if it's genuinely EOF
 			return BLOCK_END_OF_FILE;
 		}
 		return BLOCK_ERROR_READ_LENGTH;
 	}
-	compressed_length = (uint16_t)Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
+	compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
 	// Read page_number into the file read buffer
-	if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
+	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
 		*page_number_out = (uint8_t)-1;  // Indicate end of file or read error
 		return BLOCK_ERROR_READ_PAGE;
 	}
-	*page_number_out = Buffers::packetBuffer[FILE_READ_BUFFER_OFFSET];
+	*page_number_out = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 
 	int32_t sna_offset = -1;
 	if (*page_number_out == 8) sna_offset = 0x4000;       // Page 8 maps to 0x4000-0x7FFF (first 16K block after header)
@@ -337,7 +341,7 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 		uint16_t bytes_consumed = 0;
 		while (bytes_consumed < compressed_length) {
 			uint16_t bytes_to_read_this_chunk = min(FILE_READ_BUFFER_SIZE, (uint16_t)(compressed_length - bytes_consumed));
-			if (SdCardSupport::fileRead(Buffers::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
+			if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
 				return BLOCK_ERROR_READ_DATA;  // Failed to consume all expected bytes
 			}
 			bytes_consumed += bytes_to_read_this_chunk;
@@ -351,8 +355,8 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 
 int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 	uint16_t stackAddrForPushingPC = 0;
-	uint8_t* snaHeader = &Buffers::head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
-	uint8_t* v1_header = &Buffers::packetBuffer[0]; // Use global buffer where header is stored
+	uint8_t* snaHeader = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
+	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer where header is stored
 
 		if (headerInfo->version >= 2) {  // V2 or V3 format
 			// V2/V3 save states store PC as zero in the main header
@@ -400,10 +404,10 @@ int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 	// NOTE: We are currently reusing existing ".SNA" functionaliy for loading the final Z80's CPU registers.
 	//       This can be changed later to use a more effecient standard when sending to the Speccy.
 	uint8_t payloadAmount=0;
-	Buffers::packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_low; 
-	Buffers::packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_high;  
-	uint8_t packetLen = Buffers::buildTransferCommand(Buffers::packetBuffer,stackAddrForPushingPC, payloadAmount);
-	Z80Bus::sendBytes(Buffers::packetBuffer, packetLen + payloadAmount);
+	BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_low; 
+	BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN) + payloadAmount++] = headerInfo->pc_high;  
+	uint8_t packetLen = PacketBuilder::buildTransferCommand(BufferManager::packetBuffer,stackAddrForPushingPC, payloadAmount);
+	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen + payloadAmount);
 
 	return BLOCK_SUCCESS;
 }
@@ -422,11 +426,14 @@ int16_t convertZ80toSNA() {
 	}
 
 	const uint16_t address = 0x4004;  
-	Buffers::buildStackCommand(Buffers::packetBuffer,address);
-	Z80Bus::sendBytes(Buffers::packetBuffer, 4);
+	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,address);
+	Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
 	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
 	int16_t conversionResult = convertZ80toSNA_impl(&headerInfo);
 	if (conversionResult < 0) { return conversionResult; }
 	return Z80_CHECK_SUCCESS;
 }
+
+
+#endif

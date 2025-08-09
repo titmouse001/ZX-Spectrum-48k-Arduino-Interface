@@ -1,9 +1,13 @@
 #ifndef Z80BUS_H
 #define Z80BUS_H
 
+#include <Arduino.h>
 #include "pin.h"
-#include "buffers.h"
 #include "digitalWriteFast.h"
+#include "packet_types.h"
+#include "buffer_manager.h"
+#include "packet_builder.h"
+#include "Command_registry.h"
 
 namespace Z80Bus {
 
@@ -107,33 +111,33 @@ void sendSnaHeader(byte* header) {
 }
 
 void fillScreenAttributes(const uint8_t col) {
-  uint8_t packetLen = Buffers::buildFillCommand(Buffers::packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
-  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
+  uint8_t packetLen = PacketBuilder::buildFillCommand(BufferManager::packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
 void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
-  uint8_t packetLen = Buffers::buildFillCommand(Buffers::packetBuffer, amount, address, color);
-  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
+  uint8_t packetLen = PacketBuilder::buildFillCommand(BufferManager::packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
 void sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color) {
-  uint8_t packetLen = Buffers::buildSmallFillCommand(Buffers::packetBuffer, amount, address, color);
-  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);
+  uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, amount, address, color);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
 void sendCopyCommand( uint16_t address, uint8_t amount) {
-  uint8_t packetLen = Buffers::buildCopyCommand(Buffers::packetBuffer, address, amount);
-  Z80Bus::sendBytes(Buffers::packetBuffer, packetLen + amount);
+  uint8_t packetLen = PacketBuilder::buildCopyCommand(BufferManager::packetBuffer, address, amount);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen + amount);
 }
 
 void sendWaitVBLCommand() {
-    uint8_t packetLen = Buffers::buildWaitCommand(Buffers::packetBuffer);  
-    Z80Bus::sendBytes(Buffers::packetBuffer, packetLen);     
+    uint8_t packetLen = PacketBuilder::buildWaitCommand(BufferManager::packetBuffer);  
+    Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);     
 }
 
 void sendStackCommand(uint16_t addr) {
-    uint8_t packetLen = Buffers::buildStackCommand(Buffers::packetBuffer, addr);   
-    Z80Bus::sendBytes(Buffers::packetBuffer, packetLen );
+    uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr);   
+    Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen );
 }
 
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
@@ -151,10 +155,10 @@ uint8_t GetKeyPulses() {
   constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
 
-  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((Buffers::command_TransmitKey) >> 8);
-  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((Buffers::command_TransmitKey)&0xFF);
-  Buffers::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
-  Z80Bus::sendBytes(Buffers::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
+  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
+  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
+  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+  Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
 
   uint8_t pulseCount = 0;
   uint32_t lastPulseTime = 0;
@@ -170,6 +174,54 @@ uint8_t GetKeyPulses() {
     // Detect end of transmission (delay timeout after last halt)
     if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
       return pulseCount - 1;
+    }
+  }
+}
+
+// RLE and send with - TransferPacket and FillPacket (both send max of 255 bytes)
+// The Speccy will reconstruct the RLE at its end.
+void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
+  constexpr uint16_t MAX_RUN_LENGTH = 255;
+  constexpr uint16_t MAX_RAW_LENGTH = 255;
+  constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
+
+  uint8_t* input = &BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)];
+
+  if (input_len == 0) return;
+  uint16_t i = 0;
+  while (i < input_len) {
+    uint8_t value = input[i];
+    uint16_t remaining = input_len - i;
+    uint16_t max_run = (remaining > MAX_RUN_LENGTH) ? MAX_RUN_LENGTH : remaining;
+    uint16_t run_len = 1;
+
+    // Check for run
+    while (run_len < max_run && input[i + run_len] == value) {
+      run_len++;
+    }
+    if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
+      uint8_t* pFill = &BufferManager::packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
+      uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
+      Z80Bus::sendBytes(pFill, packetLen);
+    
+      addr += run_len;
+      i += run_len;
+    } else {  // No run found - raw data
+      uint16_t raw_start = i;
+      uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
+      uint16_t raw_len = 1;  // We know current byte isn't part of a run
+      i++;
+      while (raw_len < max_raw && i < input_len) {
+        if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
+          break;  // stop - run found
+        }
+        raw_len++;
+        i++;
+      }
+      uint8_t* pTransfer = &BufferManager::packetBuffer[raw_start];      // send [0] to [255]
+      uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, raw_len);
+      Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
+      addr += raw_len;
     }
   }
 }

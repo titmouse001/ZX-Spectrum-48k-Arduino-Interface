@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
  * -------------------------------------------------

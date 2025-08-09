@@ -1,11 +1,9 @@
 #ifndef MENU_H
 #define MENU_H
 
-#include "pin.h"
+#include <Arduino.h>
 #include "draw.h"
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
+#include "SdCardSupport.h"
 
 namespace Menu {
 
@@ -57,7 +55,7 @@ void fileList(uint16_t startFileIndex) {
   //char* fileName = (char*)&packetBuffer[5 + SmallFont::FNT_BUFFER_SIZE];   // TO DO uses command_Copy32 = 4 !!!!!
   // NOTE: File name uses the space just after the one for Draw::textLine which uses [0] to [4+32-1]
   // We are free to use [+35] while fileList is going on. 
-  char* fileName = (char*)&Buffers::packetBuffer[ E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE];  
+  char* fileName = (char*)&BufferManager::packetBuffer[ E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE];  
   count = 0;
   do {
     if (!file.isFile()) break;
