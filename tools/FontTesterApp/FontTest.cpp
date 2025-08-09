@@ -29,7 +29,7 @@ class Example : public olc::PixelGameEngine
 
 public:
 	Example() {
-		sAppName = "Example";
+		sAppName = "ZX Spectrum Font Tester";
 	}
 
 public:
@@ -99,7 +99,7 @@ public:
 
 int main() {
 	Example demo;
-	if (demo.Construct(256, 240, 4, 4)) {
+	if (demo.Construct(128, 32, 4, 4)) {
 		demo.Start();
 	}
 	return 0;

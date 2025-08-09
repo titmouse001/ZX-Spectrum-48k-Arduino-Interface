@@ -1,21 +1,24 @@
 // -------------------------------------------------------------------------------------
 // This is an Arduino-Based ZX Spectrum Game Loader - 2023/25 P.Overy
-// -------------------------------------------------------------------------------------
+// ---------------------------------------------------------4----------------------------
 // This software uses the Arduino's ATmega328P Nano (2K SRAM, 32K flash & 1K EEPROM)
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
 // -------------------------------------------------------------------------------------
 
+// Board detection - will cause compile error if wrong board selected
+#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
+#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
+#endif
+
+#if F_CPU != 16000000L
+#warning "This sketch expects 16MHz clock speed."
+#endif
 
 #include <Arduino.h>
 #include "digitalWriteFast.h"
 #include "Z80_Snapshot.h"
 #include "Menu.h"
 #include "Utils.h"
-
-//#include "Buffers.h"
-//#include "Draw.h"
-//#include "Constants.h"
-//#include "SdCardSupport.h"
 
 
 #define VERSION ("0.22")  // Arduino firmware

@@ -1,0 +1,46 @@
+<head>
+<title>MDL: annotated source code</title>
+<style>
+  table.sourcefile {
+    border: 1px solid black;
+    background-color: #eeeeee;
+    }
+  table.sourcefile tr td {
+    border-right: 1px solid black;
+    padding-left: 8px;
+    padding-right: 8px;
+    }
+  table.sourcefile tr td:last-of-type {
+    border: none;
+    background-color: #ffffff;
+    }
+</style>
+</head>
+<body>
+<hr><br><a name="SnaLauncher.asm"><b> Source Code file: SnaLauncher.asm</b></a><br>
+<table class="sourcefile" cellspacing="0">
+<tr><td style="border-bottom: 1px solid black"><b>Address</b></td><td style="border-bottom: 1px solid black"><b>Position in Binary</b></td><td style="border-bottom: 1px solid black"><b>Size</b></td><td style="border-bottom: 1px solid black"><b>Timing</b></td><td style="border-bottom: 1px solid black"><b>Assembled</b></td><td style="border-bottom: 1px solid black"><b>Code</b></td></tr>
+<tr><td>#0000</td><td>#0000</td><td></td><td></td><td></td><td><pre><span style="color: #000088"><a name="command_FL">command_FL</a></span>:  <span style="color: #880000">; "F" - FILL COMMAND</span></pre></td></tr>
+<tr><td>#0000</td><td>#0000</td><td></td><td></td><td></td><td><pre><span style="color: #880000">;------------------------------------------------------</span></pre></td></tr>
+<tr><td>#0000</td><td>#0000</td><td>1</td><td>5</td><td><pre>76 </pre></td><td><pre>    <span style="color: #006600">halt</span></pre></td></tr>
+<tr><td>#0001</td><td>#0001</td><td>2</td><td>14</td><td><pre>ed 50 </pre></td><td><pre>    <span style="color: #006600">in</span> d, (c)  <span style="color: #880000">; Read lower byte</span></pre></td></tr>
+<tr><td>#0003</td><td>#0003</td><td>1</td><td>5</td><td><pre>76 </pre></td><td><pre>    <span style="color: #006600">halt</span></pre></td></tr>
+<tr><td>#0004</td><td>#0004</td><td>2</td><td>14</td><td><pre>ed 58 </pre></td><td><pre>    <span style="color: #006600">in</span> e, (c)  <span style="color: #880000">; Read higher byte</span></pre></td></tr>
+<tr><td>#0006</td><td>#0006</td><td></td><td></td><td></td><td><pre></pre></td></tr>
+<tr><td>#0006</td><td>#0006</td><td>1</td><td>5</td><td><pre>76 </pre></td><td><pre>    <span style="color: #006600">halt</span></pre></td></tr>
+<tr><td>#0007</td><td>#0007</td><td>2</td><td>14</td><td><pre>ed 60 </pre></td><td><pre>    <span style="color: #006600">in</span> h, (c)  <span style="color: #880000">; Read lower byte</span></pre></td></tr>
+<tr><td>#0009</td><td>#0009</td><td>1</td><td>5</td><td><pre>76 </pre></td><td><pre>    <span style="color: #006600">halt</span></pre></td></tr>
+<tr><td>#000a</td><td>#000a</td><td>2</td><td>14</td><td><pre>ed 68 </pre></td><td><pre>    <span style="color: #006600">in</span> l, (c)  <span style="color: #880000">; Read higher byte</span></pre></td></tr>
+<tr><td>#000c</td><td>#000c</td><td></td><td></td><td></td><td><pre></pre></td></tr>
+<tr><td>#000c</td><td>#000c</td><td>1</td><td>5</td><td><pre>76 </pre></td><td><pre>    <span style="color: #006600">halt</span>  <span style="color: #880000">; Synchronizes with Arduino (NMI to continue)</span></pre></td></tr>
+<tr><td>#000d</td><td>#000d</td><td>2</td><td>14</td><td><pre>ed 40 </pre></td><td><pre>    <span style="color: #006600">in</span> b, (c)  <span style="color: #880000">; Read fill value from the z80 I/O port</span></pre></td></tr>
+<tr><td>#000f</td><td>#000f</td><td></td><td></td><td></td><td><pre><span style="color: #000088"><a name="fillLoop">fillLoop</a></span>:</pre></td></tr>
+<tr><td>#000f</td><td>#000f</td><td>1</td><td>8</td><td><pre>70 </pre></td><td><pre>    <span style="color: #006600">ld</span> (hl), b  <span style="color: #880000">; Write to memory</span></pre></td></tr>
+<tr><td>#0010</td><td>#0010</td><td>1</td><td>7</td><td><pre>23 </pre></td><td><pre>    <span style="color: #006600">inc</span> hl</pre></td></tr>
+<tr><td>#0011</td><td>#0011</td><td>1</td><td>7</td><td><pre>1b </pre></td><td><pre>    <span style="color: #006600">dec</span> de</pre></td></tr>
+<tr><td>#0012</td><td>#0012</td><td>1</td><td>5</td><td><pre>7a </pre></td><td><pre>    <span style="color: #006600">ld</span> a, d</pre></td></tr>
+<tr><td>#0013</td><td>#0013</td><td>1</td><td>5</td><td><pre>b3 </pre></td><td><pre>    <span style="color: #006600">or</span> e</pre></td></tr>
+<tr><td>#0014</td><td>#0014</td><td>2</td><td>13/8</td><td><pre>20 f9 </pre></td><td><pre>    <span style="color: #006600">jr</span> nz, <span style="color: #000088"><a style="color: #000088" href="#fillLoop">fillLoop</a>  <span style="color: #880000">; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)</span></pre></td></tr>
+</table>
+
+</body>

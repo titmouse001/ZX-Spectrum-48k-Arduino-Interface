@@ -2,8 +2,10 @@ REM del /Q *.tap
 del /Q .\output\*.bin 
 if not exist .\output mkdir .\output
 
-pasmo-0.5.4.beta2\pasmo --bin SnaLauncher.asm .\output\SnaLauncher.bin
-::pasmo-0.5.4.beta2\pasmo --bin -d SnaLauncher.asm .\output\SnaLauncher.bin
+..\tools\pasmo-0.5.4.beta2\pasmo --bin .\SnaLauncher.asm .\output\SnaLauncher.bin
+
+REM Gives debug output info with assembly
+::..\tools\pasmo-0.5.4.beta2\pasmo --bin -d .\SnaLauncher.asm .\output\SnaLauncher.bin
 
 
 @echo off
@@ -24,4 +26,4 @@ for %%A in ("*.bin") do (
 
 copy /b .\output\SnaLauncher.bin+48.rom .\output\EPROM.bin
 
-::pause
+pause

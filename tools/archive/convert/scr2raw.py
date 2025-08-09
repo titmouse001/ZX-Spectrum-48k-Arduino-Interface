@@ -19,7 +19,6 @@ def generate_c_code(file_path, items_per_row=32):
 
 
 # Usage example
-#input_file_path = 'output//Judge-Dredd-Featured.png.scr'
-input_file_path = 'output//test2.zx.scr'
+input_file_path = 'Judge-Dredd-Featured.png.scr'
 c_code_data = generate_c_code(input_file_path, items_per_row=32)
 print(c_code_data)
