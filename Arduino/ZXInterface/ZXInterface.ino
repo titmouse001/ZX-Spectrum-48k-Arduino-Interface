@@ -22,8 +22,8 @@
 
 
 #define VERSION ("0.22")  // Arduino firmware
-#define DEBUG_OLED   0
-#define SERIAL_DEBUG 0   
+#define DEBUG_OLED 0
+#define SERIAL_DEBUG 0
 
 // ----------------------------------------------------------------------------------
 #if (SERIAL_DEBUG == 1)
@@ -34,7 +34,7 @@
 // ----------------------------------------------------------------------------------
 #if (DEBUG_OLED == 1)
 #warning "*** DEBUG_OLED enabled: Pin A4 conflict with SD card CS! ***"
-// 
+//
 // OLED Configuration:
 //   - Uses I2C pins: A4 (SDA) & A5 (SCL)
 //   - Display: 128x32 pixel SSD1306
@@ -45,32 +45,30 @@
 //   - SD card Chip Select (in main code)
 //   This creates a hardware conflict!
 //
-#include <Wire.h>                 // I2C for OLED.
-#include "SSD1306AsciiAvrI2c.h"   // SSD1306 OLED displays on AVR.
-#define I2C_ADDRESS 0x3C          // 0x3C or 0x3D
+#include <Wire.h>                // I2C for OLED.
+#include "SSD1306AsciiAvrI2c.h"  // SSD1306 OLED displays on AVR.
+#define I2C_ADDRESS 0x3C         // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
-extern bool setupOled();          // debugging with a 128x32 pixel oled 
+extern bool setupOled();  // debugging with a 128x32 pixel oled
 #endif
 // ----------------------------------------------------------------------------------
-
-//void encodeTransferPacket(uint16_t input_len, uint16_t addr);
 
 void setup() {
 
 #if (SERIAL_DEBUG == 1)
   Serial.begin(9600);
-  while (!Serial) {};                             
-  Serial.println("DEBUG MODE BREAKS TRANSFERS");  
+  while (!Serial) {};
+  Serial.println("DEBUG MODE BREAKS TRANSFERS");
 #endif
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-  //setupOled();          
+  //setupOled();           // For debugging
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
   if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
-    digitalWriteFast(Pin::ROM_HALF, HIGH);                            //Switches Spectrum to internal ROM.
-    Z80Bus::resetZ80();                                               // Resets Z80 for a clean boot from internal ROM.
+    digitalWriteFast(Pin::ROM_HALF, HIGH);                     //Switches Spectrum to internal ROM.
+    Z80Bus::resetZ80();                                        // Resets Z80 for a clean boot from internal ROM.
     while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Debounces button release.
     while (true) {
       if (Utils::readJoystick() & JOYSTICK_SELECT) {
@@ -82,29 +80,23 @@ void setup() {
   }
 
   Z80Bus::resetZ80();
-  //BufferManager::setupFunctions();
   CommandRegistry::initialize();
-
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
-  Draw::text_P(256-24, 192-8, F(VERSION) );         
+  Draw::text_P(256 - 24, 192 - 8, F(VERSION)); 
 
-// !!! Whoops... 
-// PIN CONFLICT: DSFat's init() defaults to pin 10 (PIN_SPI_SS) which conflicts with ShiftRegLatchPin
-// used for button reading. This causes random button presses after startup when 
-// SDFat disables the SD card. Fix: Use the free OLED debug pin A4.
-  while (!SdCardSupport::init(PIN_A4)) { 
-    //oled.println("SD card failed");
-    Draw::text_P(80, 90, F("INSERT SD CARD")); 
+  // SD Init must eat a pin for CS! We use the free OLED debug pin A4 but we dont care about this pin (SD Card's CS pin is fix to GND).
+  while (!SdCardSupport::init(PIN_A4)) {
+    Draw::text_P(80, 90, F("INSERT SD CARD"));
   }
 }
 
-void loop() {
 
-  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);  // Resets screen colors for menu display.
+void loop() {
 
   uint16_t totalFiles = 0;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {  // Waits until snapshot files are found on SD.
-    Draw::text_P(80, 90, F("NO FILES FOUND"));                      // Displays error if no files found.
+    Z80Bus::clearScreen(COL::BLACK_WHITE);                                           // card could be pulled out, so clear menu screen first
+    Draw::text_P(80, 90, F("NO FILES FOUND"));                       // Displays error if no files found.
   }
 
   SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
@@ -113,73 +105,99 @@ void loop() {
   // *****************
   // *** SCR FILES ***
   // *****************
-
-  if (file.available() && file.fileSize() == ZX_SCREEN_TOTAL_SIZE) { // qualifies as a .SCR file
-    Z80Bus::fillScreenAttributes(0);
-    Z80Bus::transferSnaData();
+  if (file.available() && file.fileSize() == ZX_SCREEN_TOTAL_SIZE) {  // qualifies as a .SCR file
+    Z80Bus::fillScreenAttributes(0);                                  // hide loading bitmap
+    Z80Bus::transferSnaData(false);                                   // no loading effects
     SdCardSupport::fileClose();
     constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
     while (Menu::getButton() == Menu::BUTTON_NONE) {
       delay(maxButtonInputMilliseconds);
     }
-
-    // Clear screen before returning to menu
-    Z80Bus::fillScreenAttributes(0);  
-    Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
+    Z80Bus::clearScreen();
   } else {
     // *****************
     // *** SNA FILES ***
     // *****************
     if (file.fileSize() == SNAPSHOT_FILE_SIZE) {
-
       uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
-      //if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
       SdCardSupport::fileRead(snaPtr, SNA_TOTAL_ITEMS);
-
       if (Z80Bus::bootFromSnapshot()) {  // If not a screen dump, attempts to boot as a .SNA snapshot.
         SdCardSupport::fileClose();
-        do {  // Loop to monitor Spectrum joystick inputs during game.
-          unsigned long startTime = millis();
-          PORTD = Utils::readJoystick() & JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
-          Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-        } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
-        Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-        while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
-        delay(20);
+        Utils::waitForUserExit();
+        Z80Bus::resetToSnaRom();
       }
-      //Buffers::setupFunctions();
       CommandRegistry::initialize();
     } else {
       // *****************
-      // *** TXT FILES ***  ... not yet implemented
+      // *** TXT FILES ***  ... hacked in prototype
       // *****************
-      char* fileName = (char*) &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+      char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
       /*uint16_t len = */ file.getName7(fileName, 64);
       char* dotPtr = strrchr(fileName, '.');
       char* extension = dotPtr + 1;
       if (strcmp(extension, "txt") == 0) {
-        Z80Bus::fillScreenAttributes(B00010000);
-        delay(500);
-        SdCardSupport::fileClose();  // back around to pick another file and don't reset speccy
+
+        const int maxCharsPerLine = 255 / 6;
+        const int charHeight = 7 + 1;
+        const int maxLinesPerScreen = (192) / charHeight;
+        char lineBuffer[maxCharsPerLine + 1]; 
+
+        SdCardSupport::fileSeek(0); 
+
+        do {
+          Z80Bus::clearScreen(COL::BLACK_WHITE);  
+          int currentLine = 0;
+          while (currentLine < maxLinesPerScreen && SdCardSupport::fileAvailable()) {
+            int bytesRead = 0;
+            char c = 0;
+            bool lineEnd= false;
+           while (bytesRead < maxCharsPerLine && SdCardSupport::fileAvailable() && !lineEnd) {
+
+              c = SdCardSupport::file.read();
+
+              if (c == '\n' || c == '\r') {
+                lineBuffer[bytesRead] = '\0';
+              }
+              if (c >= 32 && c < 127) {
+                lineBuffer[bytesRead++] = c;
+              }
+
+              if (bytesRead >= maxCharsPerLine) {
+                lineBuffer[bytesRead] = '\0';
+         
+                while (SdCardSupport::fileAvailable()) {
+                  c = SdCardSupport::file.read();   // ignore rest of line
+                  if (c == '\n' || c == '\r') {
+                    bytesRead=0;
+                    lineEnd = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            Draw::textLine(currentLine * charHeight, lineBuffer);
+            currentLine++;
+          }
+
+          while (Menu::getButton() == Menu::BUTTON_NONE) {
+            //  delay(maxButtonInputMilliseconds);
+          }
+        } while (SdCardSupport::fileAvailable());
+
+        SdCardSupport::fileClose();
+
+
       } else {
         // *****************
         // *** Z80 FILES ***
         // *****************
         if (convertZ80toSNA() == BLOCK_SUCCESS) {
           SdCardSupport::fileClose();
-          //bootFromSnapshot_z80_end();
           Z80Bus::synchronizeForExecution();
           Z80Bus::executeSnapshot();
-
-          do {  // Loop to monitor Spectrum joystick inputs during game.
-            unsigned long startTime = millis();
-            PORTD = Utils::readJoystick() & JOYSTICK_MASK;           // Sends joystick state to Z80 via PORTD for Kempston emulation.
-            Utils::frameDelay(startTime);                                   // Synchronizes joystick polling with Spectrum frame rate.
-          } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);  // Continues until SELECT is pressed (exit game).
-
-          Z80Bus::resetToSnaRom();                                          // Resets Z80 and returns to snapshot loader ROM.
-          while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Waits for SELECT button release.
-          //Buffers::setupFunctions();
+          Utils::waitForUserExit();
+          Z80Bus::resetToSnaRom();
           CommandRegistry::initialize();
         } else {  // .z80 file failed
           SdCardSupport::fileClose();
@@ -187,6 +205,7 @@ void loop() {
       }
     }
   }
+  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
 }
 
 
@@ -199,18 +218,15 @@ bool setupOled() {
   Wire.end();
 
   if (result) {
-    // Initialise OLED
-    oled.begin(&Adafruit128x32, I2C_ADDRESS);   
-    delay(1);
-    // some hardware is slow to initialise, first call does not work.
+    oled.begin(&Adafruit128x32, I2C_ADDRESS);  // Initialise OLED
+    delay(1);                                  // some hardware is slow to initialise, and first call may not work
     oled.begin(&Adafruit128x32, I2C_ADDRESS);
-    // original Adafruit5x7 font with tweaks at start for VU meter
-    oled.setFont(fudged_Adafruit5x7);
+    oled.setFont(fudged_Adafruit5x7);  // original Adafruit5x7 font
     oled.clear();
-  // oled.print(F("ver"));
-  // oled.println(F(VERSION));
+    oled.print(F("ver"));
+    oled.println(F(VERSION));
   }
-  return result;  // is OLED hardware available 
+  return result;
 }
 #endif
 

@@ -182,7 +182,7 @@ uint8_t GetKeyPulses() {
 // Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
 // Both packet types max out at 255 payload bytes.
 __attribute__((optimize("-Ofast")))
-void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
+void encodeTransferPacket(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
 // {  
 //  DEBUG FOR TESTING WITHOUT RLE (RLE IS ONLY USE THE HELP SPEEDUP TO TRANSFER)
 //   uint8_t* pTransfer = &BufferManager::packetBuffer[0]; 
@@ -233,23 +233,26 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
         i++;
       }
 
-      // Place TransferPacket header before payload in packetBuffer (now we can send as a single contiguous block)
-      uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(TransferPacket::PACKET_LEN) ) ]; 
-      uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, raw_len);
-      Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
+      // Place packet header before payload in packetBuffer (now we can send as a single contiguous block)
+      if (borderLoadingEffect) {
+        uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(TransferPacket::PACKET_LEN) ) ]; 
+        Z80Bus::sendBytes(pTransfer, PacketBuilder::buildTransferCommand(pTransfer, addr, raw_len) + raw_len);
+      }else {
+        uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(CopyPacket::PACKET_LEN) ) ]; 
+        Z80Bus::sendBytes(pTransfer,  PacketBuilder::buildCopyCommand(pTransfer, addr, raw_len) + raw_len);
+      }
       addr += raw_len;
-
     }
   }
 }
 
-void transferSnaData() {
+void transferSnaData(bool borderLoadingEffect=false) {
     FatFile& file = SdCardSupport::file;
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
      // Transfer data to Spectrum RAM    
     while (file.available()) {
         uint16_t bytesRead = file.read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
-        encodeTransferPacket(bytesRead, currentAddress); 
+        encodeTransferPacket(bytesRead, currentAddress, borderLoadingEffect); 
         currentAddress += bytesRead;
     }
 }
@@ -277,12 +280,16 @@ boolean bootFromSnapshot() {
 //    if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 4); // Initialize stack pointer
     Z80Bus::waitRelease_NMI();
-    Z80Bus::transferSnaData();
+    Z80Bus::transferSnaData(true);
     synchronizeForExecution();
     executeSnapshot();
     return true;
 }
 
+void clearScreen(uint8_t col=0){
+  Z80Bus::fillScreenAttributes(col); 
+  Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
+}
 
 
 }

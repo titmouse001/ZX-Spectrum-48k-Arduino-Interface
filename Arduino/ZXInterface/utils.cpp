@@ -76,6 +76,19 @@ uint16_t readPulseEncodedValue() {
   return value;
 }
 
+
+void waitForUserExit() {
+  do {  
+    unsigned long startTime = millis();
+    PORTD = Utils::readJoystick() & JOYSTICK_MASK;
+    Utils::frameDelay(startTime);
+  } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
+
+  while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}
+  //delay(20);  // optional small debounce delay
+}
+
+
 // Not used ...
 // 
 // __attribute__((optimize("-Ofast"))) 
