@@ -1,6 +1,7 @@
 #ifndef DRAW_H
 #define DRAW_H
 
+#include <stdint.h>
 #include "packet_builder.h"
 #include "Z80Bus.h"
 #include "utils.h"

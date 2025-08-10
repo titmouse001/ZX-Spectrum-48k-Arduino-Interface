@@ -1,7 +1,7 @@
 #ifndef Z80BUS_H
 #define Z80BUS_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "pin.h"
 #include "digitalWriteFast.h"
 #include "packet_types.h"
@@ -181,6 +181,7 @@ uint8_t GetKeyPulses() {
 // Encode/send RLE-compressed data to the Speccy which is decompresses its side.
 // Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
 // Both packet types max out at 255 payload bytes.
+__attribute__((optimize("-Ofast")))
 void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
 // {  
 //  DEBUG FOR TESTING WITHOUT RLE (RLE IS ONLY USE THE HELP SPEEDUP TO TRANSFER)

@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "digitalWriteFast.h"
 #include "Constants.h"
 #include "Pin.h" 

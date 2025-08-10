@@ -1,7 +1,7 @@
 #ifndef SMALLFONT_H
 #define SMALLFONT_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "fudgefont.h"
 #include "utils.h"
 #include "constants.h"

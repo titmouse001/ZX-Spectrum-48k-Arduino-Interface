@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "command_registry.h"
 #include "utils.h" 
 

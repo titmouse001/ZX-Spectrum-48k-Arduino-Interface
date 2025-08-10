@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "Constants.h"
 
 // SNAPSHOT (.SNA) FILE HEADER (27 bytes, no PC value stored):

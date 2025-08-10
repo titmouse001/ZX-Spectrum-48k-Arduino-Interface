@@ -2,7 +2,6 @@
 #define BUFFER_MANAGER_H
 
 #include <stdint.h>
-//#include "smallfont.h"
 #include "constants.h"
 #include "packet_types.h"
 

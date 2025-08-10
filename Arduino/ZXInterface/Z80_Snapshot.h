@@ -1,7 +1,7 @@
 #ifndef Z80_NAPSHOT_H
 #define Z80_NAPSHOT_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "Constants.h"
 #include "Z802SNA.h"
 #include "SdCardSupport.h"

@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "buffer_manager.h"
 #include "constants.h"
 #include "command_registry.h"

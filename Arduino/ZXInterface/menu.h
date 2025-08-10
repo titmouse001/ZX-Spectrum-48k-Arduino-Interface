@@ -1,7 +1,7 @@
 #ifndef MENU_H
 #define MENU_H
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "draw.h"
 #include "SdCardSupport.h"
 
