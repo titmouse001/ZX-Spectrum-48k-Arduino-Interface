@@ -14,23 +14,24 @@ void frameDelay(unsigned long start) {
 // 2. When the Spectrum performs an IN (C) instruction (e.g. LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
 //    A 74HC32 combines the /IORQ, /RD, and /A7 signals to detect when the joystick port is being accessed.
 //    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
-__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Ofast")))
 uint8_t readJoystick() {
-  PORTC |= (1 << PC2);      // Initial Clock HIGH
-  PORTB |= (1 << PB2);      // Latch HIGH (enable shifting)
+  PORTB &= ~(1 << PB2);     // Latch LOW: Take a snapshot of all joystick inputs
+  delayMicroseconds(1);     // Small delay to let the latch complete
+  PORTB |= (1 << PB2);      // Latch HIGH: Enable shifting and make the first bit available on the data pin
+
   uint8_t data = 0;
   for (uint8_t i = 0; i < 8; i++) {
-    data <<= 1;
-    if (PINB & (1 << PB1)) {
+    data <<= 1;      
+    PORTC &= ~(1 << PC2);     // Clock LOW
+    if (PINB & (1 << PB1)) {  // serial data pin
       data |= 1;
     }
-    PORTC &= ~(1 << PC2);   // Clock LOW
-//    __builtin_avr_delay_cycles(16); // 1microsecond at 16 MHz (fine-tuned delay)
-    delayMicroseconds(16);
-    PORTC |= (1 << PC2);    // Clock HIGH
+    PORTC |= (1 << PC2);      // Clock HIGH (next bit)
   }
-  PORTB &= ~(1 << PB2);     // Latch LOW (disable shifting)
-  return data;              // read bits are "000FUDLR"
+
+  // The remaining 3 bits are FireB, Button Select (PCB button) & unused.
+  return data;  // read bits are "uSfFUDLR"  
 }
 
 void setupJoystick() {
@@ -38,7 +39,7 @@ void setupJoystick() {
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
   pinModeFast(Pin::ShiftRegLatchPin, OUTPUT);
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
-  readJoystick(); // call once to init - fudge
+//  readJoystick(); // call once to init - fudge
 }
 
 // 1,000,000 microseconds to a second

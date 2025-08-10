@@ -82,7 +82,7 @@ void fileList(uint16_t startFileIndex) {
 }
 
 Button_t getButton() {
-  // Kempston joystick bitmask: "000FUDLR" (Fire, Up, Down, Left, Right)
+  // Kempston joystick bitmask: "0sfFUDLR" (PCB Select, FireB, Fire, Up, Down, Left, Right)
   const uint8_t joy = Utils::readJoystick();
 
   if (joy & (0x10 | 0x40)) { return BUTTON_SELECT; }  // Fire or select button
