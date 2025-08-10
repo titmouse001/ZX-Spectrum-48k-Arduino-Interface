@@ -48,19 +48,19 @@ void textLine(int ypos, const char *message) {
 }
 
 void drawTextInternal(int xpos, int ypos, uint8_t charCount) {
-  const uint8_t byteCount = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
+  const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
   uint8_t *outputLine = BufferManager::TextBuffer;
   
-  BufferManager::packetBuffer[0] = (uint8_t)((CommandRegistry::command_Copy) >> 8); 
-  BufferManager::packetBuffer[1] = (uint8_t)((CommandRegistry::command_Copy) & 0xFF); 
-  BufferManager::packetBuffer[2] = (uint8_t)byteCount;
+  BufferManager::packetBuffer[E(CopyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_Copy) >> 8); 
+  BufferManager::packetBuffer[E(CopyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_Copy) & 0xFF); 
+  BufferManager::packetBuffer[E(CopyPacket::CMD_LEN)] = (uint8_t)byteWidth;
   
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, outputLine += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr = Utils::zx_spectrum_screen_address(xpos, ypos + y);
-    BufferManager::packetBuffer[3] = (uint8_t)(destAddr >> 8); 
-    BufferManager::packetBuffer[4] = (uint8_t)(destAddr & 0xFF); 
-    memcpy(&BufferManager::packetBuffer[5], outputLine, byteCount);
-    Z80Bus::sendBytes(BufferManager::packetBuffer, 5 + byteCount);
+    BufferManager::packetBuffer[E(CopyPacket::CMD_DEST_ADDR_HIGH)] = (uint8_t)(destAddr >> 8); 
+    BufferManager::packetBuffer[E(CopyPacket::CMD_DEST_ADDR_LOW)] = (uint8_t)(destAddr & 0xFF); 
+    memcpy(&BufferManager::packetBuffer[E(CopyPacket::PACKET_LEN)], outputLine, byteWidth);
+    Z80Bus::sendBytes(BufferManager::packetBuffer, E(CopyPacket::PACKET_LEN) + byteWidth);
   }
 }
 

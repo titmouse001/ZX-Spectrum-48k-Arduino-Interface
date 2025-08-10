@@ -178,14 +178,23 @@ uint8_t GetKeyPulses() {
   }
 }
 
-// RLE and send with - TransferPacket and FillPacket (both send max of 255 bytes)
-// The Speccy will reconstruct the RLE at its end.
+// Encode/send RLE-compressed data to the Speccy which is decompresses its side.
+// Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
+// Both packet types max out at 255 payload bytes.
 void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
+// {  
+//  DEBUG FOR TESTING WITHOUT RLE (RLE IS ONLY USE THE HELP SPEEDUP TO TRANSFER)
+//   uint8_t* pTransfer = &BufferManager::packetBuffer[0]; 
+//   uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, input_len);
+//   Z80Bus::sendBytes(pTransfer, packetLen + input_len);
+//   return ;
+// }
   constexpr uint16_t MAX_RUN_LENGTH = 255;
   constexpr uint16_t MAX_RAW_LENGTH = 255;
   constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
 
-  uint8_t* input = &BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)];
+  // Starts after the reserved packet header!
+  uint8_t* input = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN];
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -195,21 +204,25 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
     uint16_t max_run = (remaining > MAX_RUN_LENGTH) ? MAX_RUN_LENGTH : remaining;
     uint16_t run_len = 1;
 
-    // Check for run
+    // Check for a run of repeated values
     while (run_len < max_run && input[i + run_len] == value) {
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      uint8_t* pFill = &BufferManager::packetBuffer[TOTAL_PACKET_BUFFER_SIZE - E(SmallFillPacket::PACKET_LEN)];      // send [PB-6] to [PB-1]
+       // --- Send as SmallFillPacket ---
+      // Using offset after input header and data so we don't touch the lower part of packetBuffer as it still holds input to be processed
+      uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
       uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
       Z80Bus::sendBytes(pFill, packetLen);
     
       addr += run_len;
       i += run_len;
-    } else {  // No run found - raw data
+    } else {  
+      // --- Send as raw TransferPacket ---
       uint16_t raw_start = i;
       uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
-      uint16_t raw_len = 1;  // We know current byte isn't part of a run
+      // Start with current byte, then gather more until a run is detected or max length hit
+      uint16_t raw_len = 1; 
       i++;
       while (raw_len < max_raw && i < input_len) {
         if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
@@ -218,13 +231,57 @@ void encodeTransferPacket(uint16_t input_len, uint16_t addr) {
         raw_len++;
         i++;
       }
-      uint8_t* pTransfer = &BufferManager::packetBuffer[raw_start];      // send [0] to [255]
+
+      // Place TransferPacket header before payload in packetBuffer (now we can send as a single contiguous block)
+      uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(TransferPacket::PACKET_LEN) ) ]; 
       uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, raw_len);
       Z80Bus::sendBytes(pTransfer, packetLen + raw_len);
       addr += raw_len;
+
     }
   }
 }
+
+void transferSnaData() {
+    FatFile& file = SdCardSupport::file;
+    uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
+     // Transfer data to Spectrum RAM    
+    while (file.available()) {
+        uint16_t bytesRead = file.read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
+        encodeTransferPacket(bytesRead, currentAddress); 
+        currentAddress += bytesRead;
+    }
+}
+
+void synchronizeForExecution() {
+    // Enable Spectrum's 50Hz maskable interrupt and sync timing
+    // Creates gap before next interrupt to avoid stack corruption during restore
+    Z80Bus::sendWaitVBLCommand();
+    Z80Bus::waitHalt();
+}
+
+void executeSnapshot() {
+    PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
+    Z80Bus::sendSnaHeader(BufferManager::head27_Execute);
+    Z80Bus::waitRelease_NMI();
+    // Timing safety: Wait for NMI completion (24 T-states ≈ 7μs at 3.5MHz)
+    delayMicroseconds(7);
+    // Switch to 16K stock ROM and wait for execution
+    digitalWriteFast(Pin::ROM_HALF, HIGH);
+    while ((PINB & (1 << PINB0)) == 0) {};  // Wait for CPU to start
+}
+
+boolean bootFromSnapshot() {
+//    uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
+//    if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 4); // Initialize stack pointer
+    Z80Bus::waitRelease_NMI();
+    Z80Bus::transferSnaData();
+    synchronizeForExecution();
+    executeSnapshot();
+    return true;
+}
+
 
 
 }
