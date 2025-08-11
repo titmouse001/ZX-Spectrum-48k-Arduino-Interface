@@ -14,14 +14,14 @@ namespace CommandRegistry {
     uint16_t command_Execute;
 
     void initialize() {
-        command_TransmitKey = Utils::readPulseEncodedValue();
-        command_Fill = Utils::readPulseEncodedValue();
-        command_SmallFill = Utils::readPulseEncodedValue();
-        command_Transfer = Utils::readPulseEncodedValue();
-        command_Copy = Utils::readPulseEncodedValue();
-        command_Copy32 = Utils::readPulseEncodedValue();
-        command_VBL_Wait = Utils::readPulseEncodedValue();
-        command_Stack = Utils::readPulseEncodedValue();
-        command_Execute = Utils::readPulseEncodedValue();
+        command_TransmitKey = Utils::get16bitPulseValue();
+        command_Fill = Utils::get16bitPulseValue();
+        command_SmallFill = Utils::get16bitPulseValue();
+        command_Transfer = Utils::get16bitPulseValue();
+        command_Copy = Utils::get16bitPulseValue();
+        command_Copy32 = Utils::get16bitPulseValue();
+        command_VBL_Wait = Utils::get16bitPulseValue();
+        command_Stack = Utils::get16bitPulseValue();
+        command_Execute = Utils::get16bitPulseValue();
     }
 }

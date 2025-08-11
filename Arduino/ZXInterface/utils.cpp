@@ -47,9 +47,9 @@ void setupJoystick() {
 // 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
 // 20 T-States / 0.285714 = 70 t-states
 
-// GetValueFromPulseStream: Used to get the command functions (addresses) from the speccy.
+// get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
 // The speccy broadcasts all the functions at power up.
-uint16_t readPulseEncodedValue() {
+uint16_t get16bitPulseValue() {
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
   uint16_t value = 0;
   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
@@ -69,7 +69,7 @@ uint16_t readPulseEncodedValue() {
         break;
       }
     }
-    if (pulseCount == 2) {
+    if (pulseCount == 2) {  // collect set bit
       value += 1 << (15 - i);
     }
   }

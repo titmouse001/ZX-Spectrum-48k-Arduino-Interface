@@ -2,7 +2,7 @@
 #define SMALLFONT_H
 
 #include <stdint.h>
-#include "fudgefont.h"
+#include "font_data.h"
 #include "utils.h"
 #include "constants.h"
 

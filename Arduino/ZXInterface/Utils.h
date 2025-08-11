@@ -45,7 +45,7 @@ inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
 void frameDelay(unsigned long start);
 void setupJoystick();
 uint8_t readJoystick();
-uint16_t readPulseEncodedValue();
+uint16_t get16bitPulseValue();
 void waitForUserExit();
 
 /* unused so far...
