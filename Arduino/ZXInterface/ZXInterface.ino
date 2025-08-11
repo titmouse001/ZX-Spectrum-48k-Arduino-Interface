@@ -16,10 +16,16 @@
 
 #include <Arduino.h>
 #include "digitalWriteFast.h"
-#include "Z80_Snapshot.h"
+#include "SnapZ80.h"
 #include "Menu.h"
 #include "Utils.h"
+#include "Draw.h"
+#include "SdCardSupport.h"
 
+#include "CommandRegistry.h"
+#include "PacketTypes.h"
+#include "BufferManager.h"
+#include "Z80Bus.h"
 
 #define VERSION ("0.22")  // Arduino firmware
 #define DEBUG_OLED 0
@@ -99,7 +105,7 @@ void loop() {
     Draw::text_P(80, 90, F("NO FILES FOUND"));                       // Displays error if no files found.
   }
 
-  SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
+ SdCardSupport::openFileByIndex(Menu::doFileMenu(totalFiles));  // Opens user-selected snapshot file via menu.
 
   FatFile& file = (SdCardSupport::file);
   // *****************
@@ -192,7 +198,7 @@ void loop() {
         // *****************
         // *** Z80 FILES ***
         // *****************
-        if (convertZ80toSNA() == BLOCK_SUCCESS) {
+        if (SnapZ80::convertZ80toSNA() == BLOCK_SUCCESS) {
           SdCardSupport::fileClose();
           Z80Bus::synchronizeForExecution();
           Z80Bus::executeSnapshot();

@@ -1,16 +1,12 @@
-#ifndef SMALLFONT_H
-#define SMALLFONT_H
-
 #include <stdint.h>
-#include "font_data.h"
+#include "Arduino.h"
+#include "FontData.h"
 #include "utils.h"
 #include "constants.h"
-
-
-namespace RenderFont {
+#include "RenderFont.h"
 
 __attribute__((optimize("-Ofast")))
-inline void processCharacter(byte* finalOutput, const uint8_t *fontPtr, uint16_t basePos) {
+void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, uint16_t basePos) {
     const uint8_t d0 = pgm_read_byte(&fontPtr[0]);
     const uint8_t d1 = pgm_read_byte(&fontPtr[1]);
     const uint8_t d2 = pgm_read_byte(&fontPtr[2]);
@@ -35,7 +31,7 @@ inline void processCharacter(byte* finalOutput, const uint8_t *fontPtr, uint16_t
 }
 
 __attribute__((optimize("-Ofast")))
-inline uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
+uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char *message) {
     Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
 
     uint8_t charCount = 0;
@@ -72,7 +68,7 @@ inline uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
 //     return charCount;
 // }
 
-inline uint8_t prepareTextGraphics_P(byte* finalOutput, const __FlashStringHelper *flashStr) {
+uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper *flashStr) {
     Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
     
     const char *message = (const char *)flashStr;
@@ -88,9 +84,5 @@ inline uint8_t prepareTextGraphics_P(byte* finalOutput, const __FlashStringHelpe
     }
     return charCount;
 }
-
-}
-
-#endif
 
 

@@ -1,8 +1,6 @@
 #include "utils.h"
 
-namespace Utils {
-
-void frameDelay(unsigned long start) {
+void Utils::frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
   if (timeSpent < MAX_BUTTON_READ_MILLISECONDS) {
     delay(MAX_BUTTON_READ_MILLISECONDS - timeSpent);  // aiming for 50 FPS
@@ -15,7 +13,7 @@ void frameDelay(unsigned long start) {
 //    A 74HC32 combines the /IORQ, /RD, and /A7 signals to detect when the joystick port is being accessed.
 //    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
 __attribute__((optimize("-Ofast")))
-uint8_t readJoystick() {
+uint8_t Utils::readJoystick() {
   PORTB &= ~(1 << PB2);     // Latch LOW: Take a snapshot of all joystick inputs
   delayMicroseconds(1);     // Small delay to let the latch complete
   PORTB |= (1 << PB2);      // Latch HIGH: Enable shifting and make the first bit available on the data pin
@@ -34,7 +32,7 @@ uint8_t readJoystick() {
   return data;  // read bits are "uSfFUDLR"  
 }
 
-void setupJoystick() {
+void Utils::setupJoystick() {
   // Setup pins for "74HC165" shift register
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
   pinModeFast(Pin::ShiftRegLatchPin, OUTPUT);
@@ -49,7 +47,7 @@ void setupJoystick() {
 
 // get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
 // The speccy broadcasts all the functions at power up.
-uint16_t get16bitPulseValue() {
+uint16_t Utils::get16bitPulseValue() {
   constexpr uint16_t PULSE_TIMEOUT_US = 70;
   uint16_t value = 0;
   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
@@ -77,7 +75,7 @@ uint16_t get16bitPulseValue() {
 }
 
 
-void waitForUserExit() {
+void Utils::waitForUserExit() {
   do {  
     unsigned long startTime = millis();
     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
@@ -117,5 +115,3 @@ void waitForUserExit() {
 //   a = b;
 //   b = temp;
 // }
-
-}  // namespace Utils

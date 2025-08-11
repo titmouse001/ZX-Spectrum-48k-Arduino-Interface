@@ -2,7 +2,7 @@
 #define PINS_H
 
 #include <stdint.h>
-
+#include "Arduino.h"
 //------------------------------------------------------------
 // Pin Assignments: Arduino Nano to Z80 + Peripherals
 /*
@@ -30,23 +30,23 @@ namespace Pin {
 
 // Z80 data bus D0–D7 (Arduino digital pins 0–7)
 // Note: pins 0/1 also serve as RX/TX serial, so use Serial.begin() with care.
-static constexpr uint8_t Z80_D0Pin = 0;  // Arduino to z80 data (pin0,RX)
-static constexpr uint8_t Z80_D1Pin = 1;  // Arduino to z80 data (pin1,TX)
-static constexpr uint8_t Z80_D2Pin = 2;  // Arduino to z80 data (pin2)
-static constexpr uint8_t Z80_D3Pin = 3;  // Arduino to z80 data (pin3)
-static constexpr uint8_t Z80_D4Pin = 4;  // Arduino to z80 data (pin4)
-static constexpr uint8_t Z80_D5Pin = 5;  // Arduino to z80 data (pin5)
-static constexpr uint8_t Z80_D6Pin = 6;  // Arduino to z80 data (pin6)
-static constexpr uint8_t Z80_D7Pin = 7;  // Arduino to z80 data (pin7)
+constexpr uint8_t Z80_D0Pin = 0;  // Arduino to z80 data (pin0,RX)
+constexpr uint8_t Z80_D1Pin = 1;  // Arduino to z80 data (pin1,TX)
+constexpr uint8_t Z80_D2Pin = 2;  // Arduino to z80 data (pin2)
+constexpr uint8_t Z80_D3Pin = 3;  // Arduino to z80 data (pin3)
+constexpr uint8_t Z80_D4Pin = 4;  // Arduino to z80 data (pin4)
+constexpr uint8_t Z80_D5Pin = 5;  // Arduino to z80 data (pin5)
+constexpr uint8_t Z80_D6Pin = 6;  // Arduino to z80 data (pin6)
+constexpr uint8_t Z80_D7Pin = 7;  // Arduino to z80 data (pin7)
 
 // Z80 control/status signals
-static constexpr uint8_t Z80_HALT = 8;   // Arduino pin8, PINB0 (PORT B) to Z80 'HALT' Status
-static constexpr uint8_t Z80_NMI = A0;   // pin14, PIN_A0 to Z80 NMI
-static constexpr uint8_t ROM_HALF = A1;  // pin15, PIN_A1 to ROM pin27 high/low bank select (sna or stock rom)
-static constexpr uint8_t Z80_REST = 17;  // PIN_A3 to the Z80 Reset line
+constexpr uint8_t Z80_HALT = 8;   // Arduino pin8, PINB0 (PORT B) to Z80 'HALT' Status
+constexpr uint8_t Z80_NMI = A0;   // pin14, PIN_A0 to Z80 NMI
+constexpr uint8_t ROM_HALF = A1;  // pin15, PIN_A1 to ROM pin27 high/low bank select (sna or stock rom)
+constexpr uint8_t Z80_REST = 17;  // PIN_A3 to the Z80 Reset line
 
 // Status LED
-static constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
+constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 
 // ----------------------------------------------------------------------------------------------------
 // 74HC165 shift-register (parallel-in to serial-out)
@@ -56,12 +56,12 @@ static constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 // - PB1 (Arduino pin 9)  <- QH (pin 9 on 74HC165): Serial data output (read input bits here)
 // - PC2 (Arduino pin A2) -> CLK (pin 2 on 74HC165): Clock input (shifts out next bit on rising edge)
 // - PB2 (Arduino pin 10) -> SH/LD (pin 1 on 74HC165): Shift/Load control (LOW to load inputs, HIGH to shift)
-static constexpr uint8_t ShiftRegDataPin  = 9;    // PB1: Serial data in from 74HC165 QH
-static constexpr uint8_t ShiftRegClockPin = A2;   // PC2: Clock output to 74HC165 CLK
-static constexpr uint8_t ShiftRegLatchPin = 10;   // PB2: Latch control to 74HC165 SH/LD
+constexpr uint8_t ShiftRegDataPin  = 9;    // PB1: Serial data in from 74HC165 QH
+constexpr uint8_t ShiftRegClockPin = A2;   // PC2: Clock output to 74HC165 CLK
+constexpr uint8_t ShiftRegLatchPin = 10;   // PB2: Latch control to 74HC165 SH/LD
 // ----------------------------------------------------------------------------------------------------
 // Analog input  (see "pins_arduino.h" pulled in by "Arduino.h" )
-static constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
+constexpr uint8_t BUTTON_PIN = A7;  // analog pin 7 (labeled 21)
 
 
 }

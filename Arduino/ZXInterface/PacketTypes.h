@@ -4,10 +4,7 @@
 #include <stdint.h>
 
 #define E(e) static_cast<uint8_t>(e)
-
-
 constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;
-
 
 enum class TransmitKeyPacket : uint8_t {
   CMD_HIGH = 0,

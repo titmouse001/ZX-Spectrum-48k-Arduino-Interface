@@ -1,12 +1,11 @@
-#ifndef Z80_NAPSHOT_H
-#define Z80_NAPSHOT_H
-
 #include <stdint.h>
-#include "Constants.h"
+#include "SnapZ80.h"
 #include "Z802SNA.h"
+#include "Constants.h"
 #include "SdCardSupport.h"
-#include "buffer_manager.h" 
+#include "BufferManager.h" 
 #include "Z80Bus.h" 
+#include "PacketBuilder.h"
 
 /*
  *******************************************************************
@@ -41,17 +40,7 @@
  * https://worldofspectrum.org/faq/reference/z80format.htm
  */
 
-// Structure to hold parsed header information
-struct Z80HeaderInfo {
-	int16_t version;
-	uint8_t pc_low;
-	uint8_t pc_high;
-	uint8_t hw_mode;
-	bool isV1Compressed;
-	// v1_header data is stored in packetBuffer[0] to packetBuffer[Z80_V1_HEADERLENGTH-1]
-};
-
-MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
+MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 	if (z80_version == 1) {
 		return MACHINE_48K;  // For V1, machine is implicitly 48K
 	} else if (z80_version == 2) {
@@ -77,7 +66,7 @@ MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 }
 
 __attribute__((optimize("-Ofast")))
-int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
+int16_t SnapZ80::readZ80Header(Z80HeaderInfo* headerInfo) {
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer for header storage
 	
 	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
@@ -132,7 +121,7 @@ int16_t readZ80Header(Z80HeaderInfo* headerInfo) {
 }
 
 __attribute__((optimize("-Ofast"))) 
-bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
+bool SnapZ80::findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 	static const uint8_t MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
 	constexpr uint8_t MARKER_SIZE = 4;
 	uint8_t* search_buffer = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
@@ -178,7 +167,7 @@ bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
 }
 
 __attribute__((optimize("-Ofast")))
-Z80CheckResult checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
+Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 	Z80CheckResult result = Z80_CHECK_SUCCESS;
 	int32_t initial_file_pos = SdCardSupport::filePosition();
 	if (initial_file_pos == -1) return Z80_CHECK_ERROR_UNEXPECTED_EOF;  // Error getting position
@@ -250,7 +239,7 @@ Z80CheckResult checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 
 
 __attribute__((optimize("-Ofast"))) 
-static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
+void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE; 
 
@@ -311,7 +300,7 @@ static void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) 
 }
 
 __attribute__((optimize("-Ofast")))
-BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
+BlockReadResult SnapZ80::z80_readAndWriteBlock(uint8_t* page_number_out) {
 	uint16_t compressed_length;
 
 	// Read compressed_length (2 bytes, little-endian) into the file read buffer
@@ -353,7 +342,7 @@ BlockReadResult z80_readAndWriteBlock(uint8_t* page_number_out) {
 	return BLOCK_SUCCESS;
 }
 
-int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
+int16_t SnapZ80::convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 	uint16_t stackAddrForPushingPC = 0;
 	uint8_t* snaHeader = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer where header is stored
@@ -412,7 +401,7 @@ int16_t convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 	return BLOCK_SUCCESS;
 }
 
-int16_t convertZ80toSNA() {
+int16_t SnapZ80::convertZ80toSNA() {
 	// Read header once and store in structure
 	Z80HeaderInfo headerInfo;
 	int16_t header_result = readZ80Header(&headerInfo);
@@ -436,4 +425,3 @@ int16_t convertZ80toSNA() {
 }
 
 
-#endif

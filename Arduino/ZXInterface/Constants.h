@@ -2,6 +2,11 @@
 
 #include <stdint.h>
 
+constexpr uint16_t COMMAND_PAYLOAD_SECTION_SIZE = 255;
+constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
+constexpr uint16_t FILE_READ_BUFFER_OFFSET = 5 + COMMAND_PAYLOAD_SECTION_SIZE;
+constexpr uint16_t TOTAL_PACKET_BUFFER_SIZE = 5 + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
+
 namespace SmallFont {
     constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
     constexpr uint8_t FNT_HEIGHT        = 7;   // character height in pixels
