@@ -189,7 +189,7 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
 // }
   constexpr uint16_t MAX_RUN_LENGTH = 255;
   constexpr uint16_t MAX_RAW_LENGTH = 255;
-  constexpr uint8_t MIN_RUN_LENGTH = 5;  // about where RLE pays off over raw
+  constexpr uint8_t MIN_RUN_LENGTH = 3;  // about where RLE pays off over raw
 
   // Starts after the reserved packet header!
   uint8_t* input = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN];
@@ -207,12 +207,22 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-       // --- Send as SmallFillPacket ---
-      // Using offset after input header and data so we don't touch the lower part of packetBuffer as it still holds input to be processed
-      uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
-      uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
-      Z80Bus::sendBytes(pFill, packetLen);
-    
+      if (value!=0) {   // ignore zero as we cleared memory at start
+        // --- Send as SmallFillPacket ---
+        // Using offset after input header and data so we don't touch the lower part of packetBuffer as it still holds input to be processed
+        uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
+        if ( (run_len&0x01) ==0) { // even
+        //          uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
+          // number of PUSH operations ((count-1)/2)
+            uint8_t packetLen = PacketBuilder::buildFillVariableEvenCommand(pFill,addr+run_len, run_len/2, value);
+            Z80Bus::sendBytes(pFill, packetLen);
+        }else {      
+    //             uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
+          // number of PUSH operations (count/2)
+          uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(pFill,addr+run_len, (run_len-1)/2, value);
+          Z80Bus::sendBytes(pFill, packetLen);
+        }
+      }
       addr += run_len;
       i += run_len;
     } else {  
@@ -277,6 +287,10 @@ boolean Z80Bus::bootFromSnapshot() {
 //    if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 4); // Initialize stack pointer
     Z80Bus::waitRelease_NMI();
+
+    Z80Bus::fillScreenAttributes(0);  
+    Z80Bus::clearScreen();
+
     Z80Bus::transferSnaData(true);
     synchronizeForExecution();
     executeSnapshot();

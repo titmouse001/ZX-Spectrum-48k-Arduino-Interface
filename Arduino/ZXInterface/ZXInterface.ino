@@ -112,8 +112,11 @@ void loop() {
   // *** SCR FILES ***
   // *****************
   if (file.available() && file.fileSize() == ZX_SCREEN_TOTAL_SIZE) {  // qualifies as a .SCR file
-    Z80Bus::fillScreenAttributes(0);                                  // hide loading bitmap
-    Z80Bus::transferSnaData(false);                                   // no loading effects
+
+    Z80Bus::fillScreenAttributes(0);  
+    Z80Bus::clearScreen();
+
+    Z80Bus::transferSnaData(false);  // no loading effects
     SdCardSupport::fileClose();
     constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
     while (Menu::getButton() == Menu::BUTTON_NONE) {

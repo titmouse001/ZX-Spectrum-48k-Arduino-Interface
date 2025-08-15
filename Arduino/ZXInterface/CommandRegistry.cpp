@@ -12,6 +12,9 @@ uint16_t CommandRegistry::command_VBL_Wait;
 uint16_t CommandRegistry::command_Stack;
 uint16_t CommandRegistry::command_Execute;
 
+uint16_t CommandRegistry::command_FillVariableEven;
+uint16_t CommandRegistry::command_FillVariableOdd;
+
 void CommandRegistry::initialize() {
   command_TransmitKey = Utils::get16bitPulseValue();
   command_Fill = Utils::get16bitPulseValue();
@@ -22,4 +25,7 @@ void CommandRegistry::initialize() {
   command_VBL_Wait = Utils::get16bitPulseValue();
   command_Stack = Utils::get16bitPulseValue();
   command_Execute = Utils::get16bitPulseValue();
+
+  command_FillVariableEven = Utils::get16bitPulseValue();
+  command_FillVariableOdd = Utils::get16bitPulseValue();
 }

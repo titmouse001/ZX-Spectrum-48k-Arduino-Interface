@@ -238,14 +238,13 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 */
 
 
-__attribute__((optimize("-Ofast"))) 
-void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
+__attribute__((optimize("-Ofast"))) void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
-	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE; 
+	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;
 
-	uint8_t* commandPayloadPtr = &BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)];                        
-	uint8_t* fileReadBufferPtr = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];  
-	uint16_t commandPayloadPos = 0;                                      
+	uint8_t* commandPayloadPtr = &BufferManager::packetBuffer[E(TransferPacket::PACKET_LEN)];
+	uint8_t* fileReadBufferPtr = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+	uint16_t commandPayloadPos = 0;
 	uint16_t fileReadBufferCurrentPos = 0;
 	uint16_t fileReadBufferBytesAvailable = 0;
 	uint32_t bytesReadFromSource = 0;
@@ -263,7 +262,7 @@ void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress
 
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
-			PacketBuilder::buildTransferCommand(BufferManager::packetBuffer,currentAddress, commandPayloadPos);
+			PacketBuilder::buildTransferCommand(BufferManager::packetBuffer, currentAddress, commandPayloadPos);
 			Z80Bus::sendBytes(BufferManager::packetBuffer, E(TransferPacket::PACKET_LEN) + commandPayloadPos);
 			currentAddress += commandPayloadPos;
 			commandPayloadPos = 0;
@@ -282,11 +281,21 @@ void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress
 		if (b1 == 0xED) {
 			uint8_t b2 = getNextByteFromFile();
 			if (b2 == 0xED) {
-				flushCommandPayloadBuffer(); 
+				flushCommandPayloadBuffer();
 				uint8_t runAmount = getNextByteFromFile();
 				uint8_t value = getNextByteFromFile();
-				uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, runAmount, currentAddress, value);
-				Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+
+				//		uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, runAmount, currentAddress, value);
+				//			Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+				if (value != 0) {               // ignore zero as we cleared memory at start
+					if ((runAmount & 0x01) == 0) {  // even
+						uint8_t packetLen = PacketBuilder::buildFillVariableEvenCommand(BufferManager::packetBuffer, currentAddress + runAmount, runAmount / 2, value);
+						Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+					} else {
+						uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(BufferManager::packetBuffer, currentAddress + runAmount, (runAmount - 1) / 2, value);
+						Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+					}
+				}
 				currentAddress += runAmount;
 			} else {
 				addByteToCommandPayloadBuffer(b1);
@@ -414,8 +423,13 @@ int16_t SnapZ80::convertZ80toSNA() {
 		return fileCheck;
 	}
 
-	const uint16_t address = 0x4004;  
-	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,address);
+	Z80Bus::fillScreenAttributes(0);  
+  Z80Bus::clearScreen();
+
+	const uint16_t stackAddress = 0x4004;  
+	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
+
+
 	Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
 	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 

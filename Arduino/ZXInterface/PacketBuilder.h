@@ -12,6 +12,8 @@ uint8_t buildFillCommand(uint8_t* buf, uint16_t amount, uint16_t address, uint8_
 uint8_t buildStackCommand(uint8_t* buf, uint16_t address);
 uint8_t buildWaitVBLCommand(uint8_t* buf);
 uint8_t buildExecuteCommand(uint8_t* buf);
+uint8_t buildFillVariableEvenCommand(uint8_t* buf, uint16_t address,  uint8_t amount, uint8_t value);
+uint8_t buildFillVariableOddCommand(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value);
 
 }
 

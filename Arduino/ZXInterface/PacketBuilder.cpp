@@ -29,10 +29,32 @@ uint8_t PacketBuilder::buildSmallFillCommand(uint8_t* buf, uint8_t amount, uint1
   buf[E(SmallFillPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_SmallFill)&0xFF);
   buf[E(SmallFillPacket::CMD_AMOUNT)] = amount;
   buf[E(SmallFillPacket::CMD_START_ADDR_HIGH)] = (uint8_t)((address) >> 8);
-  buf[E(SmallFillPacket::CMD_START_ADDR_LOW)] = (uint8_t)((address)&0xFF);
+  buf[E(SmallFillPacket::CMD_START_ADDR_LOW)]  = (uint8_t)((address)&0xFF);
   buf[E(SmallFillPacket::CMD_FILL_VALUE)] = value;
   return E(SmallFillPacket::PACKET_LEN);
 }
+
+
+uint8_t PacketBuilder::buildFillVariableEvenCommand(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
+  buf[E(SmallFillVariableEvenPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_FillVariableEven) >> 8);
+  buf[E(SmallFillVariableEvenPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_FillVariableEven)&0xFF);
+  buf[E(SmallFillVariableEvenPacket::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
+  buf[E(SmallFillVariableEvenPacket::CMD_ADDR_LOW)]  = (uint8_t)((address)&0xFF);
+  buf[E(SmallFillVariableEvenPacket::CMD_AMOUNT)] = amount;
+  buf[E(SmallFillVariableEvenPacket::CMD_FILL_VALUE)] = value;
+  return E(SmallFillVariableEvenPacket::PACKET_LEN);
+}
+
+uint8_t PacketBuilder::buildFillVariableOddCommand(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
+  buf[E(SmallFillVariableOddPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_FillVariableOdd) >> 8);
+  buf[E(SmallFillVariableOddPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_FillVariableOdd)&0xFF);
+  buf[E(SmallFillVariableOddPacket::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
+  buf[E(SmallFillVariableOddPacket::CMD_ADDR_LOW)] = (uint8_t)((address)&0xFF);
+  buf[E(SmallFillVariableOddPacket::CMD_AMOUNT)] = amount;
+  buf[E(SmallFillVariableOddPacket::CMD_FILL_VALUE)] = value;
+  return E(SmallFillVariableOddPacket::PACKET_LEN);
+}
+
 
 // Fill supports a maximum fill amount of 0xFFFF bytes
 uint8_t PacketBuilder::buildFillCommand(uint8_t* buf, uint16_t amount, uint16_t address, uint8_t value) {

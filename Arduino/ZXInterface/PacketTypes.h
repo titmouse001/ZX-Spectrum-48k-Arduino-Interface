@@ -49,6 +49,28 @@ enum class SmallFillPacket : uint8_t {
   PACKET_LEN
 };
 
+
+enum class SmallFillVariableEvenPacket : uint8_t {
+  CMD_HIGH = 0,
+  CMD_LOW = 1,
+  CMD_ADDR_HIGH = 2,
+  CMD_ADDR_LOW = 3,
+  CMD_AMOUNT = 4,
+  CMD_FILL_VALUE = 5,
+  PACKET_LEN
+};
+enum class SmallFillVariableOddPacket : uint8_t {
+  CMD_HIGH = 0,
+  CMD_LOW = 1,
+  CMD_ADDR_HIGH = 2,
+  CMD_ADDR_LOW = 3,
+  CMD_AMOUNT = 4,
+  CMD_FILL_VALUE = 5,
+  PACKET_LEN
+};
+
+
+
 enum class StackPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,

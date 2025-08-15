@@ -82,11 +82,16 @@ L0000:
 	; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
 	; (While in the menu code, it's okay to use the stack normally.)
 
-	; 0xffff for menu usem, this SP will be reasigned later with a "command_Stack"
- 	ld SP,0xFFFF  
-
 	;-----------------------------------------------------------------------------------	
-	call ClearScreen
+	SET_BORDER 0
+	jp ClearAllRam 
+ClearAllRamRet:
+	; Now we know all RAM is zeroed
+	; This means we can now assume loading can skip large chunks of zero-length data
+	
+	ld SP,0xFFFF  ; only for menu use
+	; Later, SP will be reasigned with "command_Stack"
+
 	call sendFunctionList
 	jp mainloop
  
@@ -111,93 +116,90 @@ L0066:
 	RETN
 
 ;------------------------------------------------------
-
-
 ;******************
 ; *** MAIN LOOP ***
 ;******************
 mainloop:
 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
-
 check_initial:   
-
 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
 	JP (hl) ; // FUTRE CHANGE... ARDUINO SENDS JUMP ADDRESS
 	jp check_initial	;	// FUTRE CHANGE
-
-	; READ_ACC_WITH_HALT ;  command - operation type
-	; cp 'Z'
-	; jp z, command_Copy32 		; Copy 32 bytes (optimized for screen updates)
-	; cp 'G' 
-	; jp z, command_Transfer 		; Transfer with flashing border (SNA loading)
-	; cp 'f'            
-	; jp z, command_SmallFill 	; Small Fill memory region
-	; cp 'C'           
-	; jp z, command_Copy 			; Copy data (text/error messages)
-	; cp 'F'            
-	; jp z, command_Fill 			; Fill memory region
-	; cp 'W'            
-	; jp z, command_Wait 			; Wait for 50Hz interrupt
-	; cp 'S'
-	; jp z, command_Stack 		; Set stack pointer for SNA loading
-	; cp 'E'            
-	; jp z, command_Execute 	; Execute program (includes restoring regesters)
-	; cp 'T'            
-	; jp z, command_TransmitKey 	; Send keypress via pulse-count protocol
-	; jp check_initial
-
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
 	ld hl,command_TransmitKey
 	call transmit16bitValue
-;	ld a,%001	;Blue	
-;	out ($fe),a
-
 	ld hl,command_Fill
 	call transmit16bitValue
-;	ld a,%010	;Red	
-;	out ($fe),a
-
 	ld hl,command_SmallFill
 	call transmit16bitValue
-;	ld a,%011	;Magenta
-;	out ($fe),a
-
 	ld hl,command_Transfer
 	call transmit16bitValue
-;	ld a,%100	;Green
-;	out ($fe),a
-
 	ld hl,command_Copy
 	call transmit16bitValue
-;	ld a,%101	;Cyan		
-;	out ($fe),a
-
 	ld hl,command_Copy32
 	call transmit16bitValue
-;	ld a,%110	;Yellow	
-;	out ($fe),a
-
 	ld hl,command_Wait
 	call transmit16bitValue
-;	ld a,%111	;White	
-;	out ($fe),a
-
 	ld hl,command_Stack
 	call transmit16bitValue
-;	ld a,%000	;black	
-;	out ($fe),a
-
 	ld hl,command_Execute
 	call transmit16bitValue
-;	ld a,%010	;Red	
-;	out ($fe),a
 
+	ld hl,command_FillVariableEven
+	call transmit16bitValue
+	ld hl,command_FillVariableOdd
+	call transmit16bitValue
 	ret
 
-;------------------------------------------------------
 
+;------------------------------------------------------
+command_FillVariableEven:  ; Handles even byte fills
+;------------------------------------------------------
+     LD IX, 0        
+     ADD IX, SP     
+
+    READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
+    halt                       ;
+    in b,(c)                   ; B = number of PUSH operations (count/2)
+    READ_ACC_WITH_HALT         ; A = fill byte
+
+    LD SP, HL                
+    LD H, A                  
+    LD L, A                  
+FillEvenLoop:
+    PUSH HL                   
+    DJNZ FillEvenLoop        
+	ld SP,IX    
+    jp mainloop                
+
+;------------------------------------------------------
+command_FillVariableOdd:  ; Handles odd byte fills
+;------------------------------------------------------
+     LD IX, 0        
+     ADD IX, SP 
+
+	READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
+	halt                       ;
+	in b,(c)                   ; B = number of PUSH operations ((count-1)/2)
+	halt                       ;
+	in d,(c)                   ; D = fill byte
+
+	dec hl                     ; handle the odd byte
+	ld (hl), d
+
+	ld sp, hl                  ; Set SP to buffer end - 1
+	ld h, d                   
+	ld l, d                   
+	
+FillOddLoop:
+	push hl                 
+	djnz FillOddLoop        
+	ld SP,IX   
+	jp mainloop             
+
+;------------------------------------------------------
 transmit16bitValue:  
 	; HL holds ROM function address to send 
 	; Will send 0 bit as 1 HALT
@@ -572,7 +574,23 @@ ClearScreen:
     ld (hl), a
     ldir
     ret
-;-----------------------------------------------------------------------	
+
+;-----------------------------------------------------------------------
+; CLEAR RAM 48KB 
+;-----------------------------------------------------------------------
+ClearAllRam:  ; 273,725 t-states ÷ 3,500,000 = 0.0782 seconds ?!?
+        LD IX, 0        
+        ADD IX, SP               
+        ld hl, 0                 
+        ld sp, 16384 + (48*1024) ; top of RAM (65536)
+        ld b, 0                  ; wraps so 256 times
+clr:    REPT 96
+        push hl           
+        ENDM
+        djnz clr                 
+        ld sp, ix                
+
+		jp ClearAllRamRet 
 
 ;-----------------------------------------------------------------------	
 ; RESTORE INTERRUPT MODE - Helper for command_Execute
@@ -703,39 +721,6 @@ DS  16384 - last	; leave rest of rom blank
 
 ; **** SCRATCH PAD ********
 
-;
-;Fill32: 
-;------------------------------------------------------
-    ; Saving SP !
-   ; LD IX, 0        ; 14t
-  ;  ADD IX, SP      ; 15t
-    ; Set up for fill
-   ; LD SP, HL       ; 6t - HL points to END of 32-byte area
-  ;  LD H, A         ; 4t
- ;   LD L, A         ; 4t
-;
-;	REPT 16		    ; 
-;	PUSH HL			; 11t (we fill backwards here)
-;	ENDM			; (11x16 = 176t / djnz version: 411t)
-
- ;   LD SP, IX       ; 10t
-;    JP mainloop    
-
-; ; Z80 fill routine (BC must be >=2)
-; ; Inputs: DE=destination, BC=size (>=2), A=fill value
-; ; Clobbers: AF, BC, DE, HL
-; 	READ_PAIR_WITH_HALT b,c  ; DE = Fill amount
-; 	READ_PAIR_WITH_HALT d,e  ; HL = Destination address
-; 	halt				 	 ; Synchronizes with Arduino (NMI to continue)
-; 	in a,(c)				 ; Read fill value from the z80 I/O port
-; Fill:
-;     LD HL, DE       ; 
-;     LD (HL), A      ; 1st byte        
-;     INC HL          ; HL = dest+1             
-;     EX DE, HL       ; DE = dest+1, HL=dest    
-;     DEC BC          ; BC = size-1             
-;     LDIR            ; Fill
-;    JR mainloop     ;   
 
 
 ; ___UNUSED___GET_KEY:   
