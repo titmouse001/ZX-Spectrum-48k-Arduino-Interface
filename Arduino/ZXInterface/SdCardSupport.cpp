@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "SdCardSupport.h"  
+#include "BufferManager.h" 
 #include "SdFat.h" 
 
 SdFat32 SdCardSupport::sd;
@@ -75,6 +76,26 @@ uint16_t SdCardSupport::fileSize() {
 bool SdCardSupport::fileClose() {
   return file.close();
 }
+
+char* SdCardSupport::getFileName() {
+  char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  file.getName7(fileName, 64);
+  return fileName;
+}
+
+uint16_t SdCardSupport::getFileSize() {
+  return file.fileSize();
+}
+
+
+
+// char* SdCardSupport::getFileNameExt() {
+//   char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+//   /*uint16_t len = */ file.getName7(fileName, 64);
+//   char* dotPtr = strrchr(fileName, '.');
+//   char* extension = dotPtr + 1;
+//   return extension;
+// }
 
 
 // bool openFileByName(const char* filename) {

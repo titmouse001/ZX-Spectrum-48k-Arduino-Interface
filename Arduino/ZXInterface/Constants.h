@@ -53,7 +53,9 @@ constexpr uint16_t ZX_SCREEN_ATTR_ADDRESS_START = ZX_SCREEN_ADDRESS_START + ZX_S
 constexpr uint16_t ZX_SCREEN_ATTR_SIZE          = 768;   // (192/8) x (255/8);
 constexpr uint16_t ZX_SCREEN_TOTAL_SIZE         = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;
 constexpr uint16_t ZX_SPECTRUM_48K_TOTAL_MEMORY = 1024UL * 48;   // 48k (above 16k ROM) 
-constexpr uint16_t ZX_SCREEN_WIDTH_BYTES        = 32;
+constexpr uint16_t ZX_SCREEN_WIDTH_PIXELS        = 256;
+constexpr uint16_t ZX_SCREEN_HEIGHT_PIXELS       = 192;
+constexpr uint16_t ZX_SCREEN_WIDTH_BYTES        = ZX_SCREEN_WIDTH_PIXELS/8;
 //-----------------------------------------
 // .Z80 FILE FORMAT - HEADER ver1
 //-----------------------------------------

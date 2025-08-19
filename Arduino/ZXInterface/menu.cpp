@@ -112,7 +112,7 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
   }
   return ACTION_NONE;
 }
-uint16_t Menu::doFileMenu(uint16_t totalFiles) {
+uint16_t Menu::selectFileMenu(uint16_t totalFiles) {
   fileList(startFileIndex);
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
   while (true) {
