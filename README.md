@@ -1,4 +1,4 @@
-# ZX Spectrum 48k Arduino Interface - 48k .sna Game Loader
+# ZX Spectrum 48k Game Loading Interface using an Arduino
 
 <i>Latest quick update: new PCB (v0.21) now uses a right-angle cartridge (90°). No pics just yet! 
 Code has been updated to support .z80 snapshots (now loads .sna, .z80, and .scr files).  
