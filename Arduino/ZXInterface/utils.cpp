@@ -48,7 +48,7 @@ void Utils::setupJoystick() {
 // get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
 // The speccy broadcasts all the functions at power up.
 uint16_t Utils::get16bitPulseValue() {
-  constexpr uint16_t PULSE_TIMEOUT_US = 70;
+  constexpr uint16_t PULSE_TIMEOUT_US = 70; //120+20;
   uint16_t value = 0;
   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
     uint8_t pulseCount = 0;
@@ -62,7 +62,7 @@ uint16_t Utils::get16bitPulseValue() {
         pulseCount++;
         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
       }
-      // Detect end of transmission (delay timeout after last halt)
+      // Detect end marker delay at end of each single bit 
       if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
         break;
       }

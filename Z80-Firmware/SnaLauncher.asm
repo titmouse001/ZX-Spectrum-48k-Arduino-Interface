@@ -71,7 +71,20 @@ ENDM
 ;******************
 ORG $0000
 L0000:  
-	DI                     
+	DI                
+	
+	;------------------------------------------
+	; For a test on both 48/128k machines (now using '_ROMCS' & 'ROM1_OE')
+	;       48k: _ROMCS (edge 25B) is NOT USED on +2a/b, +3 boards.
+    ; +2a/b, +3: Added test jumper wire from 'ROM1 _OE' (edge 4A) to 5v.
+	; 			 (loading games works fine on 128k machines (minor reset timing tweek))
+	;------------------------------------------
+	; Disable 128k Spectrums from paging
+	LD A, %00100000  ; bit 5, paging disabled until the computer is reset
+    LD BC, $7FFD     ; 7FFD = paging port
+    OUT (C), A    
+	;------------------------------------------
+
 	;-----------------------------------------------------------------------------------	
 	;Stack Behavior - 	The stack grows downward.
 	;					PUSH: sp -= 2; stores value at (sp).
@@ -123,34 +136,55 @@ mainloop:
 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
 check_initial:   
 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
-	JP (hl) ; // FUTRE CHANGE... ARDUINO SENDS JUMP ADDRESS
-	jp check_initial	;	// FUTRE CHANGE
+	JP (hl) ; 
+	jp check_initial	
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
 	ld hl,command_TransmitKey
 	call transmit16bitValue
+	;SET_BORDER 0
+	
 	ld hl,command_Fill
 	call transmit16bitValue
+	;SET_BORDER 1
+
 	ld hl,command_SmallFill
 	call transmit16bitValue
+	;SET_BORDER 2
+
 	ld hl,command_Transfer
 	call transmit16bitValue
+	;SET_BORDER 3
+
 	ld hl,command_Copy
 	call transmit16bitValue
+	;SET_BORDER 4
+
 	ld hl,command_Copy32
 	call transmit16bitValue
+	;SET_BORDER 5
+
 	ld hl,command_Wait
 	call transmit16bitValue
+	;SET_BORDER 6
+
 	ld hl,command_Stack
 	call transmit16bitValue
+	;SET_BORDER 7
+
 	ld hl,command_Execute
 	call transmit16bitValue
+	;SET_BORDER 0
 
 	ld hl,command_FillVariableEven
 	call transmit16bitValue
+	;SET_BORDER 1
+
 	ld hl,command_FillVariableOdd
 	call transmit16bitValue
+	;SET_BORDER 2
+
 	ret
 
 
@@ -219,15 +253,15 @@ send_zero:
 	HALT   				; x1 halt signals bit '0'
 continue_transmission:
 	ld e,b				; delay amount
-delay_between_bits:
+bit_marker_spacing:
 	NOP                    
 	dec e
-	jr nz,delay_between_bits	; Inter-bit spacing delay
+	jr nz,bit_marker_spacing	; Inter-bit spacing delay
 	
 	add hl,hl			; Shift HL left (MSB goes to carry)
 	dec d
 	jr nz,transmit_bit_loop	
-	
+
 	ret
 
 

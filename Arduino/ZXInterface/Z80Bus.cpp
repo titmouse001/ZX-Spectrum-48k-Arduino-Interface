@@ -45,10 +45,14 @@ void Z80Bus::waitHalt() {
 }
 
 void Z80Bus::resetZ80() {
-  digitalWriteFast(Pin::Z80_REST, LOW);   // 
-  // REDUCE THIS... SPECCY WILL BE POWERED, NO CAPS TO DRAIN.
-  delay(10);                              // 3 speccy T-States!!!
-  digitalWriteFast(Pin::Z80_REST, HIGH);  // reboot
+  digitalWriteFast(Pin::Z80_REST, LOW);   // begin reset 
+  
+  delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
+
+  // Noticed a 48K Spectrum will boot with a very short reset pulse less than 10ms,
+  // but a Spectrum +2B needs a much longer hold time, around 250ms.
+  digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
+  delay(10); 
 }
 
 void Z80Bus::resetToSnaRom() {

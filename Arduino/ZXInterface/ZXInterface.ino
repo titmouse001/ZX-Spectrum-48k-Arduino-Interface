@@ -53,6 +53,7 @@
 //
 #include <Wire.h>                // I2C for OLED.
 #include "SSD1306AsciiAvrI2c.h"  // SSD1306 OLED displays on AVR.
+#include "fontdata.h"
 #define I2C_ADDRESS 0x3C         // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
 extern bool setupOled();  // debugging with a 128x32 pixel oled
@@ -69,7 +70,9 @@ void setup() {
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
-  //setupOled();           // For debugging
+#if (DEBUG_OLED == 1)
+  setupOled();           // For debugging
+#endif
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
   if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
@@ -85,8 +88,14 @@ void setup() {
     }
   }
 
+
   Z80Bus::resetZ80();
+  
+  // TODO ... SEND A KNOWN VALUE AT START-UP???
+  // and wait for that as a clean start-up signal
   CommandRegistry::initialize();
+
+
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
