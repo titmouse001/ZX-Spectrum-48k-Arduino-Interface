@@ -1,48 +1,35 @@
 # ZX Spectrum 48k Game Loading Interface using an Arduino
 
-<i>Latest quick update: new PCB (v0.21) now uses a right-angle cartridge (90°). No pics just yet! 
-Code has been updated to support .z80 snapshots (now loads .sna, .z80, and .scr files).  
-For the PCB, see "Gerbers" under the docs section.  
-Currently, you need to compile the Speccy ASM for the ROM manually – I'll include a prebuilt image at some point.
-</i>
-
-#### This project aims to load .SNA files into the 48k ZX Spectrum using a low-cost hardware interface built around an Arduino.
+Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick. New PCB (v0.21) with 90° cartridge design.
+  
+#### Ver0.21
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
-<img src="/Documents/Pictures0.14/setupview3_Version0_14.jpg" width="32%" height="32%">
-<img src="/Documents/Pictures0.14/UnitView2_Version0_14.jpg" width="28%" height="28%">
-<img src="/Documents/Pictures0.14/setupView2_Version0_14.jpg" width="33%" height="33%">
+<img src="/Documents/Pictures0.21/20250823_105518.jpg" width="24%" >
+<img src="/Documents/Pictures0.21/20250823_103559.jpg" width="24%" >
+<img src="/Documents/Pictures0.21/20250823_103330.jpg" width="24%" >
+<img src="/Documents/Pictures0.21/20250714_210834.jpg" width="24%">
 <div>
-  
+
 ### Interface Features
-  
-<img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="36%" >
+<img align="right" src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="26%" >
+<img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="32%" >
 
-The Snapshot Game Interface for the ZX Spectrum 48K includes an SD card slot (hidden at the back) for loading .SNA snapshots directly from an SD card. An OLED display provides basic status information, while the game list is shown on the ZX Spectrum's screen. It also features a port for a Kempston joystick.
+The Interface includes an SD card slot (hidden at the back) for loading games from an SD card in around a second.
+The ZX Spectrum display shows 24 games per page, scrollable via the Spectrum's keyboard, joystick or interface menu button.
+Pressing the interface menu button during a game will return you to the game selection screen.
+Currently, games must be in .sna or .z80 format and placed in the root directory of a FAT16-formatted SD card.
+The interface can start up in the standard Spectrum ROM if you hold down the menu button during power-up.
 
-The ZX Spectrum display shows 24 games per page, scrollable via the joystick or interface buttons, with full game loading taking about half a second using the forward, backward, and play file selector buttons.
-
-Pressing the play button during a game will return you to the game selection screen.
-
-Currently, games must be in .sna format and placed in the root directory of a FAT32-formatted SD card.
-
-<img align="right" src="/Documents/Pictures0.14/Robocop_screenshot.jpg" width="30%" >
-
-### Additional Features
-The interface offers some additional features. If you hold down the left button on power-up, it will display all the .SCR files on the SD card. (.SCR files are screen dumps from the ZX Spectrum)
-
-_.SNA files, on the other hand, are snapshot files that capture the entire state of the ZX Spectrum’s memory and registers at a specific moment allowing you to resume a game from the exact point it was saved. Currently, the interface cannot save to .SNA files._
-
-Additionally, the interface can start up in the standard Spectrum ROM if you hold down the middle play button during power-up.
-
-
-
-## PCB Created With EasyEDA
+## PCB Created With EasyEDA (images from older Ver0.14)
 
 <img src="/Documents/Pictures0.14/Back3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Back" width="18%" >
 <img src="/Documents/Pictures0.14/ZX-Spectrum-Interface_2024-09-05.png" alt="Photo view" width="20%" >
 <img src="/Documents/Pictures0.14/Font3DView-ZX-Spectrum-Interface_2024-09-05.png" alt="Front" width="25%">
 
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
+
+## Hardware Design (Ver 0.21)
+<i>...Coming soon! </i>
 
 ## Hardware Design (Ver 0.14)
 <img align="right" src="Documents/Schematic/Schematic_ZX-Spectrum-Interface-v0.14.png" alt="Circuit Diagram" width="50%" height="50%">
@@ -53,6 +40,13 @@ To address issues caused by returning to the original internal ROM at game start
 https://oshwlab.com/titmouse001/zx-spectrum-interface
 
 ## Initial Prototypes...
+##### Ver0.14 
+<div style="float:left;margin:0 10px 10px 0" markdown="1">
+<img src="/Documents/Pictures0.14/setupview3_Version0_14.jpg" width="32%" height="32%">
+<img src="/Documents/Pictures0.14/UnitView2_Version0_14.jpg" width="28%" height="28%">
+<img src="/Documents/Pictures0.14/setupView2_Version0_14.jpg" width="33%" height="33%">
+<div>
+  
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Initial Prototype.jpg" width="32%" height="32%">
 <img src="/Documents/Initial Prototype close-up.jpg" width="32%" height="32%">
