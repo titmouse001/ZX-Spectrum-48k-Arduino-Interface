@@ -1,4 +1,4 @@
-# ZX Spectrum 48k Game Loading Interface using an Arduino
+# ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick. New PCB (v0.21) with 90° cartridge design.
   
