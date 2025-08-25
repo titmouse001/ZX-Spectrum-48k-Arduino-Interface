@@ -27,7 +27,9 @@ void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
   while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
+    //   if (file.isFile()) {
+    // if (file.isFile() || file.isDir()) {
+    if (!file.isHidden() &&  (file.isFile() || file.isDir())) {
       if (index == searchIndex) {
         break;
       }
@@ -43,7 +45,9 @@ uint16_t SdCardSupport::countSnapshotFiles() {
   uint16_t totalFiles = 0;
   root.rewind();
   while (file.openNext(&root, O_RDONLY)) {
-    if (file.isFile()) {
+    // if (file.isFile() || file.isDir()) {
+    if (!file.isHidden() && (file.isFile() || file.isDir()) ) {
+      //  if (file.isFile()) {
       totalFiles++;
     }
     file.close();
@@ -82,6 +86,13 @@ char* SdCardSupport::getFileName() {
   file.getName7(fileName, 64);
   return fileName;
 }
+
+char* SdCardSupport::getFileNameWithSlash(char* buffer) {
+  file.getName7(&buffer[1], 64);
+  buffer[0]='/';
+  return buffer;
+}
+
 
 uint16_t SdCardSupport::getFileSize() {
   return file.fileSize();

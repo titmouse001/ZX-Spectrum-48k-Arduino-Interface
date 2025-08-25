@@ -28,7 +28,7 @@
 #include "Z80Bus.h"
 
 #define VERSION ("0.23")  // Arduino firmware
-#define DEBUG_OLED 0
+#define DEBUG_OLED 1
 #define SERIAL_DEBUG 0
 
 // ----------------------------------------------------------------------------------
@@ -100,9 +100,18 @@ void setup() {
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
   // SD Init must eat a pin for CS! We use the free OLED debug pin A4 but we dont care about this pin (SD Card's CS pin is fix to GND).
+ // while (!SdCardSupport::init(PIN_A4)) {
+ //   Draw::text_P(80, 90, F("INSERT SD CARD"));
+//  }
+
   while (!SdCardSupport::init(PIN_A4)) {
     Draw::text_P(80, 90, F("INSERT SD CARD"));
+    do {  
+      delay(20);  
+    } while (!SdCardSupport::init(PIN_A4));  // keep looking
+    Z80Bus::clearScreen(COL::BLACK_WHITE);
   }
+
 }
 
 // ---------------------
@@ -188,14 +197,29 @@ void handleTxtFile() {
 }
 
 void loop() {
-  uint16_t totalFiles;
-  while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
-    Z80Bus::clearScreen(COL::BLACK_WHITE);
+  uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
+
+  if (totalFiles==0) {
     Draw::text_P(80, 90, F("NO FILES FOUND"));
+    do { 
+      delay(20);
+      totalFiles = SdCardSupport::countSnapshotFiles();
+    } while (totalFiles == 0);
+    Z80Bus::clearScreen(COL::BLACK_WHITE);
   }
 
-  uint16_t FileIndex = Menu::selectFileMenu(totalFiles);
-  SdCardSupport::openFileByIndex(FileIndex);
+  // while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
+  //   Draw::text_P(80, 90, F("NO FILES FOUND"));
+  //   delay(20);
+
+  //   do { } while ((totalFiles = SdCardSupport::countSnapshotFiles()) != 0);
+  //   Z80Bus::clearScreen(COL::BLACK_WHITE);
+  // }
+  
+
+
+  uint16_t FileIndex = Menu::handleMenu(totalFiles);
+//  SdCardSupport::openFileByIndex(FileIndex);
 
   if (SdCardSupport::fileSize() == ZX_SCREEN_TOTAL_SIZE) {
     handleScrFile();
