@@ -130,31 +130,31 @@ int16_t SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 }
 
 __attribute__((optimize("-Ofast"))) 
-bool SnapZ80::findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) {
+bool SnapZ80::findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& rle_data_length) {
 	static const uint8_t MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
 	constexpr uint8_t MARKER_SIZE = 4;
 	uint8_t* search_buffer = &BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 	constexpr uint16_t SEARCH_BUFFER_SIZE = FILE_READ_BUFFER_SIZE;
 
 	// Quick end-of-file check first
-	int32_t file_size = SdCardSupport::fileSize();
+	int32_t file_size = pFile->fileSize();
 	if (file_size != -1 && file_size >= (start_pos + MARKER_SIZE)) {
 		int32_t potential_marker_pos = file_size - MARKER_SIZE;
-		if (SdCardSupport::fileSeek(potential_marker_pos)) {
-			if (SdCardSupport::fileRead(search_buffer, MARKER_SIZE) == MARKER_SIZE && memcmp(search_buffer, MARKER, MARKER_SIZE) == 0) {
+		if (pFile->seekSet(potential_marker_pos)) {
+			if (pFile->read(search_buffer, MARKER_SIZE) == MARKER_SIZE && memcmp(search_buffer, MARKER, MARKER_SIZE) == 0) {
 				rle_data_length = (uint32_t)(potential_marker_pos - start_pos);
-				SdCardSupport::fileSeek(start_pos);  // Seek back to start position for caller
+				pFile->seekSet(start_pos);  // Seek back to start position for caller
 				return true;
 			}
 		}
-		SdCardSupport::fileSeek(start_pos);  // Always seek back to start position
+		pFile->seekSet(start_pos);  // Always seek back to start position
 	}
 	// Fallback to buffered search if marker not at end
 	int32_t current_pos = start_pos;
 	uint16_t overlap = 0;
-	while (SdCardSupport::fileAvailable()) {
+	while (pFile->available()) {
 		uint16_t bytes_to_read = SEARCH_BUFFER_SIZE - overlap;
-		int16_t bytes_read = SdCardSupport::fileRead(search_buffer + overlap, bytes_to_read);
+		int16_t bytes_read = pFile->read(search_buffer + overlap, bytes_to_read);
 		if (bytes_read == 0) break;
 		uint16_t search_end = overlap + bytes_read;
 		for (uint16_t i = 0; i <= search_end - MARKER_SIZE; i++) {
@@ -176,25 +176,25 @@ bool SnapZ80::findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length) 
 }
 
 __attribute__((optimize("-Ofast")))
-Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
+Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerInfo) {
 	Z80CheckResult result = Z80_CHECK_SUCCESS;
-	int32_t initial_file_pos = SdCardSupport::filePosition();
+	int32_t initial_file_pos = pFile->curPosition();
 	if (initial_file_pos == -1) return Z80_CHECK_ERROR_UNEXPECTED_EOF;  // Error getting position
 
 	if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {  // Check machine type (48K only for now)
 		result = Z80_CHECK_ERROR_UNSUPPORTED_TYPE;
 	} else {
 		if (headerInfo->version >= Z80_VERSION_2) {  // V2 or V3
-			while (SdCardSupport::fileAvailable()) {
-				uint32_t current_pos = SdCardSupport::filePosition();
-				if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
-					if (!SdCardSupport::fileAvailable()) break;                                   // After reading a full block, it's fine if EOF
+			while (pFile->available()) {
+				uint32_t current_pos = pFile->curPosition();
+				if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
+					if (!pFile->available()) break;                                   // After reading a full block, it's fine if EOF
 					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete compressed_length
 					break;
 				}
 				uint16_t compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
-				if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {  // Read 1 byte for page_number
+				if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {  // Read 1 byte for page_number
 					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete block (missing page number)
 					break;
 				}
@@ -206,7 +206,7 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 
 				// skip: The 3 bytes are for compressed_length (2) + page_number (1)
 				uint32_t target_pos = current_pos + 3 + compressed_length;
-				if (!SdCardSupport::fileSeek(target_pos)) {
+				if (!pFile->seekSet(target_pos)) {
 					result = Z80_CHECK_ERROR_EOF;  // Failed to seek, likely file too short for the stated compressed_length
 					break;
 				}
@@ -215,20 +215,20 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 			if (headerInfo->isV1Compressed) {
 				int32_t start_of_rle_data = initial_file_pos;
 				uint32_t dummy_length;
-				if (!findMarkerOptimized(start_of_rle_data, dummy_length)) {
+				if (!findMarkerOptimized(pFile,start_of_rle_data, dummy_length)) {
 					result = Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND;
 				}
 
 			} else {  // For uncompressed V1, the data is just raw bytes, 48K total.
-				int32_t current_pos = SdCardSupport::filePosition();
+				int32_t current_pos = pFile->curPosition();
 				if (current_pos == -1) { result = Z80_CHECK_ERROR_UNEXPECTED_EOF; }
 				// Check if the file size matches expected 48K + header
-				if (SdCardSupport::fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) { result = Z80_CHECK_ERROR_UNEXPECTED_EOF; }
+				if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) { result = Z80_CHECK_ERROR_UNEXPECTED_EOF; }
 			}
 		}
 	}
 
-	if (!SdCardSupport::fileSeek(initial_file_pos)) {  // Restore position to before the check
+	if (!pFile->seekSet(initial_file_pos)) {  // Restore position to before the check
 		return Z80_CHECK_ERROR_SEEK;
 	}
 	return result;
@@ -248,7 +248,7 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 
 
 __attribute__((optimize("-Ofast"))) 
-void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
+void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;
 
@@ -263,7 +263,7 @@ void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress
 		if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
 			uint16_t bytesToRead = min(FILE_READ_BUFFER_SIZE, sourceLengthLimit - bytesReadFromSource);
 			//if (bytesToRead == 0) return 0;  // Should not happen due to validation
-			fileReadBufferBytesAvailable = SdCardSupport::fileRead(fileReadBufferPtr, bytesToRead);
+			fileReadBufferBytesAvailable = pFile->read(fileReadBufferPtr, bytesToRead);
 			fileReadBufferCurrentPos = 0;
 		}
 		bytesReadFromSource++;
@@ -361,7 +361,7 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_num
 		return BLOCK_UNSUPPORTED_PAGE;
 	}
 
-	decodeRLE_core(compressed_length,  (uint16_t)sna_offset);
+	decodeRLE_core(pFile, compressed_length,  (uint16_t)sna_offset);
 	return BLOCK_SUCCESS;
 }
 
@@ -392,16 +392,16 @@ int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo)
 		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		if (headerInfo->isV1Compressed) {
-			int32_t start_of_rle_data = SdCardSupport::filePosition();
-			if (start_of_rle_data == -1) return -1;
+			uint32_t start_of_rle_data = pFile->curPosition();
+	//		if (start_of_rle_data == -1) return -1;
 			uint32_t rle_data_length = 0;
-			if (!findMarkerOptimized(start_of_rle_data, rle_data_length) || rle_data_length == 0) {
+			if (!findMarkerOptimized(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
 				return BLOCK_ERROR_NO_V1_MARKER;
 			}
-			decodeRLE_core(rle_data_length, ZX_SCREEN_ADDRESS_START);
+			decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
 
 			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
-			int32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
+			uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
 	//		if (SdCardSupport::filePosition() < expected_pos_after_marker) {
 	//			if (!SdCardSupport::fileSeek(expected_pos_after_marker)) {
 				if (pFile->curPosition() < expected_pos_after_marker) {
@@ -410,7 +410,7 @@ int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo)
 				}
 			}
 		} else {  // Uncompressed V1 data
-			decodeRLE_core(DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
+			decodeRLE_core(pFile, DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
 		}
 	}
 
@@ -434,7 +434,7 @@ int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 		return Z80_CHECK_ERROR_READ_HEADER;
 	}
 
-	Z80CheckResult fileCheck = checkZ80FileValidity(&headerInfo);
+	Z80CheckResult fileCheck = checkZ80FileValidity(pFile, &headerInfo);
 	if (fileCheck != Z80_CHECK_SUCCESS) {
 		return fileCheck;
 	}

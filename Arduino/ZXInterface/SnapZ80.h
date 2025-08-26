@@ -16,13 +16,14 @@ struct Z80HeaderInfo {
 };
 
 MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE);
+
+Z80CheckResult checkZ80FileValidity(FatFile* pFile,const Z80HeaderInfo* headerInfo);
 int16_t readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
-bool findMarkerOptimized(int32_t start_pos, uint32_t& rle_data_length);
-Z80CheckResult checkZ80FileValidity(const Z80HeaderInfo* headerInfo);
-void decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress);
+bool findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& rle_data_length);
 BlockReadResult z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out);
 int16_t convertZ80toSNA_impl(FatFile* pFile,Z80HeaderInfo* headerInfo);
 int16_t convertZ80toSNA(FatFile* pFile);
+void decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress);
 
 }
 

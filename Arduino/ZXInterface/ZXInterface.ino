@@ -166,19 +166,20 @@ void handleTxtFile(FatFile* pFile) {
   const int charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
   const int maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
   char* lineBuffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  SdCardSupport::fileSeek(0);
+  //SdCardSupport::fileSeek(0);
+  pFile->seekSet(0);
 
   do {
     Z80Bus::clearScreen(COL::BLACK_WHITE);
     int currentLine = 0;
-    while (currentLine < maxLinesPerScreen && SdCardSupport::fileAvailable()) {
+    while (currentLine < maxLinesPerScreen && pFile->available()) {  //SdCardSupport::fileAvailable()) {
       int bytesRead = 0;
       // Read characters until we hit the end of the line, a newline, or the buffer is full.
-      while (bytesRead < maxCharsPerLine && SdCardSupport::fileAvailable()) {
-        char c = SdCardSupport::file.read();
+      while (bytesRead < maxCharsPerLine && pFile->available()) {
+        char c = pFile->read();
         if (c == '\r') {  //  Check for Windows-style CRLF
-          if (SdCardSupport::fileAvailable() && SdCardSupport::file.peek() == '\n') {
-            SdCardSupport::file.read();
+          if (pFile->available() && pFile->peek() == '\n') {
+            pFile->read();
           }
           break;  // End of line
         }
@@ -192,7 +193,7 @@ void handleTxtFile(FatFile* pFile) {
       currentLine++;
     }
     while (Menu::getButton() == Menu::BUTTON_NONE) {}
-  } while (SdCardSupport::fileAvailable());
+  } while (pFile->available());
 
  // SdCardSupport::fileClose();
 }

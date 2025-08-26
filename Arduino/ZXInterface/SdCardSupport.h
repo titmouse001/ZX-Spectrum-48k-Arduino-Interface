@@ -4,27 +4,28 @@
 #include <stdint.h>
 #include "SdFat.h"  // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 
-namespace SdCardSupport {
+class SdCardSupport {
 
-extern SdFat32 sd;
-extern FatFile root;
-extern FatFile file;
+//extern SdFat32 sd;
+//extern FatFile root;
+//extern FatFile file;
 
-boolean init(uint8_t csPin) ;
-int fileAvailable() ;
-int fileRead();
-void fileRead(uint8_t* b) ;
-int fileRead(uint8_t* buf, uint16_t count);
-int filePosition() ;
-bool fileSeek(uint32_t pos) ;
-uint16_t fileSize();
-bool fileClose();
-void openFileByIndex(uint8_t searchIndex);
-uint16_t countSnapshotFiles();
-char* getFileName(FatFile* pFile);
-uint16_t getFileSize();
-char* getFileNameWithSlash(FatFile* pFile,char* buffer);
 
-}
+public:
+static boolean init(uint8_t csPin) ;
+static uint16_t countSnapshotFiles();
+static void openFileByIndex(uint8_t searchIndex);
+static char* getFileName(FatFile* pFile);
+static char* getFileNameWithSlash(FatFile* pFile,char* buffer);
+
+static FatFile& getRoot() { return root; }
+static FatFile& getFile() { return file; }
+
+private:
+static SdFat32 sd;
+static FatFile root;
+static FatFile file;
+
+};
 
 #endif

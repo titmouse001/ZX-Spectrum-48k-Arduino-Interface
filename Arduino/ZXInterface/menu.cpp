@@ -17,8 +17,8 @@ uint16_t Menu::startFileIndex = 0;
 bool     Menu::inSubFolder = false;
 
 void Menu::displayItemList(uint16_t startFileIndex) {
-  FatFile& file = SdCardSupport::file;
-  FatFile& root = SdCardSupport::root;
+  FatFile& file = SdCardSupport::getFile(); 
+  FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
   char* nameBuffer = (char*)&BufferManager::packetBuffer[E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE];
@@ -156,6 +156,7 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
 
 uint16_t Menu::rescanFolder(bool reset) {
+ 
   if (reset) {
     currentFileIndex = 0;
     startFileIndex = 0;
@@ -176,6 +177,7 @@ uint16_t Menu::rescanFolder(bool reset) {
 
 FatFile* Menu::handleMenu() {
 
+ 
   uint16_t totalFiles = rescanFolder();
 
   while (true) {
@@ -185,9 +187,11 @@ FatFile* Menu::handleMenu() {
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
     } 
     if (action == ACTION_SELECT_FILE) {
+       FatFile& root = SdCardSupport::getRoot();
+
       if (inSubFolder && currentFileIndex == 0) { // Go back to root
-        SdCardSupport::root.close();
-        if (SdCardSupport::root.open("/")) {  // parent not supported - simply resets to root
+        root.close();
+        if (root.open("/")) {  // parent not supported - simply resets to root
           inSubFolder = false;
           totalFiles = rescanFolder(true);
         }
@@ -196,15 +200,17 @@ FatFile* Menu::handleMenu() {
       uint16_t actualFileIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
       SdCardSupport::openFileByIndex(actualFileIndex);
 
-      FatFile& file = SdCardSupport::file;
+ //     FatFile& file = SdCardSupport::file;
+      FatFile& file = SdCardSupport::getFile(); 
+ 
       if (file.isDir()) {
         char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file, (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
-        SdCardSupport::root.close();
-        if (SdCardSupport::root.open(nameWithPath)) {
+        root.close();
+        if (root.open(nameWithPath)) {
           inSubFolder = true;
         } else {  // should not happen - just incase
           inSubFolder = false;
-          SdCardSupport::root.open("/");  // something failed!
+          root.open("/");  // something failed!
         }
         totalFiles = rescanFolder(true);
       } else {
