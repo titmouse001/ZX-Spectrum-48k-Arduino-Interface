@@ -55,14 +55,34 @@ uint16_t SdCardSupport::countSnapshotFiles() {
   return totalFiles;
 }
 
-char* SdCardSupport::getFileName(FatFile* pFile) {
-  char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  pFile->getName7(fileName, 64);
-  return fileName;
+uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
+//  char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  uint8_t len = pFile->getName7(pFileNameBuffer, MAX_FILENAME_LEN);
+  if (len == 0) {
+    len = pFile->getSFN(pFileNameBuffer, 13); // fallback, XXXXXXXX.XXX
+  }
+  return len;
 }
 
-char* SdCardSupport::getFileNameWithSlash(FatFile* pFile,char* buffer) {
-  pFile->getName7(&buffer[1], 64);
+
+char* SdCardSupport::getFileName(FatFile* pFile) {
+  char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  //uint8_t len = pFile->getName7(fileName, MAX_FILENAME_LEN);
+ // if (len == 0) {
+//    pFile->getSFN(buffer, 13); // fallback, XXXXXXXX.XXX
+//  }
+  getFileName(pFile,buffer);
+  return buffer;
+}
+
+//char* SdCardSupport::getFileNameWithSlash(FatFile* pFile,char* buffer) {
+char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
+  char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+//   uint8_t len = pFile->getName7(&fileName[1], MAX_FILENAME_LEN);
+//   if (len == 0) {
+//     pFile->getSFN(&fileName[1], 13);  // XXXXXXXX.XXX
+//   }
+  getFileName(pFile,&buffer[1]);
   buffer[0]='/';
   return buffer;
 }

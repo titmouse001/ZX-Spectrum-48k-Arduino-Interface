@@ -26,7 +26,7 @@ public:
   static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
 
   static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
-  static constexpr uint8_t MAX_FILENAME_LEN = 64;  // ... maybe allow for future text scroll for longer lines
+  //static constexpr uint8_t MAX_FILENAME_LEN = 64;  // ... maybe allow for future text scroll for longer lines
   static constexpr uint8_t MAX_SHORT_FILENAME_LEN = 13;
 
   static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;

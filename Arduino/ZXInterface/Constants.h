@@ -7,6 +7,8 @@ constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
 constexpr uint16_t FILE_READ_BUFFER_OFFSET = 5 + COMMAND_PAYLOAD_SECTION_SIZE;
 constexpr uint16_t TOTAL_PACKET_BUFFER_SIZE = 5 + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
 
+constexpr uint8_t MAX_FILENAME_LEN = 64; 
+
 namespace SmallFont {
     constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
     constexpr uint8_t FNT_HEIGHT        = 7;   // character height in pixels

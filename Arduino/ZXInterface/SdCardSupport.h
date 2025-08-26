@@ -15,8 +15,10 @@ public:
 static boolean init(uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
 static void openFileByIndex(uint8_t searchIndex);
+
+static uint8_t getFileName(FatFile* pFile, char* pFileNameBuffer);
 static char* getFileName(FatFile* pFile);
-static char* getFileNameWithSlash(FatFile* pFile,char* buffer);
+static char* getFileNameWithSlash(FatFile* pFile);
 
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }

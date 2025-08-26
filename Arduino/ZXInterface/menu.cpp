@@ -17,7 +17,7 @@ uint16_t Menu::startFileIndex = 0;
 bool     Menu::inSubFolder = false;
 
 void Menu::displayItemList(uint16_t startFileIndex) {
-  FatFile& file = SdCardSupport::getFile(); 
+
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
@@ -30,6 +30,7 @@ void Menu::displayItemList(uint16_t startFileIndex) {
     linesDrawn = 1;
   }
 
+  FatFile& file = SdCardSupport::getFile(); 
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isHidden()) {
       file.close();
@@ -50,11 +51,14 @@ void Menu::displayItemList(uint16_t startFileIndex) {
         displayName = &nameBuffer[1];
       }
 
-      uint16_t len = file.getName7(displayName, MAX_FILENAME_LEN);
-      if (len == 0) {
-        file.getSFN(displayName, 20);
-        len = strlen(displayName);
-      }
+     uint8_t len = SdCardSupport::getFileName(&file, displayName);
+      
+
+//      uint16_t len = file.getName7(displayName, MAX_FILENAME_LEN);
+//      if (len == 0) {
+//        file.getSFN(displayName, 20);
+//        len = strlen(displayName);
+//      }
 
       if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {  // Trim long names
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
@@ -176,10 +180,7 @@ uint16_t Menu::rescanFolder(bool reset) {
 }
 
 FatFile* Menu::handleMenu() {
-
- 
   uint16_t totalFiles = rescanFolder();
-
   while (true) {
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
@@ -204,7 +205,8 @@ FatFile* Menu::handleMenu() {
       FatFile& file = SdCardSupport::getFile(); 
  
       if (file.isDir()) {
-        char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file, (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
+     //   char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file, (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
+        char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file);
         root.close();
         if (root.open(nameWithPath)) {
           inSubFolder = true;
