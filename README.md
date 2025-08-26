@@ -45,7 +45,10 @@ The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which
 <i>To address issues caused by returning to the original internal ROM after loading and starting a game, the setup uses a duplicated Spectrum ROM. The first half of the external EPROM contains the browser and game loading code. Once a game is loaded, the second half of the EPROM with the stock ROM takes over.</i>
 
 - 74HC165D – The Arduino Nano has limited I/O pins, so a shift register is used to handle joystick inputs.
-- 74HC245D – Used as a unidirectional transceiver (DIR tied to +5 V). It allows the interface to enter a high-impedance (Z) state to prevent conflicts between the Arduino and the data bus.
+  - Both Fire A and Fire B are supported. The PCB menu select button is also mapped into the same shift register, leaving one bit free for future use.
+  - The Arduino masks out the menu button from the joystick data juring gameplay.
+- 74HC245D – Used as a transceiver (IC is unidirectional, but I've tied DIR to +5 V)
+  - Enables high-impedance (Z) state (detaches Arduino from the data bus)
 - 74HC32 – Provides the necessary glue logic to manage and monitor I/O signals.
 - EPROM 27C256 – Stores all the Z80 code, including the browser and game launch routines.
 
