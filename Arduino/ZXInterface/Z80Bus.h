@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "pin.h"
+#include "SdFat.h"  
 
 namespace Z80Bus {
 
@@ -23,11 +24,11 @@ extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileInde
 extern uint8_t GetKeyPulses();
 extern void encodeTransferPacket(uint16_t input_len, uint16_t addr, bool borderLoadingEffect);
 
-extern void transferSnaData(bool borderLoadingEffect=false);
+extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect=false);
 
 extern void synchronizeForExecution();
 extern void executeSnapshot();
-extern boolean bootFromSnapshot();
+extern boolean bootFromSnapshot(FatFile* pFile);
 extern void clearScreen(uint8_t col=0);
 
 

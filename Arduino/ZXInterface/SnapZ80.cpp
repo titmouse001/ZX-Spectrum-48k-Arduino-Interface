@@ -66,12 +66,17 @@ MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_M
 }
 
 __attribute__((optimize("-Ofast")))
-int16_t SnapZ80::readZ80Header(Z80HeaderInfo* headerInfo) {
+int16_t SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer for header storage
 	
-	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
+//	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
+//		return Z80_VERSION_UNKNOWN;  // Error reading header
+//	}
+
+	if (pFile->read(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
 		return Z80_VERSION_UNKNOWN;  // Error reading header
 	}
+
 
 	if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) {  // V1: PC!=0
 		headerInfo->pc_low = v1_header[Z80_V1_PC_LOW];
@@ -82,7 +87,10 @@ int16_t SnapZ80::readZ80Header(Z80HeaderInfo* headerInfo) {
 		return Z80_VERSION_1;  // ... here we know PC must hold a valid address
 	} else {                 // (PC==0) check for a valid V2/V3
 		// Read into the file read buffer area
-		if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) return -1;
+	//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) return -1;
+		if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) { 
+			return Z80_VERSION_UNKNOWN;
+		}
 
 		uint8_t len_lo = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 		uint8_t len_hi = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1];
@@ -98,7 +106,8 @@ int16_t SnapZ80::readZ80Header(Z80HeaderInfo* headerInfo) {
 
 		while (bytes_read_so_far < bytes_to_read_ext_header) {
 			uint16_t chunk_size = min(FILE_READ_BUFFER_SIZE, (uint16_t)(bytes_to_read_ext_header - bytes_read_so_far));
-			if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
+			//if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
+			if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
 				return Z80_VERSION_UNKNOWN;  // Error reading extended header
 			}
 
@@ -238,7 +247,8 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(const Z80HeaderInfo* headerInfo) {
 */
 
 
-__attribute__((optimize("-Ofast"))) void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
+__attribute__((optimize("-Ofast"))) 
+void SnapZ80::decodeRLE_core(uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
 	const uint8_t MAX_PAYLOAD_CHUNK_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;
 
@@ -309,13 +319,15 @@ __attribute__((optimize("-Ofast"))) void SnapZ80::decodeRLE_core(uint16_t source
 }
 
 __attribute__((optimize("-Ofast")))
-BlockReadResult SnapZ80::z80_readAndWriteBlock(uint8_t* page_number_out) {
+BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out) {
 	uint16_t compressed_length;
 
 	// Read compressed_length (2 bytes, little-endian) into the file read buffer
-	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
+//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
+	if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
 		*page_number_out = (uint8_t)-1;         // Indicate end of file or read error for page number
-		if (!SdCardSupport::fileAvailable()) {  // Check if it's genuinely EOF
+//		if (!SdCardSupport::fileAvailable()) {  // Check if it's genuinely EOF
+		if (!pFile->available()) {  // Check if it's genuinely EOF
 			return BLOCK_END_OF_FILE;
 		}
 		return BLOCK_ERROR_READ_LENGTH;
@@ -323,7 +335,8 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(uint8_t* page_number_out) {
 	compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
 	// Read page_number into the file read buffer
-	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
+//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
+	if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
 		*page_number_out = (uint8_t)-1;  // Indicate end of file or read error
 		return BLOCK_ERROR_READ_PAGE;
 	}
@@ -339,7 +352,8 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(uint8_t* page_number_out) {
 		uint16_t bytes_consumed = 0;
 		while (bytes_consumed < compressed_length) {
 			uint16_t bytes_to_read_this_chunk = min(FILE_READ_BUFFER_SIZE, (uint16_t)(compressed_length - bytes_consumed));
-			if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
+	//		if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
+			if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
 				return BLOCK_ERROR_READ_DATA;  // Failed to consume all expected bytes
 			}
 			bytes_consumed += bytes_to_read_this_chunk;
@@ -351,7 +365,7 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(uint8_t* page_number_out) {
 	return BLOCK_SUCCESS;
 }
 
-int16_t SnapZ80::convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
+int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 	uint16_t stackAddrForPushingPC = 0;
 	uint8_t* snaHeader = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer where header is stored
@@ -368,7 +382,7 @@ int16_t SnapZ80::convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 
 		while (true) {
 			uint8_t page_number;
-			BlockReadResult block_result = z80_readAndWriteBlock(&page_number);  //, &uncompressed_length);
+			BlockReadResult block_result = z80_readAndWriteBlock(pFile,&page_number);  //, &uncompressed_length);
 			if (block_result == BLOCK_END_OF_FILE) break;
 			if (block_result == BLOCK_UNSUPPORTED_PAGE) { continue; }  // Skip to the next block
 			if (block_result < 0) { return block_result; }             // negative critical errors
@@ -388,9 +402,11 @@ int16_t SnapZ80::convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 
 			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
 			int32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
-			if (SdCardSupport::filePosition() < expected_pos_after_marker) {
-				if (!SdCardSupport::fileSeek(expected_pos_after_marker)) {
-					return -1;  // Failed to seek past marker
+	//		if (SdCardSupport::filePosition() < expected_pos_after_marker) {
+	//			if (!SdCardSupport::fileSeek(expected_pos_after_marker)) {
+				if (pFile->curPosition() < expected_pos_after_marker) {
+					if (!pFile->seekSet(expected_pos_after_marker)) {
+						return -1;  // Failed to seek past marker
 				}
 			}
 		} else {  // Uncompressed V1 data
@@ -410,10 +426,10 @@ int16_t SnapZ80::convertZ80toSNA_impl(Z80HeaderInfo* headerInfo) {
 	return BLOCK_SUCCESS;
 }
 
-int16_t SnapZ80::convertZ80toSNA() {
+int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 	// Read header once and store in structure
 	Z80HeaderInfo headerInfo;
-	int16_t header_result = readZ80Header(&headerInfo);
+	int16_t header_result = readZ80Header(pFile, &headerInfo);
 	if (header_result < 0) {
 		return Z80_CHECK_ERROR_READ_HEADER;
 	}
@@ -429,13 +445,15 @@ int16_t SnapZ80::convertZ80toSNA() {
 	const uint16_t stackAddress = 0x4004;  
 	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
 
-
 	Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
 	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
 
-	int16_t conversionResult = convertZ80toSNA_impl(&headerInfo);
-	if (conversionResult < 0) { return conversionResult; }
-	return Z80_CHECK_SUCCESS;
+	int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
+	if (conversionResult < 0) { 
+		return conversionResult; 
+	}else {
+		return Z80_CHECK_SUCCESS;
+	}
 }
 
 

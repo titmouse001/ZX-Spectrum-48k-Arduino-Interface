@@ -9,16 +9,12 @@
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = Menu::MAX_REPEAT_KEY_DELAY;
+bool     Menu::buttonHeld = false;
+
 uint16_t Menu::oldHighlightAddress = 0;
 uint16_t Menu::currentFileIndex = 0;
 uint16_t Menu::startFileIndex = 0;
-bool Menu::buttonHeld = false;
-bool Menu::inSubFolder = false;
-
-
-
-#include "SSD1306AsciiAvrI2c.h"
-extern SSD1306AsciiAvrI2c oled;
+bool     Menu::inSubFolder = false;
 
 void Menu::displayItemList(uint16_t startFileIndex) {
   FatFile& file = SdCardSupport::file;
@@ -30,10 +26,9 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   uint16_t filesSkipped = 0;
 
   if (inSubFolder && startFileIndex == 0) {
-    Draw::textLine(0, "[..]");
+    Draw::textLine(0, "[/]");
     linesDrawn = 1;
   }
-
 
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isHidden()) {
@@ -55,16 +50,17 @@ void Menu::displayItemList(uint16_t startFileIndex) {
         displayName = &nameBuffer[1];
       }
 
-      uint16_t len = file.getName7(displayName, 64);
-      if (len == 0) file.getSFN(displayName, 20);
+      uint16_t len = file.getName7(displayName, MAX_FILENAME_LEN);
+      if (len == 0) {
+        file.getSFN(displayName, 20);
+        len = strlen(displayName);
+      }
 
       if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {  // Trim long names
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN] = '\0';
-      }
-
-      else if (file.isDir()) {
+      } else if (file.isDir()) {
         nameBuffer[len + 1] = ']';  // directory "]" suffix
         nameBuffer[len + 2] = '\0';
       }
@@ -76,14 +72,13 @@ void Menu::displayItemList(uint16_t startFileIndex) {
     file.close();
   }
 
-  // Clear remaining rows
+  // Use blank textLine to clear remaining rows
   nameBuffer[0] = ' ';
   nameBuffer[1] = '\0';
   for (uint8_t i = linesDrawn; i < SCREEN_TEXT_ROWS; i++) {
     Draw::textLine(i * FONT_HEIGHT_WITH_GAP, nameBuffer);
   }
 }
-
 
 Menu::Button_t Menu::getButton() {
   const uint8_t joy = Utils::readJoystick();
@@ -99,11 +94,15 @@ Menu::Button_t Menu::getButton() {
 }
 
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
-  // check and account for the extra [..] entry
-  uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);
+ 
+  // +1 to account for when [/] is added to top of list for navigating back to root
+  uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);  
 
   const Button_t button = getButton();
-  if (button == BUTTON_SELECT) return ACTION_SELECT_FILE;
+
+  if (button == BUTTON_SELECT) { 
+    return ACTION_SELECT_FILE;
+  }
 
   if (button == BUTTON_NONE) {
     buttonHeld = false;
@@ -111,15 +110,16 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
     return ACTION_NONE;
   }
 
-  const uint32_t currentMillis = millis();
-  if (buttonHeld && (currentMillis - lastButtonHoldTime >= buttonDelay)) {
-    buttonDelay = (buttonDelay > 40) ? buttonDelay - 20 : 40;
-    lastButtonHoldTime = currentMillis;
+  const uint32_t now  = millis();
+  if (buttonHeld && (now  - lastButtonHoldTime >= buttonDelay)) {  // speed up key repeat 
+    buttonDelay = (buttonDelay > MIN_REPEAT_KEY_DELAY) ? buttonDelay - ADJUST_REPEAT_KEY_DELAY : MIN_REPEAT_KEY_DELAY;
+    lastButtonHoldTime = now ;
   }
 
-  if (!buttonHeld || (currentMillis - lastButtonPressTime >= buttonDelay)) {
+  if (!buttonHeld || (now - lastButtonPressTime >= buttonDelay)) {   // not held or delay elapsed
     MenuAction_t action = ACTION_NONE;
     if (button == BUTTON_ADVANCE) {
+       // Move down or wrap to next page
       if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < virtualTotalFiles - 1) {
         currentFileIndex++;
         action = ACTION_MOVE_DOWN;
@@ -129,6 +129,7 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
         action = ACTION_REFRESH_LIST;
       }
     } else if (button == BUTTON_BACK) {
+       // Move up or wrap to previous page
       if (currentFileIndex > startFileIndex) {
         currentFileIndex--;
         action = ACTION_MOVE_UP;
@@ -145,87 +146,70 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
     }
     if (action != ACTION_NONE) {
       buttonHeld = true;
-      lastButtonPressTime = currentMillis;
-      lastButtonHoldTime = currentMillis;
+      lastButtonPressTime = now ;
+      lastButtonHoldTime = now ;
       return action;
     }
   }
   return ACTION_NONE;
 }
 
-uint16_t Menu::handleMenu(uint16_t totalFiles) {
 
+uint16_t Menu::rescanFolder(bool reset) {
+  if (reset) {
+    currentFileIndex = 0;
+    startFileIndex = 0;
+  }
+  uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
+  if (totalFiles == 0) {
+    Draw::text_P(80, 90, F("NO FILES FOUND"));
+    do {
+      delay(20);
+      totalFiles = SdCardSupport::countSnapshotFiles();
+    } while (totalFiles == 0);
+  }
+  Z80Bus::clearScreen(COL::BLACK_WHITE);
   displayItemList(startFileIndex);
-
   Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
+  return totalFiles;
+}
+
+FatFile* Menu::handleMenu() {
+
+  uint16_t totalFiles = rescanFolder();
+
   while (true) {
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
     if (action != ACTION_NONE) {
       Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-    }
+    } 
     if (action == ACTION_SELECT_FILE) {
-
-
-      if (inSubFolder && currentFileIndex == 0) {
-        // Go back to root
+      if (inSubFolder && currentFileIndex == 0) { // Go back to root
         SdCardSupport::root.close();
-        if (SdCardSupport::root.open("/")) {
+        if (SdCardSupport::root.open("/")) {  // parent not supported - simply resets to root
           inSubFolder = false;
-          oldHighlightAddress = 0;
-          currentFileIndex = 0;
-          startFileIndex = 0;
-
-          totalFiles = SdCardSupport::countSnapshotFiles();
-          Z80Bus::clearScreen(COL::BLACK_WHITE);
-          displayItemList(startFileIndex);
-
-          oled.print("ROOT OK");
-        } else {
-          Draw::text_P(80, 90, F("ROOT FAILED"));
-          delay(1000);
+          totalFiles = rescanFolder(true);
         }
         continue;
       }
-
-
       uint16_t actualFileIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
-
       SdCardSupport::openFileByIndex(actualFileIndex);
 
       FatFile& file = SdCardSupport::file;
       if (file.isDir()) {
-
-        char* nameWithPath = SdCardSupport::getFileNameWithSlash((char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
-
-        oled.print(nameWithPath);
-
+        char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file, (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
         SdCardSupport::root.close();
-        if (!SdCardSupport::root.open(nameWithPath)) {
-          Draw::text_P(80, 90, F("FAILED"));
-          delay(1000);
-        } else {
-          oled.print(",OK");
+        if (SdCardSupport::root.open(nameWithPath)) {
           inSubFolder = true;
+        } else {  // should not happen - just incase
+          inSubFolder = false;
+          SdCardSupport::root.open("/");  // something failed!
         }
-
-        oldHighlightAddress = 0;
-        currentFileIndex = 0;
-        startFileIndex = 0;
-
-        SdCardSupport::file.close();
-
-        totalFiles = SdCardSupport::countSnapshotFiles();
-        oled.print(",");
-        oled.print(totalFiles);
-
-        Z80Bus::clearScreen(COL::BLACK_WHITE);
-        displayItemList(startFileIndex);
-
+        totalFiles = rescanFolder(true);
       } else {
-        return actualFileIndex;
+        return &file;  // actualFileIndex;
       }
-
     } else if (action == ACTION_REFRESH_LIST) {
       displayItemList(startFileIndex);
     }

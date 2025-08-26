@@ -47,7 +47,8 @@ void Z80Bus::waitHalt() {
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);   // begin reset 
   
-  delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
+ // delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
+  delay(10);
 
   // Noticed a 48K Spectrum will boot with a very short reset pulse less than 10ms,
   // but a Spectrum +2B needs a much longer hold time, around 250ms.
@@ -257,12 +258,12 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
   }
 }
 
-void Z80Bus::transferSnaData(bool borderLoadingEffect) {
-    FatFile& file = SdCardSupport::file;
+void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
+  //  FatFile& file = SdCardSupport::file;
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
      // Transfer data to Spectrum RAM    
-    while (file.available()) {
-        uint16_t bytesRead = file.read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
+    while (pFile->available()) {
+        uint16_t bytesRead = pFile->read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
         encodeTransferPacket(bytesRead, currentAddress, borderLoadingEffect); 
         currentAddress += bytesRead;
     }
@@ -286,7 +287,7 @@ void Z80Bus::executeSnapshot() {
     while ((PINB & (1 << PINB0)) == 0) {};  // Wait for CPU to start
 }
 
-boolean Z80Bus::bootFromSnapshot() {
+boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 //    uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
 //    if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 4); // Initialize stack pointer
@@ -295,7 +296,7 @@ boolean Z80Bus::bootFromSnapshot() {
     Z80Bus::fillScreenAttributes(0);  
     Z80Bus::clearScreen();
 
-    Z80Bus::transferSnaData(true);
+    Z80Bus::transferSnaData(pFile,true);
     synchronizeForExecution();
     executeSnapshot();
     return true;

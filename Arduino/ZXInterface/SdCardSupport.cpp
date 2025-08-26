@@ -42,6 +42,11 @@ void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
 
 __attribute__((optimize("-Ofast")))
 uint16_t SdCardSupport::countSnapshotFiles() {
+
+  if (SdCardSupport::file.isOpen()) {
+    SdCardSupport::file.close();
+  }
+
   uint16_t totalFiles = 0;
   root.rewind();
   while (file.openNext(&root, O_RDONLY)) {
@@ -81,14 +86,14 @@ bool SdCardSupport::fileClose() {
   return file.close();
 }
 
-char* SdCardSupport::getFileName() {
+char* SdCardSupport::getFileName(FatFile* pFile) {
   char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  file.getName7(fileName, 64);
+  pFile->getName7(fileName, 64);
   return fileName;
 }
 
-char* SdCardSupport::getFileNameWithSlash(char* buffer) {
-  file.getName7(&buffer[1], 64);
+char* SdCardSupport::getFileNameWithSlash(FatFile* pFile,char* buffer) {
+  pFile->getName7(&buffer[1], 64);
   buffer[0]='/';
   return buffer;
 }

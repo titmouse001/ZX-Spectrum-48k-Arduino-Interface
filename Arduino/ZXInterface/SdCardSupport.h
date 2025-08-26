@@ -21,9 +21,9 @@ uint16_t fileSize();
 bool fileClose();
 void openFileByIndex(uint8_t searchIndex);
 uint16_t countSnapshotFiles();
-char* getFileName();
+char* getFileName(FatFile* pFile);
 uint16_t getFileSize();
-char* getFileNameWithSlash(char* buffer);
+char* getFileNameWithSlash(FatFile* pFile,char* buffer);
 
 }
 

@@ -27,8 +27,8 @@
 #include "BufferManager.h"
 #include "Z80Bus.h"
 
-#define VERSION ("0.23")  // Arduino firmware
-#define DEBUG_OLED 1
+#define VERSION ("0.24")  // Arduino firmware
+#define DEBUG_OLED 0
 #define SERIAL_DEBUG 0
 
 // ----------------------------------------------------------------------------------
@@ -117,11 +117,11 @@ void setup() {
 // ---------------------
 // .SCR FILE 
 // ---------------------
-void handleScrFile() {
+void handleScrFile(FatFile* pFile) {
   Z80Bus::fillScreenAttributes(0);
   Z80Bus::clearScreen();
-  Z80Bus::transferSnaData(false);  // No loading effects.
-  SdCardSupport::fileClose();
+  Z80Bus::transferSnaData(pFile, false);  // No loading effects.
+ // SdCardSupport::fileClose();
   constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
   while (Menu::getButton() == Menu::BUTTON_NONE) { delay(maxButtonInputMilliseconds); }
   Z80Bus::clearScreen();
@@ -130,11 +130,12 @@ void handleScrFile() {
 // ---------------------
 // .SNA FILE 
 // ---------------------
-void handleSnaFile() {
+void handleSnaFile(FatFile* pFile) {
   uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
-  SdCardSupport::fileRead(snaPtr, SNA_TOTAL_ITEMS);
-  if (Z80Bus::bootFromSnapshot()) {
-    SdCardSupport::fileClose();
+  //SdCardSupport::fileRead(snaPtr, SNA_TOTAL_ITEMS);
+  pFile->read((void*)snaPtr, (size_t)SNA_TOTAL_ITEMS);
+  if (Z80Bus::bootFromSnapshot(pFile)) {
+  //  SdCardSupport::fileClose();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
     CommandRegistry::initialize();
@@ -144,23 +145,23 @@ void handleSnaFile() {
 // ---------------------
 // .Z80 FILE 
 // ---------------------
-void handleZ80File() {
-  if (SnapZ80::convertZ80toSNA() == BLOCK_SUCCESS) {
-    SdCardSupport::fileClose();
+void handleZ80File(FatFile* pFile) {
+  if (SnapZ80::convertZ80toSNA(pFile) == BLOCK_SUCCESS) {
+ //   SdCardSupport::fileClose();
     Z80Bus::synchronizeForExecution();
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
     CommandRegistry::initialize();
-  } else {
-    SdCardSupport::fileClose();
-  }
+  } //else {
+ //   SdCardSupport::fileClose();
+ // }
 }
 
 // ---------------------
 // .TXT FILE 
 // ---------------------
-void handleTxtFile() {
+void handleTxtFile(FatFile* pFile) {
   const int maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
   const int charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
   const int maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
@@ -193,20 +194,20 @@ void handleTxtFile() {
     while (Menu::getButton() == Menu::BUTTON_NONE) {}
   } while (SdCardSupport::fileAvailable());
 
-  SdCardSupport::fileClose();
+ // SdCardSupport::fileClose();
 }
 
 void loop() {
-  uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
+  // uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
 
-  if (totalFiles==0) {
-    Draw::text_P(80, 90, F("NO FILES FOUND"));
-    do { 
-      delay(20);
-      totalFiles = SdCardSupport::countSnapshotFiles();
-    } while (totalFiles == 0);
-    Z80Bus::clearScreen(COL::BLACK_WHITE);
-  }
+  // if (totalFiles==0) {
+  //   Draw::text_P(80, 90, F("NO FILES FOUND"));
+  //   do { 
+  //     delay(20);
+  //     totalFiles = SdCardSupport::countSnapshotFiles();
+  //   } while (totalFiles == 0);
+  //   Z80Bus::clearScreen(COL::BLACK_WHITE);
+  // }
 
   // while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
   //   Draw::text_P(80, 90, F("NO FILES FOUND"));
@@ -217,21 +218,23 @@ void loop() {
   // }
   
 
-
-  uint16_t FileIndex = Menu::handleMenu(totalFiles);
+  //uint16_t FileIndex = Menu::handleMenu(totalFiles);
 //  SdCardSupport::openFileByIndex(FileIndex);
 
-  if (SdCardSupport::fileSize() == ZX_SCREEN_TOTAL_SIZE) {
-    handleScrFile();
-  } else if (SdCardSupport::fileSize() == SNAPSHOT_FILE_SIZE) {
-    handleSnaFile();
-  } else if (strcasestr(SdCardSupport::getFileName(), ".z80")) {
-    handleZ80File();
-  } else if (strcasestr(SdCardSupport::getFileName(), ".txt")) {
-    handleTxtFile();
-  } else {
-    SdCardSupport::fileClose();
-  }
+  FatFile* pFile = Menu::handleMenu();
+
+  if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
+    handleScrFile(pFile);
+  } else if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
+    handleSnaFile(pFile);
+  } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".z80")) {
+    handleZ80File(pFile);
+  } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".txt")) {
+    handleTxtFile(pFile);
+  } //else {
+   // pFile->close();
+//  }
+  pFile->close();
 
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
 }
