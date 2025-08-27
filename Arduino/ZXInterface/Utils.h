@@ -10,6 +10,8 @@ namespace Utils {
 
 uint8_t readJoystick();
 uint16_t get16bitPulseValue();
+uint8_t get8bitPulseValue();
+
 void frameDelay(unsigned long start);
 void setupJoystick();
 void waitForUserExit();

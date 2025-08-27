@@ -7,6 +7,7 @@
 #include "CommandRegistry.h"
 #include "PacketTypes.h"
 #include "BufferManager.h"
+#include "Utils.h"
 
 constexpr uint8_t COMMAND_ADDR_SIZE = 2;
 
@@ -151,33 +152,16 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
   sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
-// TO DO - upgrade to use 6bit binary
 uint8_t Z80Bus::GetKeyPulses() {
 
   constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
-  constexpr uint16_t PULSE_TIMEOUT_US = 70;
 
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
 
-  uint8_t pulseCount = 0;
-  uint32_t lastPulseTime = 0;
-  while (1) {                          // Tally halts, noting the end marker is just a time gap
-    if ((PINB & (1 << PINB0)) == 0) {  // halt active
-      // Signal the speccy to un-halt the Z80 - Pulse the Z80’s /NMI line: LOW -> HIGH
-      digitalWriteFast(Pin::Z80_NMI, LOW);
-      digitalWriteFast(Pin::Z80_NMI, HIGH);
-      lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      pulseCount++;
-    }
-
-    // Detect end of transmission (delay timeout after last halt)
-    if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
-      return pulseCount - 1;
-    }
-  }
+  return Utils::get8bitPulseValue();
 }
 
 // Encode/send RLE-compressed data to the Speccy which is decompresses its side.
@@ -217,12 +201,10 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
         // Using offset after input header and data so we don't touch the lower part of packetBuffer as it still holds input to be processed
         uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
         if ( (run_len&0x01) ==0) { // even
-        //          uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
           // number of PUSH operations ((count-1)/2)
             uint8_t packetLen = PacketBuilder::buildFillVariableEvenCommand(pFill,addr+run_len, run_len/2, value);
             Z80Bus::sendBytes(pFill, packetLen);
         }else {      
-    //             uint8_t packetLen = PacketBuilder::buildSmallFillCommand(pFill, run_len,addr, value);
           // number of PUSH operations (count/2)
           uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(pFill,addr+run_len, (run_len-1)/2, value);
           Z80Bus::sendBytes(pFill, packetLen);
@@ -281,21 +263,19 @@ void Z80Bus::executeSnapshot() {
     Z80Bus::sendSnaHeader(BufferManager::head27_Execute);
     Z80Bus::waitRelease_NMI();
     // Timing safety: Wait for NMI completion (24 T-states ≈ 7μs at 3.5MHz)
+    
     delayMicroseconds(7);
+
     // Switch to 16K stock ROM and wait for execution
     digitalWriteFast(Pin::ROM_HALF, HIGH);
     while ((PINB & (1 << PINB0)) == 0) {};  // Wait for CPU to start
 }
 
 boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
-//    uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
-//    if (!SdCardSupport::loadFileHeader(snaPtr,SNA_TOTAL_ITEMS)) { return false; }
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 4); // Initialize stack pointer
     Z80Bus::waitRelease_NMI();
-
     Z80Bus::fillScreenAttributes(0);  
     Z80Bus::clearScreen();
-
     Z80Bus::transferSnaData(pFile,true);
     synchronizeForExecution();
     executeSnapshot();

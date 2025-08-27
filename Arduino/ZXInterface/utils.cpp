@@ -37,7 +37,6 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
   pinModeFast(Pin::ShiftRegLatchPin, OUTPUT);
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
-//  readJoystick(); // call once to init - fudge
 }
 
 // 1,000,000 microseconds to a second
@@ -74,6 +73,33 @@ uint16_t Utils::get16bitPulseValue() {
   return value;
 }
 
+
+uint8_t Utils::get8bitPulseValue() {
+  constexpr uint16_t PULSE_TIMEOUT_US = 70; //120+20;
+  uint8_t value = 0;
+  for (uint8_t i = 0; i < 8; i++) { // 16 bits, 2 bytes
+    uint8_t pulseCount = 0;
+    uint32_t lastPulseTime = 0;
+    while (1) {
+      // Service current HALT if active
+      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
+        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+        digitalWriteFast(Pin::Z80_NMI, LOW);
+        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        pulseCount++;
+        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      }
+      // Detect end marker delay at end of each single bit 
+      if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
+        break;
+      }
+    }
+    if (pulseCount == 2) {  // collect set bit
+      value += 1 << (7 - i);
+    }
+  }
+  return value;
+}
 
 void Utils::waitForUserExit() {
   do {  

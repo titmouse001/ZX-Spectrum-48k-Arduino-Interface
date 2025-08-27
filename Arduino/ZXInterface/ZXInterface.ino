@@ -1,6 +1,6 @@
 // -------------------------------------------------------------------------------------
 // This is an Arduino-Based ZX Spectrum Game Loader - 2023/25 P.Overy
-// ---------------------------------------------------------4----------------------------
+// -------------------------------------------------------------------------------------
 // This software uses the Arduino's ATmega328P Nano (2K SRAM, 32K flash & 1K EEPROM)
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
 // -------------------------------------------------------------------------------------
@@ -54,6 +54,7 @@
 #include <Wire.h>                // I2C for OLED.
 #include "SSD1306AsciiAvrI2c.h"  // SSD1306 OLED displays on AVR.
 #include "fontdata.h"
+
 #define I2C_ADDRESS 0x3C         // 0x3C or 0x3D
 SSD1306AsciiAvrI2c oled;
 extern bool setupOled();  // debugging with a 128x32 pixel oled
@@ -95,15 +96,11 @@ void setup() {
   // and wait for that as a clean start-up signal
   CommandRegistry::initialize();
 
-
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
-  // SD Init must eat a pin for CS! We use the free OLED debug pin A4 but we dont care about this pin (SD Card's CS pin is fix to GND).
- // while (!SdCardSupport::init(PIN_A4)) {
- //   Draw::text_P(80, 90, F("INSERT SD CARD"));
-//  }
-
+  // SD Init must eat a pin for CS! We use the free OLED debug pin A4 
+  // but we dont care about this pin (SD Card's CS pin is fixed to GND).
   while (!SdCardSupport::init(PIN_A4)) {
     Draw::text_P(80, 90, F("INSERT SD CARD"));
     do {  
@@ -111,7 +108,6 @@ void setup() {
     } while (!SdCardSupport::init(PIN_A4));  // keep looking
     Z80Bus::clearScreen(COL::BLACK_WHITE);
   }
-
 }
 
 // ---------------------
@@ -121,7 +117,6 @@ void handleScrFile(FatFile* pFile) {
   Z80Bus::fillScreenAttributes(0);
   Z80Bus::clearScreen();
   Z80Bus::transferSnaData(pFile, false);  // No loading effects.
- // SdCardSupport::fileClose();
   constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
   while (Menu::getButton() == Menu::BUTTON_NONE) { delay(maxButtonInputMilliseconds); }
   Z80Bus::clearScreen();
@@ -132,10 +127,8 @@ void handleScrFile(FatFile* pFile) {
 // ---------------------
 void handleSnaFile(FatFile* pFile) {
   uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
-  //SdCardSupport::fileRead(snaPtr, SNA_TOTAL_ITEMS);
   pFile->read((void*)snaPtr, (size_t)SNA_TOTAL_ITEMS);
   if (Z80Bus::bootFromSnapshot(pFile)) {
-  //  SdCardSupport::fileClose();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
     CommandRegistry::initialize();
@@ -147,15 +140,12 @@ void handleSnaFile(FatFile* pFile) {
 // ---------------------
 void handleZ80File(FatFile* pFile) {
   if (SnapZ80::convertZ80toSNA(pFile) == BLOCK_SUCCESS) {
- //   SdCardSupport::fileClose();
     Z80Bus::synchronizeForExecution();
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
     CommandRegistry::initialize();
-  } //else {
- //   SdCardSupport::fileClose();
- // }
+  }
 }
 
 // ---------------------
@@ -166,7 +156,6 @@ void handleTxtFile(FatFile* pFile) {
   const int charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
   const int maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
   char* lineBuffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  //SdCardSupport::fileSeek(0);
   pFile->seekSet(0);
 
   do {
@@ -194,34 +183,10 @@ void handleTxtFile(FatFile* pFile) {
     }
     while (Menu::getButton() == Menu::BUTTON_NONE) {}
   } while (pFile->available());
-
- // SdCardSupport::fileClose();
 }
 
 void loop() {
-  // uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
-
-  // if (totalFiles==0) {
-  //   Draw::text_P(80, 90, F("NO FILES FOUND"));
-  //   do { 
-  //     delay(20);
-  //     totalFiles = SdCardSupport::countSnapshotFiles();
-  //   } while (totalFiles == 0);
-  //   Z80Bus::clearScreen(COL::BLACK_WHITE);
-  // }
-
-  // while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
-  //   Draw::text_P(80, 90, F("NO FILES FOUND"));
-  //   delay(20);
-
-  //   do { } while ((totalFiles = SdCardSupport::countSnapshotFiles()) != 0);
-  //   Z80Bus::clearScreen(COL::BLACK_WHITE);
-  // }
   
-
-  //uint16_t FileIndex = Menu::handleMenu(totalFiles);
-//  SdCardSupport::openFileByIndex(FileIndex);
-
   FatFile* pFile = Menu::handleMenu();
 
   if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
@@ -232,9 +197,8 @@ void loop() {
     handleZ80File(pFile);
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".txt")) {
     handleTxtFile(pFile);
-  } //else {
-   // pFile->close();
-//  }
+  }
+
   pFile->close();
 
   Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
@@ -242,9 +206,8 @@ void loop() {
 
 
 #if (DEBUG_OLED == 1)
-// DEBUG USE ONLY
-bool setupOled() {
-  Wire.begin();
+bool setupOled() {  // DEBUG USE ONLY
+  Wire.begin(); 
   Wire.beginTransmission(I2C_ADDRESS);
   bool result = (Wire.endTransmission() == 0);  // is OLED fitted
   Wire.end();
@@ -263,16 +226,12 @@ bool setupOled() {
 #endif
 
 
-
-
 // -------------------------------------------------------------------------------------
 // *** Some Useful Links ***
 // ZX spectrum: https://mdfs.net/Docs/Comp/Spectrum/SpecIO
 // Arduino    : https://devboards.info/boards/arduino-nano
 //              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
 // -------------------------------------------------------------------------------------
-
-
 
 /* DEBUG EXAMPLE TO SPECTRUM SCREEN
 uint16_t destAddr;

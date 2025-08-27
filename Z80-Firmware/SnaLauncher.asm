@@ -102,8 +102,8 @@ ClearAllRamRet:
 	; Now we know all RAM is zeroed
 	; This means we can now assume loading can skip large chunks of zero-length data
 	
-	ld SP,0xFFFF  ; only for menu use
-	; Later, SP will be reasigned with "command_Stack"
+	ld SP,0xFFFF  ; !!! Stack is only for menu use !!!
+	; Note: At game loading time, SP is reasigned with 'command_Stack' from the Arduino.
 
 	call sendFunctionList
 	jp mainloop
@@ -122,11 +122,13 @@ L0038:
 ; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
 ; After NMI line signals for the speccy to resume, the Arduino waits for 7microseconds to allow time for the ISR to complete.
 ; NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
-;                    RETN Instruction:    14 T-states.
-; 					 24x0.2857=6.857microsecond  (1/3.5MHz = 0.2857microseconds)
+;                    RET Instruction:    10 T-states.  (24x0.2857=6.857microsecond)  <1/3.5MHz = 0.2857microseconds>
+;				     
 ORG $0066
 L0066:
-	RETN
+	; WARNING: NMI disables maskable interrupts (IFF1=0, old IFF1 saved into IFF2).
+    ; If we return with RET, IFF1 will stay cleared and maskable interrupts will never come back.
+	RETN ;14 clock cycles, 2 bytes
 
 ;------------------------------------------------------
 ;******************
@@ -141,7 +143,7 @@ check_initial:
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
-	ld hl,command_TransmitKey
+	ld hl,command_TransmitKeyAs8Bits
 	call transmit16bitValue
 	;SET_BORDER 0
 	
@@ -233,86 +235,76 @@ FillOddLoop:
 	ld SP,IX   
 	jp mainloop             
 
+
 ;------------------------------------------------------
 transmit16bitValue:  
-	; HL holds ROM function address to send 
-	; Will send 0 bit as 1 HALT
-	; Will send 1 bit as 2 HALTs
+; Encodes/transmits using HALT pulses.
+; HL holds 16-bit value to transmit
+; Sends 0 bit as 1 HALT, 1 bit as 2 HALTs
+    ld d,16          ; Bit counter
+.bitloop:
+    bit 7,h
+    HALT
+    jr z,.bitEndMarkerDelay  ; If bit is 0, skip second HALT
+    HALT     	             ; Second HALT for bit '1'
+.bitEndMarkerDelay:
+    ld e,40   	 	         ; Delay
+.delayMarkerLoop:
+    dec e
+    jr nz,.delayMarkerLoop
+    add hl,hl        ; Shift HL left
+    dec d
+    jr nz,.bitloop
+    ret
+
 ;------------------------------------------------------
-	;;;;READ_ACC_WITH_HALT			 
-	ld b,20  			; b = delay value from accumulator	 
-	ld d,16				; Counter for 16 bits to transmit
-transmit_bit_loop:
-	bit 7,h				; Test bit 7 of H register
-	jr z,send_zero		; Jump if bit is 0
-send_one:
-	HALT   				; 
-	HALT   				; x2 halts signals bit '1'
-	jr continue_transmission
-send_zero:
-	HALT   				; x1 halt signals bit '0'
-continue_transmission:
-	ld e,b				; delay amount
-bit_marker_spacing:
-	NOP                    
-	dec e
-	jr nz,bit_marker_spacing	; Inter-bit spacing delay
-	
-	add hl,hl			; Shift HL left (MSB goes to carry)
-	dec d
-	jr nz,transmit_bit_loop	
+ transmit8bitValue:
+; A holds 8-bit value to transmit
+;------------------------------------------------------
+     ld d,8              ; Bit counter
+ .bitlooptx:
+     bit 7,a             ; Test MSB of A
+     HALT
+     jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
+     HALT                 ; Second HALT for '1'
+ .bitEndMarkerDelaytx:
+     ld e,40              ; Inter-bit delay
+ .delayMarkerLooptx:
+     dec e
+     jr nz,.delayMarkerLooptx
+     add a,a              ; Shift A left
+     dec d
+     jr nz,.bitlooptx
+     ret
 
-	ret
-
-
-; ;------------------------------------------------------
-; ; --- Transmit key press using pulse-count protocol ---
-; ; Arduino counts the HALT pulses (1=no key, 2+=key index).
-; command_TransmitKey:  ; "T" - TRANSMIT KEY PRESS
-; ;------------------------------------------------------
-; 	READ_ACC_WITH_HALT			 
-; 	ld b,a 	 			; b = delay 	 
-; ;;;;;;;;	LD L, C
-;  ;;;;;   LD H, B	
-; 	JP GET_KEY_PULSES  	; RESULT A = key pulses (2 to N)
-; DONE_KEY:
-; 	LD B, A                 
-; TX: HALT   				; send fudge-pulse
-; 	DJNZ TX
-; ;;;;;;;	LD L, C
-; ;;;;;;	LD H, B
-; DELAY_LOOP:  ; end marker for pulses (one last final delay with halt)
-	                    
-; 	DJNZ DELAY_LOOP		; ball park T-states: N * (4 + 13)
-	
-; 	ld c,$1F  			; re-setup for 'READ_PAIR_WITH_HALT'
-; 	jp mainloop         ; Return to main loop
-
-
-command_TransmitKey:
+;------------------------------------------------------
+command_TransmitKeyAs8Bits:
+;------------------------------------------------------
     READ_ACC_WITH_HALT			 
-	ld IXL,a					; store delay 
 
     JP GET_KEY_PULSES          ; RESULT A = key pulses (2 to N)
 DONE_KEY:
 
-    LD B, A                    ; b = number of key pulses to send
-TX: HALT                       ; send pulse
-    DJNZ TX
-    
-   	ld B,IXL                    ; End marker delay 
-DELAY_LOOP:
-	NOP
-	NOP
-	NOP
-    DJNZ DELAY_LOOP				; 25t-states 
-	; 25T/35000000(MHZ) = 7 microseconds (7.14)
-	; say 20 iterations in DELAY_LOOP above will give :-
-	; 1.428571428571429e-5 = 0.000011428 seconds
-	; 1.428571428571429e-5 * 1000000 = 11.428 microseconds
-    
-    ld c,$1F
-    jp mainloop
+	call transmit8bitValue	; A=input
+ 	jp mainloop
+
+;     ld d,8              ; Bit counter
+; .bitloop8:
+;     bit 7,a             ; Test MSB of A
+;     HALT
+;     jr z,.bitEndMarkerDelay8  ; If 0, skip second HALT
+;     HALT                 ; Second HALT for '1'
+; .bitEndMarkerDelay8:
+;     ld e,40              ; Inter-bit delay
+; .delayMarkerLoop8:
+;     dec e
+;     jr nz,.delayMarkerLoop8
+;     add a,a              ; Shift A left
+;     dec d
+;     jr nz,.bitloop8
+
+;     ld c,$1F
+;     jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL

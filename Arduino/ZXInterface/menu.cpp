@@ -16,6 +16,9 @@ uint16_t Menu::currentFileIndex = 0;
 uint16_t Menu::startFileIndex = 0;
 bool     Menu::inSubFolder = false;
 
+// #include "SSD1306AsciiAvrI2c.h" 
+// extern SSD1306AsciiAvrI2c oled;
+
 void Menu::displayItemList(uint16_t startFileIndex) {
 
   FatFile& root = SdCardSupport::getRoot();
@@ -52,14 +55,6 @@ void Menu::displayItemList(uint16_t startFileIndex) {
       }
 
      uint8_t len = SdCardSupport::getFileName(&file, displayName);
-      
-
-//      uint16_t len = file.getName7(displayName, MAX_FILENAME_LEN);
-//      if (len == 0) {
-//        file.getSFN(displayName, 20);
-//        len = strlen(displayName);
-//      }
-
       if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {  // Trim long names
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
@@ -72,7 +67,6 @@ void Menu::displayItemList(uint16_t startFileIndex) {
       Draw::textLine(linesDrawn * FONT_HEIGHT_WITH_GAP, nameBuffer);
       linesDrawn++;
     }
-
     file.close();
   }
 
@@ -85,16 +79,19 @@ void Menu::displayItemList(uint16_t startFileIndex) {
 }
 
 Menu::Button_t Menu::getButton() {
+
   const uint8_t joy = Utils::readJoystick();
   if (joy & (0x10 | 0x40)) return BUTTON_SELECT;
   if (joy & 0x04) return BUTTON_ADVANCE;
   if (joy & 0x08) return BUTTON_BACK;
+
   switch (Z80Bus::GetKeyPulses()) {
-    case 11: return BUTTON_BACK;
-    case 6: return BUTTON_ADVANCE;
-    case 31: return BUTTON_SELECT;
+    case 12: return BUTTON_BACK;
+    case 7: return BUTTON_ADVANCE;
+    case 32: return BUTTON_SELECT;
     default: return BUTTON_NONE;
   }
+  
 }
 
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
@@ -201,11 +198,9 @@ FatFile* Menu::handleMenu() {
       uint16_t actualFileIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
       SdCardSupport::openFileByIndex(actualFileIndex);
 
- //     FatFile& file = SdCardSupport::file;
       FatFile& file = SdCardSupport::getFile(); 
  
       if (file.isDir()) {
-     //   char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file, (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET]);
         char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file);
         root.close();
         if (root.open(nameWithPath)) {

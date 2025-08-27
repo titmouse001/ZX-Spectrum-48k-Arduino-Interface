@@ -1,9 +1,3 @@
 
-/Speccy/output
 /bak
-/Speccy/bak
-/FontTesterApp/x64/Debug
-/FontTesterApp/.vs
-FontTesterApp/FontTester.vcxproj.user
-/FontTesterApp/FontTester/x64/Debug
-/Speccy/mdlz80optimizer
+Z80-Firmware/output/SnaLauncher.bin
