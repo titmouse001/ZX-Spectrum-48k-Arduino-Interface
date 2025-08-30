@@ -30,7 +30,12 @@ void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, 
     #undef PROCESS_ROW
 }
 
-__attribute__((optimize("-Ofast")))
+
+//__attribute__((optimize("-Os")))  //24944
+//__attribute__((optimize("-O1")))  //25020
+//__attribute__((optimize("-O2")))  //24940
+//__attribute__((optimize("-O3")))  //24940
+__attribute__((optimize("-Ofast")))  //25048
 uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char *message) {
     Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
 

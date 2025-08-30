@@ -15,8 +15,8 @@ constexpr uint8_t COMMAND_ADDR_SIZE = 2;
 // Z80 Data Transfer and Control Routines
 //-------------------------------------------------
 
+__attribute__((optimize("-Os")))
 void Z80Bus::setupPins() {
-
   // best do ROM_HALF setting first
   pinModeFast(Pin::ROM_HALF, OUTPUT);
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
@@ -37,31 +37,29 @@ void Z80Bus::setupPins() {
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
 
-// waitHalt: Waits for the Z80 CPU to complete a HALT cycle
-// The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
-void Z80Bus::waitHalt() {   
-  // Together these synchronise with the end of the Z80's HALT state
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // wait until HALT goes LOW (Z80 is halted)
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // wait until HALT goes HIGH (Z80 resumes)
-}
-
+__attribute__((optimize("-Os")))
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);   // begin reset 
-  
  // delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
   delay(10);
-
   // Noticed a 48K Spectrum will boot with a very short reset pulse less than 10ms,
   // but a Spectrum +2B needs a much longer hold time, around 250ms.
   digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
   delay(10); 
 }
 
+__attribute__((optimize("-Os")))
 void Z80Bus::resetToSnaRom() {
   digitalWriteFast(Pin::ROM_HALF, LOW);   // LOW = Custom ROM
   resetZ80();
 }
 
+// --------------------------------------------------------------------------------------------------------
+// waitRelease_NMI:
+// NMI (Non-Maskable Interrupt) on falling edge of the /NMI pin.
+// Used to synchronize the Z80 with Arduino.
+// --------------------------------------------------------------------------------------------------------
+__attribute__((optimize("-Ofast"))) 
 void Z80Bus::waitRelease_NMI() {
   // Wait for Z80 HALT line to go LOW (active low)
   while (digitalReadFast(Pin::Z80_HALT) != 0) {};
@@ -76,10 +74,23 @@ void Z80Bus::waitRelease_NMI() {
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
 }
 
+// --------------------------------------------------------------------------------------------------------
+// waitHalt: 
+// Waits for the Z80 CPU to complete a HALT cycle
+// The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
+// --------------------------------------------------------------------------------------------------------
+__attribute__((optimize("-Ofast"))) 
+void Z80Bus::waitHalt() {   
+  // Together these synchronise with the end of the Z80's HALT state
+  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // wait until HALT goes LOW (Z80 is halted)
+  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // wait until HALT goes HIGH (Z80 resumes)
+}
+
+
 // TO-DO: measure the difference with cheap oscilloscope , would be interesting to see! (or call tons - results to screen or SD card)
 __attribute__((optimize("-Ofast"))) 
 void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
-  cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
+ // cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
     // Wait for Z80 HALT line to go LOW (active low)
     while (digitalReadFast(Pin::Z80_HALT) != 0) {};
@@ -94,13 +105,13 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
     // Wait for HALT line to return HIGH again (shows Z80 has resumed)
     while (digitalReadFast(Pin::Z80_HALT) == 0) {};
   }
-  sei();
+//  sei();
 }
 
+__attribute__((optimize("-Os")))
 void Z80Bus::sendSnaHeader(uint8_t* header) {
   // NOTE: Order is critical - restoring registers destroys others needed for the restoration process
   // Each byte sent is a planned maneuver to keep the deck of cards from falling over
-
   constexpr uint8_t PKT_LEN = E(ExecutePacket::PACKET_LEN);
   sendBytes(&header[0       +      SNA_I], PKT_LEN+1+2+2+2+2);  // COMMAND ADDR, I,HL',DE',BC',AF'
   sendBytes(&header[PKT_LEN + SNA_IY_LOW], 2+2+1+1);            // IY,IX,IFF2,R 
@@ -143,6 +154,7 @@ void Z80Bus::sendStackCommand(uint16_t addr) {
     Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen );
 }
 
+__attribute__((optimize("-Os")))
 void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
   const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
   if (oldHighlightAddress != fillAddr) {   // Clear old highlight if it's different
@@ -152,15 +164,13 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
   sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
+__attribute__((optimize("-Os")))
 uint8_t Z80Bus::GetKeyPulses() {
-
   constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
-
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
   BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
-
   return Utils::get8bitPulseValue();
 }
 
@@ -241,7 +251,6 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
 }
 
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
-  //  FatFile& file = SdCardSupport::file;
     uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
      // Transfer data to Spectrum RAM    
     while (pFile->available()) {

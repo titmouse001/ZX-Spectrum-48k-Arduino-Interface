@@ -48,6 +48,7 @@ void Draw::textLine(int ypos, const char *message) {
   }
 }
 
+__attribute__((optimize("-Os")))
 void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount) {
   const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
   uint8_t *outputLine = BufferManager::TextBuffer;
@@ -67,6 +68,7 @@ void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount) {
 
 // text_P - text in flash memory: Draws only the required part of the screen buffer.
 // Slower but useful for general-purpose text drawing.
+__attribute__((optimize("-Os")))
 void Draw::text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {
   const uint8_t charCount = RenderFont::prepareTextGraphics_P(BufferManager::TextBuffer, flashStr);
   drawTextInternal(xpos, ypos, charCount);
@@ -74,6 +76,7 @@ void Draw::text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {
 
 // text: Draws only the required part of the screen buffer.
 // Slower but useful for general-purpose text drawing.
+__attribute__((optimize("-Os")))
 void Draw::text(int xpos, int ypos, const char *message) {
   const uint8_t charCount = RenderFont::prepareTextGraphics(BufferManager::TextBuffer, message);
   drawTextInternal(xpos, ypos, charCount);

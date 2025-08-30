@@ -25,5 +25,6 @@ for %%A in ("*.bin") do (
 )
 
 copy /b .\output\SnaLauncher.bin+48.rom .\output\EPROM.bin
+del /Q .\output\SnaLauncher.bin
 
 pause

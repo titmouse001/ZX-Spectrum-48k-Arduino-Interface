@@ -149,41 +149,131 @@ void handleZ80File(FatFile* pFile) {
 }
 
 // ---------------------
-// .TXT FILE 
+// .TXT FILE - Support
+// ---------------------
+
+/**
+ * Reads or skips a line from the file.
+ * skips if lineBuffer=nullptr
+ * Consumes \r\n, \r, or \n line endings.
+ * Clamps chars to printable ASCII (32–127) in store mode.
+ */
+static uint16_t readOrSkipLine(FatFile* pFile, char* lineBuffer, uint16_t maxCharsPerLine) {
+  int16_t remaining = pFile->available();
+  uint16_t bytesRead = 0;
+
+  while ((remaining--) > 0 && (bytesRead < maxCharsPerLine)) {
+    uint8_t c = pFile->read();
+    if (c == '\r') {
+      if (remaining > 0 && pFile->peek() == '\n') {
+        pFile->read();  // consume LF
+        remaining--;
+      }
+      break;
+    }
+    if (c == '\n') {
+      break;
+    }
+    if (lineBuffer) {
+      if (c < 32 || c > 127) {
+        c = 127;
+      }
+      lineBuffer[bytesRead] = static_cast<char>(c);
+    }
+    bytesRead++;
+  }
+
+  return (lineBuffer != nullptr) ? bytesRead : 0;
+}
+
+// ---------------------
+// .TXT FILE
 // ---------------------
 void handleTxtFile(FatFile* pFile) {
-  const int maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
-  const int charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-  const int maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
+  constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
+  constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+  constexpr uint16_t maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
   char* lineBuffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  pFile->seekSet(0);
+  uint16_t currentPageIndex = 0;
+  uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
+  uint16_t lastPageIndex = 0;  // index of that page
+  //boolean lastPage = false;
 
-  do {
-    Z80Bus::clearScreen(COL::BLACK_WHITE);
-    int currentLine = 0;
-    while (currentLine < maxLinesPerScreen && pFile->available()) {  //SdCardSupport::fileAvailable()) {
-      int bytesRead = 0;
-      // Read characters until we hit the end of the line, a newline, or the buffer is full.
-      while (bytesRead < maxCharsPerLine && pFile->available()) {
-        char c = pFile->read();
-        if (c == '\r') {  //  Check for Windows-style CRLF
-          if (pFile->available() && pFile->peek() == '\n') {
-            pFile->read();
-          }
-          break;  // End of line
+  Z80Bus::clearScreen(COL::BLACK_WHITE);
+
+  while (true) {
+
+    const uint32_t autoScrollDelay = millis() + 400;
+
+    if (currentPageIndex == lastPageIndex + 1) {  // forward
+      pFile->seekSet(lastSeekPos);
+    } else if (currentPageIndex == lastPageIndex - 1) {  // backward
+      pFile->seekSet(0);
+      for (uint16_t i = 0; i < currentPageIndex; ++i) {
+        uint16_t linesReadOnPage = 0;
+        while (linesReadOnPage < maxLinesPerScreen) {
+          readOrSkipLine(pFile, nullptr, maxCharsPerLine);  // skip
+          linesReadOnPage++;
         }
-        if (c == '\n') { break; }                                 // Unix-style line ending
-        if (c >= 32 && c < 127) { lineBuffer[bytesRead++] = c; }  // only ASCII
       }
-      lineBuffer[bytesRead] = '\0';  // Null-terminate the string.
+    } else {                        // page limits
+      if (currentPageIndex == 0) {  // hard stop on top page
+        pFile->seekSet(0);
+      } else if (currentPageIndex == lastPageIndex) {  // can only be last page now
+        pFile->seekSet(lastSeekPos);
+      }
+    }
+
+    // Draw the current page
+    uint16_t currentLine = 0;
+    while (currentLine < maxLinesPerScreen && pFile->available()) {
+      uint16_t bytesRead = readOrSkipLine(pFile, lineBuffer, maxCharsPerLine);
       if (bytesRead > 0) {
+        lineBuffer[bytesRead] = '\0';
         Draw::textLine(currentLine * charHeight, lineBuffer);
+      } else {
+        Draw::textLine(currentLine * charHeight, " ");  // clear line
       }
       currentLine++;
     }
-    while (Menu::getButton() == Menu::BUTTON_NONE) {}
-  } while (pFile->available());
+
+    bool atEOF = !pFile->available();
+    if (!atEOF) {
+      lastSeekPos = pFile->curPosition();
+    }
+    lastPageIndex = currentPageIndex;
+
+    lineBuffer[0] = ' ';
+    lineBuffer[1] = '\0';
+    for (uint8_t i = currentLine; i < maxLinesPerScreen; i++) {   // Clear remaining lines
+      Draw::textLine(i * charHeight, lineBuffer);
+    }
+
+    Menu::Button_t button;
+    do {
+      button = Menu::getButton();
+    } while (button == Menu::BUTTON_NONE);
+
+    if (button == Menu::BUTTON_ADVANCE) {
+      if (!atEOF) {
+        currentPageIndex++;
+      }
+    } else if (button == Menu::BUTTON_BACK) {
+      if (currentPageIndex > 0) {
+        currentPageIndex--;
+      }
+    } else if (button == Menu::BUTTON_SELECT) {
+      return;
+    }
+
+    while (Menu::getButton() != Menu::BUTTON_NONE) {
+      if (millis() > autoScrollDelay) {
+        break;
+      }
+    }
+  }
 }
+
 
 void loop() {
   
@@ -206,6 +296,7 @@ void loop() {
 
 
 #if (DEBUG_OLED == 1)
+__attribute__((optimize("-Os")))
 bool setupOled() {  // DEBUG USE ONLY
   Wire.begin(); 
   Wire.beginTransmission(I2C_ADDRESS);

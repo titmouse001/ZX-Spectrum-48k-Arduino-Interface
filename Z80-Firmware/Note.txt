@@ -4,16 +4,16 @@ Z80 Firmware Build Instructions
 
 Build Process - run '_MAKE.bat': 
 The build script creates the final EPROM image (saved in: output/EPROM.bin) by combining:
- - `SnaLauncher.bin` (16KB, Custom Z80 assembly code)
- - `48.rom` (16KB, Original ZX Spectrum 48K ROM)
+ - 'SnaLauncher.bin' (16KB, Custom Z80 assembly code)
+ - '48.rom' (16KB, Original ZX Spectrum 48K ROM)
 
 EPROM Programming:
-Flash the 32KB file `EPROM.bin` to a 27C256 EPROM
+Flash the 32KB file 'EPROM.bin' to a 27C256 EPROM
 - Cheap eBay universal programmers work great for this
 - 32KB (256Kbit) EPROM - M27C256B or any 27C256 variant will work
 
 File Descriptions:
- `EPROM.bin`       - Final 32KB image to burn to EPROM
- `SnaLauncher.bin` - Intermediate build file (16KB) - can ignore
- `48.rom`          - Stock ZX Spectrum 48K ROM (16KB)
- `_MAKE.bat`       - Assembles source and joins ROMs
+ 'output\EPROM.bin'       - Final 32KB image to burn to EPROM
+ 'output\SnaLauncher.bin' - Intermediate build file (16KB) - can ignore
+ '48.rom'          	  - Stock ZX Spectrum 48K ROM (16KB)
+ '_MAKE.bat'       	  - Assembles source and joins ROMs

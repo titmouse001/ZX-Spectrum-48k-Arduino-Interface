@@ -1,5 +1,6 @@
 #include "utils.h"
 
+ __attribute__((optimize("-Os")))
 void Utils::frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
   if (timeSpent < MAX_BUTTON_READ_MILLISECONDS) {
@@ -32,6 +33,7 @@ uint8_t Utils::readJoystick() {
   return data;  // read bits are "uSfFUDLR"  
 }
 
+ __attribute__((optimize("-Os")))
 void Utils::setupJoystick() {
   // Setup pins for "74HC165" shift register
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
@@ -73,7 +75,6 @@ uint16_t Utils::get16bitPulseValue() {
   return value;
 }
 
-
 uint8_t Utils::get8bitPulseValue() {
   constexpr uint16_t PULSE_TIMEOUT_US = 70; //120+20;
   uint8_t value = 0;
@@ -101,6 +102,7 @@ uint8_t Utils::get8bitPulseValue() {
   return value;
 }
 
+ __attribute__((optimize("-Os")))
 void Utils::waitForUserExit() {
   do {  
     unsigned long startTime = millis();
@@ -109,7 +111,6 @@ void Utils::waitForUserExit() {
   } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
 
   while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}
-  //delay(20);  // optional small debounce delay
 }
 
 

@@ -7,12 +7,13 @@ SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
 
+ __attribute__((optimize("-Os")))
 boolean SdCardSupport::init(uint8_t csPin) {
   if (root.isOpen()) {
     root.close();
     sd.end();
   }
-  if (!sd.begin(csPin)) {
+  if (!sd.begin(csPin,SPI_QUARTER_SPEED )) {
     return false;
   }
   if (!root.open("/")) {
@@ -22,7 +23,7 @@ boolean SdCardSupport::init(uint8_t csPin) {
   return true;
 }
 
-__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Os"))) 
 void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
@@ -55,8 +56,9 @@ uint16_t SdCardSupport::countSnapshotFiles() {
   return totalFiles;
 }
 
+// This version of getFileName is used for the file browser view, keeping this one optimised for speed.
+__attribute__((optimize("-Ofast")))
 uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
-//  char* fileName = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   uint8_t len = pFile->getName7(pFileNameBuffer, MAX_FILENAME_LEN);
   if (len == 0) {
     len = pFile->getSFN(pFileNameBuffer, 13); // fallback, XXXXXXXX.XXX
@@ -64,24 +66,16 @@ uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   return len;
 }
 
-
+__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileName(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-  //uint8_t len = pFile->getName7(fileName, MAX_FILENAME_LEN);
- // if (len == 0) {
-//    pFile->getSFN(buffer, 13); // fallback, XXXXXXXX.XXX
-//  }
   getFileName(pFile,buffer);
   return buffer;
 }
 
-//char* SdCardSupport::getFileNameWithSlash(FatFile* pFile,char* buffer) {
+__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
-//   uint8_t len = pFile->getName7(&fileName[1], MAX_FILENAME_LEN);
-//   if (len == 0) {
-//     pFile->getSFN(&fileName[1], 13);  // XXXXXXXX.XXX
-//   }
   getFileName(pFile,&buffer[1]);
   buffer[0]='/';
   return buffer;

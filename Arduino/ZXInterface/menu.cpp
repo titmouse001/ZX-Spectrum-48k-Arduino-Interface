@@ -6,6 +6,7 @@
 #include "draw.h"
 #include "Z80Bus.h"
 
+
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = Menu::MAX_REPEAT_KEY_DELAY;
@@ -166,6 +167,7 @@ uint16_t Menu::rescanFolder(bool reset) {
   if (totalFiles == 0) {
     Draw::text_P(80, 90, F("NO FILES FOUND"));
     do {
+      SdCardSupport::init(PIN_A4);
       delay(20);
       totalFiles = SdCardSupport::countSnapshotFiles();
     } while (totalFiles == 0);
