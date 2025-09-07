@@ -1,0 +1,6 @@
+The file 48KROM.asm is the full 48K ZX Spectrum disassembly and can be assembled using an assembler like Pasmo.
+
+[2025/08/30] - This folder is for experimenting with the original ROM, as I'm looking into modifying the NMI to include some extra functionality in my game interface, such as poking memory addresses (i.e. cheat codes).
+
+
+(This side of things like cheat code is all at early prototype stage)

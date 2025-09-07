@@ -1,4 +1,7 @@
 #include "utils.h"
+#include "Z80Bus.h"
+
+#include "draw.h"
 
  __attribute__((optimize("-Os")))
 void Utils::frameDelay(unsigned long start) {
@@ -102,13 +105,62 @@ uint8_t Utils::get8bitPulseValue() {
   return value;
 }
 
- __attribute__((optimize("-Os")))
-void Utils::waitForUserExit() {
-  do {  
+__attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
+  do {
     unsigned long startTime = millis();
     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
-    Utils::frameDelay(startTime);
-  } while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
+
+  //  Utils::frameDelay(startTime);
+    uint8_t b = Utils::readJoystick();
+    if (b & JOYSTICK_SELECT) {
+
+      //----------------------------------------------------------------
+      // Fire an NMI in the stock ROM
+      // (uses modified unused locations: L0066 & L04AA)
+      digitalWriteFast(Pin::Z80_NMI, LOW);
+      digitalWriteFast(Pin::Z80_NMI, HIGH);
+      //----------------------------------------------------------------
+      // Allow the Z80 to push registers and then idle in a loop forever
+      delay(5);
+      digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM
+      //----------------------------------------------------------------
+
+      // free purging halt
+      //     while (digitalReadFast(Pin::Z80_HALT) != 0) {}; // Z80 has halted
+      //    digitalWriteFast(Pin::Z80_NMI, LOW);
+      //   digitalWriteFast(Pin::Z80_NMI, HIGH);
+      //   while (digitalReadFast(Pin::Z80_HALT) == 0) {}; // Z80 has resumed
+
+      //----------------------------------------------------------------
+      // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
+      // (we are running inside an NMI handler that itself uses NMI!)
+      for (uint8_t i = 80; i < 80 + 64; i += 8) {
+        Draw::text_P(16 + (i / 4), i, F("THIS IS A TEST"));
+        delay(100);
+      }
+      //----------------------------------------------------------------
+      // Send a jump instruction to the Z80
+      // This will land in a forever loop in the SNA ROM.
+      // That loop starts the path back to the stock ROM.
+      uint8_t a[2];
+      uint16_t val = 0x04AD;  // jp here
+      a[0] = (uint8_t)(val >> 8);
+      a[1] = (uint8_t)(val & 0xFF);
+      Z80Bus::sendBytes(a, 2);
+      //----------------------------------------------------------------
+      // Allow the Z80 time to restore EI (if it was previously enabled)
+      // and then start the idle loop.
+      delay(5);
+      //----------------------------------------------------------------
+      // Switch back to stock ROM. This ROM does not have the idle loop.
+      // It will POP the game registers and use "RET" to exit the NMI
+      // (not "RETN"), because we must control the restoration of interrupts.
+      // We’ve been doing non-standard things with NMIs inside NMI!
+      digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM
+    }
+
+
+  } while (true);  //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
 
   while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}
 }

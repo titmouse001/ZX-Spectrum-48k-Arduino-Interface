@@ -245,21 +245,83 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ;   Software houses would have been able to protect their games from attack by
 ;   placing two zeros in the NMIADD system variable.
 
-;; RESET
-L0066:  PUSH    AF              ; save the
-        PUSH    HL              ; registers.
-        LD      HL,($5CB0)      ; fetch the system variable NMIADD.
-        LD      A,H             ; test address
-        OR      L               ; for zero.
 
-        JR      NZ,L0070        ; skip to NO-RESET if NOT ZERO
 
-        JP      (HL)            ; jump to routine ( i.e. L0000 )
+;0013	DEFS $05,$FF	Unused locations.
+;0025	DEFS $03,$FF	Unused locations.
+;002B	DEFS $05,$FF	Unused locations.
+;005F	DEFS $07,$FF	Unused locations.
+;04AA   24 bytes - THE 'PROGRAM NAME' SUBROUTINE (ZX81)
+;16D4	 7 bytes - THE 'RECLAIM THE EDIT-LINE' SUBROUTINE
+;1988	 3 bytes	- Unused
+;1F1A	 9 byte  - THE 'FREE MEMORY' SUBROUTINE
+;2D8C 	 2 bytes - THE 'POSITIVE-INT-STORE' SUBROUTINE
+;386E	DEFS $0492,$FF	These locations are 'spare'. They all hold +FF.
+;                       (some games use this for IM2 patch)
 
-;; NO-RESET
-L0070:  POP     HL              ; restore the
-        POP     AF              ; registers.
-        RETN                    ; return to previous interrupt state.
+; RESET = 96/91 clock cycles, 14 bytes
+L0066:
+;        PUSH AF
+;        PUSH HL
+;	
+;        JP L04AA_NMI_SUPPORT
+;NMI_SUPPORT_RET:
+;
+;        POP HL
+;       POP AF
+;        RETN
+
+        ; RETN 2 bytes
+  
+	PUSH HL
+	PUSH DE
+	PUSH BC
+	PUSH AF
+
+ ;***       LD A,I          ; IFF2 -> Parity/Overflow Flag
+ ;***       SBC A,A         ; A=$00 if disabled, A=$FF if enabled
+
+        ; Need to use DI here as we will be firing a 2nd NMI from inside this NMI 
+        ; and so we can avoid the masable interrups state (IFF1) being restored unitil we are ready.
+ ;***       DI  ; fudge to update IFF2 in future NMI (but now we must restore this if set on final RETN)
+        ; idea's...
+        ; (1) we will probably check and if needed EI and do an extra NMI after that ?!!??
+        ; (2) or maybe a RET with a EI before ?!?!?!
+    
+        ; Overview of IFF1 & IFF2:
+        ;   IFF1 is the master interrupt enable flip-flop
+        ;   IFF2 is a copy of IFF1, used during NMI handling
+        ;   EI -> sets IFF1=1, DI -> sets IFF1=0
+        ;   NMI -> clears IFF1, but keeps its value in IFF2 so that RETN restores IFF1=IFF2.
+
+    
+.idle: jr .idle
+
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+
+
+; ;; RESET
+; L0066:  PUSH    AF              ; save the
+;         PUSH    HL              ; registers.
+;         LD      HL,($5CB0)      ; fetch the system variable NMIADD.
+;         LD      A,H             ; test address
+;         OR      L               ; for zero.
+
+;         JR      NZ,L0070        ; skip to NO-RESET if NOT ZERO
+
+;         JP      (HL)            ; jump to routine ( i.e. L0000 )
+
+; ;; NO-RESET
+; L0070:  POP     HL              ; restore the
+;         POP     AF              ; registers.
+;         RETN                    ; return to previous interrupt state.
 
 ; ---------------------------
 ; THE 'CH ADD + 1' SUBROUTINE
@@ -1464,28 +1526,65 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ;   This routine fetches a filename in ZX81 format and is not used by the 
 ;   cassette handling routines in this ROM.
 
+
+
+L04AA_NMI_SUPPORT:   ; must use up 24 bytes
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+
+        nop     ; MIRROR 2 bytes ".ContinueGameIdle: jr .ContinueGameIdle"
+        nop
+
+        ; last 6 bytes to 
+
+	POP AF
+ 	POP BC
+	POP DE
+ 	POP HL 
+
+;        ei
+        ret
+        nop
+
+
+        ;;;RETN   ; does not work for NMI inside NMI
+
 ;; zx81-name
-L04AA:  CALL    L24FB           ; routine SCANNING to evaluate expression.
-        LD      A,($5C3B)       ; fetch system variable FLAGS.
-        ADD     A,A             ; test bit 7 - syntax, bit 6 - result type.
-        JP      M,L1C8A         ; to REPORT-C if not string result
-                                ; 'Nonsense in BASIC'.
+; L04AA:  CALL    L24FB           ; routine SCANNING to evaluate expression.
+;         LD      A,($5C3B)       ; fetch system variable FLAGS.
+;         ADD     A,A             ; test bit 7 - syntax, bit 6 - result type.
+;         JP      M,L1C8A         ; to REPORT-C if not string result
+;                                 ; 'Nonsense in BASIC'.
 
-        POP     HL              ; drop return address.
-        RET     NC              ; return early if checking syntax.
+;         POP     HL              ; drop return address.
+;         RET     NC              ; return early if checking syntax.
 
-        PUSH    HL              ; re-save return address.
-        CALL    L2BF1           ; routine STK-FETCH fetches string parameters.
-        LD      H,D             ; transfer start of filename
-        LD      L,E             ; to the HL register.
-        DEC     C               ; adjust to point to last character and
-        RET     M               ; return if the null string.
-                                ; or multiple of 256!
+;         PUSH    HL              ; re-save return address.
+;         CALL    L2BF1           ; routine STK-FETCH fetches string parameters.
+;         LD      H,D             ; transfer start of filename
+;         LD      L,E             ; to the HL register.
+;         DEC     C               ; adjust to point to last character and
+;         RET     M               ; return if the null string.
+;                                 ; or multiple of 256!
 
-        ADD     HL,BC           ; find last character of the filename.
-                                ; and also clear carry.
-        SET     7,(HL)          ; invert it.
-        RET                     ; return.
+;         ADD     HL,BC           ; find last character of the filename.
+;                                 ; and also clear carry.
+;         SET     7,(HL)          ; invert it.
+;         RET                     ; return.
 
 ; =========================================
 ;
@@ -5891,12 +5990,9 @@ L1391:  DEFB    $80
 L1537:  DEFB    ',',' '+$80                             ; used in report line.
 ;; copyright
 L1539: 
-        ;DEFB    $7F                                     ; copyright
-        ;DEFM    " 1982 Sinclair Research Lt"
-        ;DEFB    'd'+$80
-        DEFM     "SnapLuncher               "
-        DEFB     ' '+$80
-
+        DEFB    $7F                                     ; copyright
+        DEFM    " 1982 Sinclair Research Lt"
+        DEFB    'd'+$80
 
 ; -------------
 ; REPORT-G

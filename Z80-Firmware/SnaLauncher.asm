@@ -124,11 +124,27 @@ L0038:
 ; NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
 ;                    RET Instruction:    10 T-states.  (24x0.2857=6.857microsecond)  <1/3.5MHz = 0.2857microseconds>
 ;				     
-ORG $0066
+ORG $0066  ; location needs to use up 14 bytes
 L0066:
 	; WARNING: NMI disables maskable interrupts (IFF1=0, old IFF1 saved into IFF2).
     ; If we return with RET, IFF1 will stay cleared and maskable interrupts will never come back.
-	RETN ;14 clock cycles, 2 bytes
+
+	RETN 	; MIRROR 4 bytes to PUSH
+	NOP			
+	NOP
+
+    NOP		; MIRROR 2 bytes to ".idle: jr .idle" 
+    NOP
+
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+
+	; jp L04AA
+	jp .IngameHook
+
 
 ;------------------------------------------------------
 ;******************
@@ -575,6 +591,11 @@ JumpInstruction:
 TempStack:        				; Temporary stack space (2 bytes)
 relocateEnd:
 
+; IDEA :  COULD REPLACE LAST TWO BYTES IN STOCK ROM TO HALT (0x76) AND JP (0xC3)
+;         JUMPING TO 0x3ffe WOULD ROLL FROM ROM INTO SCREEN MEMORY WHICH WOULD 
+;         ONLY NEED TO SPOIL 2 SCREEN BYTES (FOR THE JMP ADDR)  !!!
+;  ... hmmm, halt would need to be in SNA ROM and the final JMP IN STOCK to roll into RAM.
+
 ; SECTION NOTES: Could move this HALT in ROM.  However the Arduino would need to 
 ;				 acount for it. Since the Halt signals the ROM swap and the 
 ;				 "JP SCREEN_START" has yet to happen. So on seeing the halt the 
@@ -676,6 +697,63 @@ rawKeyFound:
     LD      A, C            	; Return pulse count
     JP      DONE_KEY
 ;------------------------------------------------------------------------
+
+ORG $04AA  ; *** KEEP THIS 24 Bytes long to match stock ***
+; This routine is technically still running from inside the NMI.
+; However game code has been redirected to run from SNA rom.
+L04AA:
+
+; The CPU is fetching instructions from the ROM we are about to swap, so there’s a good chance
+; it might grab bytes mid-instruction. If that happens, the displacement byte could come from the “wrong” ROM.
+; However, since the new ROM has NOPs at that location, a JR -2 could become JR 0,
+; which just jumps to the next instruction (i.e. basically a slow NOP and it does nothing but waste 2 cycles).
+
+	NOP
+	NOP
+	NOP
+	NOP  ;0x04AD - Arduino will exit mainloop here.
+	NOP
+	NOP
+
+    ld  HL,16384
+    bit 7,(HL)            	 ; check EI flag
+    jr  z,.ContinueGameIdle  ; if clear, don’t re-enable
+    ei    					 ; restore EI
+
+.ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+;------------------------------------------------------------------------
+
+ORG $0500  
+
+.IngameHook:
+
+		ld HL,16384  
+        ld   a,i          	; set flags, P/V = IFF2
+        jp   po,.WasOff    	; parity odd -> IFF2=0
+
+.WasOn:
+		set 7,(HL)            ; mark EI needed (bit7=1)
+	;;;	SET_BORDER 3  		; Magenta DEBUG
+	    ; We're running inside an NMI handler.  To avoid surprises,
+        ; set interrupt state to disabled and restore later.
+		di
+        jr   .StoreDone
+.WasOff: 
+ 		res 7,(HL)            ; clear EI flag (bit7=0)
+	;;;	SET_BORDER 4  		; green DEBUG
+.StoreDone:
+
+	jp mainloop
+
+.SkipEnable:  jp   L04AA  ; path back to stock ROM
 
 ;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM
