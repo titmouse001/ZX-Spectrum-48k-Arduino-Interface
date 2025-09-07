@@ -17,9 +17,9 @@ Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT file
 The interface loads games from a microSD card in about a second, using a slot at the back.
 Games can be in **.sna** or ***.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
 
-The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a joystick (via the built-in Kempston joystick port) or the interface menu button. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).
+The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a Kempston joystick. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).  Pressing the menu button during a game returns you to the game browser.
 
-The browser can also open **.scr** Spectrum screen files and **.txt** text files. These can be exited with any key. Pressing the menu button during a game returns you to the game browser.
+The browser can also open **.scr** Spectrum screen files and **.txt** text files. These can be exited with the Enter key. 
 
 For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu button during power-up.
 
