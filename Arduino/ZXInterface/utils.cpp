@@ -59,7 +59,8 @@ uint16_t Utils::get16bitPulseValue() {
     uint32_t lastPulseTime = 0;
     while (1) {
       // Service current HALT if active
-      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
+      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+//      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
         digitalWriteFast(Pin::Z80_NMI, LOW);
         digitalWriteFast(Pin::Z80_NMI, HIGH);
@@ -86,7 +87,8 @@ uint8_t Utils::get8bitPulseValue() {
     uint32_t lastPulseTime = 0;
     while (1) {
       // Service current HALT if active
-      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
+      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+    //  if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
         digitalWriteFast(Pin::Z80_NMI, LOW);
         digitalWriteFast(Pin::Z80_NMI, HIGH);

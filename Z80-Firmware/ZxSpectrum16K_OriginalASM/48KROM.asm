@@ -6534,9 +6534,24 @@ L16C5:  LD      HL,($5C63)      ; fetch STKBOT value
 ; edit buffer and not workspace.
 ; On entry, HL must point to the end of the something to be deleted.
 
-;; REC-EDIT
-L16D4:  LD      DE,($5C59)      ; fetch start of edit line from E_LINE.
-        JP      L19E5           ; jump forward to RECLAIM-1.
+;; REC-EDIT  - 7 bytes
+;L16D4:  LD      DE,($5C59)      ; fetch start of edit line from E_LINE.
+;        JP      L19E5           ; jump forward to RECLAIM-1.
+
+;----------------------------------------------------------------------------
+; See above as L16D4 is an unused section
+L16D4:  ; section must be 7 bytes
+
+       	nop ;  mirror rom = "dec a"
+        ; -----------------------------------------------------------
+        ; this will coninue has sna rom idel loops
+	nop ;  mirror rom = ".idleGameStart: jr .idleGameStart" 
+	nop ;  mirror rom = jr operand
+        ;------------------------------------------------------------
+	JP $3fff     ; stock rom has "inc a" here (so we can continue path into ram)
+        nop
+;----------------------------------------------------------------------------
+
 
 ; --------------------------
 ; The Table INDEXING routine
@@ -20406,8 +20421,10 @@ L3D00:  DEFB    %00000000
         DEFB    %10100001
         DEFB    %10011001
         DEFB    %01000010
-        DEFB    %00111100
-
+        DEFB    %00111100  ; 0x3C
+        ; This last byte works out to be a "INC A" (0x3C) 
+        ; we can make use this to run code from ram from stock rom!
+        ; (see L16D4)
 
 ;#end                            ; generic cross-assembler directive 
 

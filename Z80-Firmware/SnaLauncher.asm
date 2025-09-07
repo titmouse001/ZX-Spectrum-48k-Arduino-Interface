@@ -10,12 +10,6 @@ SCREEN_START				EQU $4000  ; [6144 bytes]
 SCREEN_END					EQU $57FF
 SCREEN_ATTRIBUTES_START		EQU $5800  ; [768 bytes]
 SCREEN_ATTRIBUTES_END		EQU $5AFF  
-
-; Final stack for restoring sna files is place at location 0x4004 
-; see label 'relocate' for more info.
-WORKING_STACK				EQU  (SCREEN_START+(TempStack-relocate))
-; Note: Setting the stack to the attributes area allows a visual debugging of the stack
-;WORKING_STACK_DEBUG			EQU SCREEN_ATTRIBUTES_END+1  ; DEBUG STACK
 LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 
 ;******************************************************************************
@@ -304,24 +298,6 @@ DONE_KEY:
 	call transmit8bitValue	; A=input
  	jp mainloop
 
-;     ld d,8              ; Bit counter
-; .bitloop8:
-;     bit 7,a             ; Test MSB of A
-;     HALT
-;     jr z,.bitEndMarkerDelay8  ; If 0, skip second HALT
-;     HALT                 ; Second HALT for '1'
-; .bitEndMarkerDelay8:
-;     ld e,40              ; Inter-bit delay
-; .delayMarkerLoop8:
-;     dec e
-;     jr nz,.delayMarkerLoop8
-;     add a,a              ; Shift A left
-;     dec d
-;     jr nz,.bitloop8
-
-;     ld c,$1F
-;     jp mainloop
-
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
 ;------------------------------------------------------
@@ -568,43 +544,21 @@ RestoreInterruptModeComplete:
 	dec sp                   ; Restore SP to its original position
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) - AF is now fully restored
 
-	JP SCREEN_START		 ; jump to relocated code in screen memory
-	
+	JP L16D4	; path to start game!
 ;-----------------------------------------------------------------------	
-
-
 
 ;-----------------------------------------------------------------------    
 ; RELOCATE SECTION - ROM swap code
-; 
-; NOTE: Games need original Spectrum ROM, but we can't execute code during ROM swap
+; Games need the original Spectrum ROM, but we can't execute ROM code during ROM swap
 ; so we copy this small routine to screen memory before swapping ROMs.
-; 
-; This 4-byte section runs from screen memory (safe to overwrite) and switches to 
-; the second half of our ROM (original 48K ROM copy). Switching back to internal 
-; ROM caused issues, so using ROM's second half works perfectly.
+; This 3-byte section runs from screen memory directly after we switch back to stack rom 
 ;-----------------------------------------------------------------------    
-relocate:
-    HALT       					; Signal Arduino to switch ROM
+relocate:  			; I've found ways to reduce this - now at 3 bytes.
 JumpInstruction:     
-    jp 0000h 					; Jump to restored program (address patched above)
-TempStack:        				; Temporary stack space (2 bytes)
+    jp 0000h 		; Jump to restored program (address patched above)
+TempStack:        	; Temporary stack space (2 bytes)
 relocateEnd:
-
-; IDEA :  COULD REPLACE LAST TWO BYTES IN STOCK ROM TO HALT (0x76) AND JP (0xC3)
-;         JUMPING TO 0x3ffe WOULD ROLL FROM ROM INTO SCREEN MEMORY WHICH WOULD 
-;         ONLY NEED TO SPOIL 2 SCREEN BYTES (FOR THE JMP ADDR)  !!!
-;  ... hmmm, halt would need to be in SNA ROM and the final JMP IN STOCK to roll into RAM.
-
-; SECTION NOTES: Could move this HALT in ROM.  However the Arduino would need to 
-;				 acount for it. Since the Halt signals the ROM swap and the 
-;				 "JP SCREEN_START" has yet to happen. So on seeing the halt the 
-;				 Arduino would need to delay for around +10t states to allow 
-;				 the JP to complete and the new rom swap in while in screen memory.
-;				 The window size is small, but possible, even more so if the 
-;				 ROM is not used soon after by the game.
 ;-----------------------------------------------------------------------	
-
 
 ;-----------------------------------------------------------------------
 ; SCREEN CLEAR - Initialize display memory
@@ -621,6 +575,7 @@ ClearScreen:
     ld (hl), a
     ldir
     ret
+;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------
 ; CLEAR RAM 48KB 
@@ -638,6 +593,7 @@ clr:    REPT 96
         ld sp, ix                
 
 		jp ClearAllRamRet 
+;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------	
 ; RESTORE INTERRUPT MODE - Helper for command_Execute
@@ -670,7 +626,6 @@ RestoreEI_IFFState:
 	EI
 	jp RestoreEI_IFFStateComplete		 ; avoiding stack based calls
 ;------------------------------------------------------------------------
-
 
 ;------------------------------------------------------------------------
 ; KEYBOARD SCANNING - Converts keypress to pulse count for "HALT-FUDGE" transmission
@@ -729,6 +684,7 @@ L04AA:
 	NOP
 	NOP
 	NOP
+
 ;------------------------------------------------------------------------
 
 ORG $0500  
@@ -756,12 +712,52 @@ ORG $0500
 .SkipEnable:  jp   L04AA  ; path back to stock ROM
 
 ;------------------------------------------------------------------------
+
+; -------------------------------------------------------------------------
+; *** ROM SWAP HANDOVER ***
+;
+; This 7-byte section is unused in the stock ROM.
+; We need it to navigate back to the game code without having to use another NMI to clear a HALT.
+; Previously this required an extra messy HALT and a precise wait on the Arduino side for the NMI to complete.
+; Here we just bankswitch, with the SNA ROM blocking (idle loop) letting the mirrored stock ROM
+; take over and continue execution. If you look at L16D4 in the stock ROM you will see it
+; does a JP $3FFF. This is a little trick to allow me to get to RAM for free! Luckily,
+; the last byte in the stock ROM is 0x3C (INC A). After that runs, the next location is 0x4000, and that’s 
+; where the launch code is sitting (JP <GAME_START_ADDR>). That's why you see a DEC A at the start of 
+; this supporting startup method.
+; -------------------------------------------------------------------------
+ORG $16D4       ; 7 bytes reserved
+L16D4:  
+	dec a  								; !!! LUCKY - Stock rom has "inc a" as last inctruction!!!
+	.idleGameStart: jr .idleGameStart   ;  Idle loop - this code will be swapped out
+	nop
+	nop
+	nop
+	nop
+;-------------------------------------------------------------------------
+
+
+;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM
 debug_trap:  		; If we see border lines, we probably hit this trap.
 	SET_BORDER a
 	inc a
 	jr debug_trap
 ;------------------------------------------------------------------------
+
+org $3fff
+;START_GAME: halt ; this will coninue into ram (screen memory)
+;START_GAME: 
+;	dec a  ; stock rom has 0xffff:inc a and we need that path back.
+;.idleGameStart: jr .idleGameStart  ; the stock will continue with "inc a" 
+; note: Luckly the last byte is useable as it's part of the charater set, the (c) symbol.
+; Doing this idle loop allows the stock rom to take control and continue
+; without needed to wait a precise number of Z80 t-states over on the Arduino, as 
+; this othjer wise need a HALT and NMI soforcing the Arduino to delayMicroseconds(7).
+
+; note: L16D4 get this path ready for the stock rom
+
+	NOP  ; REF ONLY: mirror rom runs this - this is never called
 
 ;------------------------------------------------------------------------
 last:
