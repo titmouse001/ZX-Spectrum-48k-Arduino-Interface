@@ -167,11 +167,11 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
 
 __attribute__((optimize("-Os")))
 uint8_t Z80Bus::GetKeyPulses() {
-  constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
-  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
-  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
-  BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
-  Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(TransmitKeyPacket::PACKET_LEN));
+  //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
+  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
+  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
+ // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+  Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
   return Utils::get8bitPulseValue();
 }
 
@@ -181,7 +181,7 @@ uint8_t Z80Bus::GetKeyPulses() {
 __attribute__((optimize("-Ofast")))
 void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
   // {
-  //  DEBUG FOR TESTING WITHOUT RLE (RLE IS ONLY USE THE HELP SPEEDUP TO TRANSFER)
+  //  DEBUG FOR TESTING WITHOUT RLE (RLE JUST HELPS SPEEDUP TRANSFER)
   //   uint8_t* pTransfer = &BufferManager::packetBuffer[0];
   //   uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, input_len);
   //   Z80Bus::sendBytes(pTransfer, packetLen + input_len);

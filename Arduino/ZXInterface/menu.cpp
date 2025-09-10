@@ -87,9 +87,9 @@ Menu::Button_t Menu::getButton() {
   if (joy & 0x08) return BUTTON_BACK;
 
   switch (Z80Bus::GetKeyPulses()) {
-    case 12: return BUTTON_BACK;
-    case 7: return BUTTON_ADVANCE;
-    case 32: return BUTTON_SELECT;
+    case 'Q': return BUTTON_BACK;
+    case 'A': return BUTTON_ADVANCE;
+    case 0x0D: return BUTTON_SELECT;   // 0x0D=enter
     default: return BUTTON_NONE;
   }
   

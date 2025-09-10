@@ -6,10 +6,10 @@
 #define E(e) static_cast<uint8_t>(e)
 constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;
 
-enum class TransmitKeyPacket : uint8_t {
+enum class ReceiveKeyboardPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
-  CMD_DELAY = 2,
+//  CMD_DELAY = 2,
   PACKET_LEN
 };
 

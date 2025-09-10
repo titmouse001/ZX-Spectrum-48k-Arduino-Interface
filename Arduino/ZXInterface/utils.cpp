@@ -111,11 +111,8 @@ __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
   do {
     unsigned long startTime = millis();
     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
-
-  //  Utils::frameDelay(startTime);
     uint8_t b = Utils::readJoystick();
     if (b & JOYSTICK_SELECT) {
-
       //----------------------------------------------------------------
       // Fire an NMI in the stock ROM
       // (uses modified unused locations: L0066 & L04AA)
@@ -125,14 +122,6 @@ __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
       // Allow the Z80 to push registers and then idle in a loop forever
       delay(5);
       digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM
-      //----------------------------------------------------------------
-
-      // free purging halt
-      //     while (digitalReadFast(Pin::Z80_HALT) != 0) {}; // Z80 has halted
-      //    digitalWriteFast(Pin::Z80_NMI, LOW);
-      //   digitalWriteFast(Pin::Z80_NMI, HIGH);
-      //   while (digitalReadFast(Pin::Z80_HALT) == 0) {}; // Z80 has resumed
-
       //----------------------------------------------------------------
       // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
       // (we are running inside an NMI handler that itself uses NMI!)
@@ -160,12 +149,14 @@ __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
       // We’ve been doing non-standard things with NMIs inside NMI!
       digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM
     }
-
-
   } while (true);  //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
 
   while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}
 }
+
+
+// 32*24 = 768
+
 
 
 // Not used ...

@@ -246,11 +246,13 @@ FillOddLoop:
 	jp mainloop             
 
 
-;------------------------------------------------------
-transmit16bitValue:  
-; Encodes/transmits using HALT pulses.
+;---------------------------------------------------------------------------------
+; transmit16bitValue - Encodes/transmits using HALT pulses. It is used to send
+; command function addresses to the Arduino.
+; 
 ; HL holds 16-bit value to transmit
 ; Sends 0 bit as 1 HALT, 1 bit as 2 HALTs
+transmit16bitValue:  
     ld d,16          ; Bit counter
 .bitloop:
     bit 7,h
@@ -268,8 +270,10 @@ transmit16bitValue:
     ret
 
 ;------------------------------------------------------
- transmit8bitValue:
-; A holds 8-bit value to transmit
+; transmit8bitValue - Encodes/transmits using HALT pulses.
+; A holds 8-bit value to transmit.  It is used to send things
+; like key presses and byte data to the Arduino.
+transmit8bitValue:
 ;------------------------------------------------------
      ld d,8              ; Bit counter
  .bitlooptx:
@@ -285,18 +289,17 @@ transmit16bitValue:
      add a,a              ; Shift A left
      dec d
      jr nz,.bitlooptx
-     ret
+     ;ret
+	 jp transmit8bitValueRet
 
 ;------------------------------------------------------
 command_TransmitKeyAs8Bits:
 ;------------------------------------------------------
-    READ_ACC_WITH_HALT			 
-
-    JP GET_KEY_PULSES          ; RESULT A = key pulses (2 to N)
-DONE_KEY:
-
-	call transmit8bitValue	; A=input
- 	jp mainloop
+	jp GET_KEY
+DONE_KEY:	
+	jp transmit8bitValue	; A=input
+transmit8bitValueRet:	
+	jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
@@ -350,17 +353,6 @@ readDataLoop:
 	out ($fe), a
 
 	jp mainloop
-
-
-;	000	Black		
-;	001	Blue		
-;	010	Red		
-;	011	Magenta		
-;	100	Green		
-;	101	Cyan		
-;	110	Yellow		
-;	111	White		
-
 
 ;------------------------------------------------------
 command_Copy:  ; "C" - COPY DATA
@@ -459,14 +451,10 @@ command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	; Restore IY,IX	
 	ld c,$1f  				  ; setup again for pair read 
 	READ_PAIR_WITH_HALT e,d;  ; read IY
-;;;;	push de
-;;;;	pop IY					  ; restore IY
 	LD IYL, e  
 	LD IYH, d  
 
 	READ_PAIR_WITH_HALT e,d;  ; read IX
-;;;;	push de
-;;;;	pop IX					  ; restore IX
 	LD IXL, e  
 	LD IXH, d  
 
@@ -627,30 +615,39 @@ RestoreEI_IFFState:
 	jp RestoreEI_IFFStateComplete		 ; avoiding stack based calls
 ;------------------------------------------------------------------------
 
-;------------------------------------------------------------------------
-; KEYBOARD SCANNING - Converts keypress to pulse count for "HALT-FUDGE" transmission
-;------------------------------------------------------------------------
-GET_KEY_PULSES:    
-    LD      D, $FE          	; First keyboard row
-    LD      C, 2     		    ; Start pulse count (1=no key, 2+=key index)
-rawcheckKeyLoop: 	
-    LD      A, D
-    IN      A, ($FE)      		; Read keyboard row
-    LD      B, 5            	; 5 keys per row
-    LD      E, 1            	; Bit mask
-rawcheckBits:
-    RRCA                    	; Test bit in carry
-    JR      NC, rawKeyFound    	; Key pressed (bit=0)
-    INC     C              	 	; Next pulse count
-    SLA     E           	    ; Next bit mask
-    DJNZ    rawcheckBits
-    RLC     D               	; Next keyboard row
-    JR      C, rawcheckKeyLoop
-    ; No key found
-	ld 		c,1
-rawKeyFound:
-    LD      A, C            	; Return pulse count
-    JP      DONE_KEY
+; GET_KEY - Reading Keyboard Ports
+; A zero in one of the five lowest bits means that the corresponding key is pressed.
+; Returns A with Key, 0 for none
+GET_KEY:    LD      HL, KEY_TABLE    
+            LD      D, $FE          ; 1st Port to read
+KEY_LOOP: 	
+			LD      A, D            
+	        IN      A, ($FE)        ; Read key state
+            LD      E, $01          ; Bitmask for key check
+            LD      B, $05          ; 5 bits (keys) in each row
+CheckKey:   RRCA                    ; 
+            JR      NC, KEY_PRESSED 	; key down (bit checked is zero)
+            INC     HL              ; next lookup
+			SLA     E         		; move test mask
+            DJNZ    CheckKey        
+            RLC     D               ; next port row to read ($FD,$FB...)
+            JR      C, KEY_LOOP
+KEY_PRESSED: 
+			LD      A, (HL)         ; get char value from table          
+            JP 		DONE_KEY                  
+; ----------------------------------------------
+KEY_TABLE:	; Key row mapping  		; $6649
+			defb $01,"ZXCV"		 	; $01=shift	
+			defb "ASDFG"
+			defb "QWERT"
+			defb "12345"
+			defb "09876"
+			defb "POIUY"  
+			defb $0D,"LKJH"     	; $0D=enter
+			defb $20,$02,"MNB"  	; $20=space, $02=sym shft
+			defb $0					; tables end marker
+
+
 ;------------------------------------------------------------------------
 
 ORG $04AA  ; *** KEEP THIS 24 Bytes long to match stock ***
@@ -818,36 +815,3 @@ DS  16384 - last	; leave rest of rom blank
 	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
 	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
 
-
-; **** SCRATCH PAD ********
-
-
-
-; ___UNUSED___GET_KEY:   
-;             LD      HL, KEY_TABLE    
-;             LD      D, $FE          ; 1st Port to read
-; checkKeyLoop: 	
-; 			LD      A, D            
-; 	        IN      A, ($FE)        ; Read key state
-;             LD      E, $01          ; Bitmask for key check
-;             LD      B, $05          ; 5 bits (keys) in each row
-; CheckKey:   RRCA                    ; 
-;             JR      NC, KeyFound 	; key down (bit checked is zero)
-;             INC     HL              ; next lookup
-; 			SLA     E         		; move test mask
-;             DJNZ    checkKeyLoop        
-;             RLC     D               ; next port row to read ($FD,$FB...)
-;             JR      C, checkKeyLoop
-; KeyFound: 	LD      A, (HL)         ; get char value from table
-; 			JP DONE_KEY
-
-; KEY_TABLE:	; Key row mapping  		; $6649
-; 			defb $01,"ZXCV"		 	; $01=shift	
-; 			defb "ASDFG"
-; 			defb "QWERT"
-; 			defb "12345"
-; 			defb "09876"
-; 			defb "POIUY"  
-; 			defb $0D,"LKJH"     	; $0D=enter
-; 			defb $20,$02,"MNB"  	; $20=space, $02=sym shft
-; 			defb $0					; tables end marker
