@@ -114,29 +114,34 @@ L0038:
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
 ; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
-; After NMI line signals for the speccy to resume, the Arduino waits for 7microseconds to allow time for the ISR to complete.
-; NMI Z80 timings -  Push PC onto Stack: ~10 or 11 T-states
-;                    RET Instruction:    10 T-states.  (24x0.2857=6.857microsecond)  <1/3.5MHz = 0.2857microseconds>
 ;				     
 ORG $0066  ; location needs to use up 14 bytes
 L0066:
 	; WARNING: NMI disables maskable interrupts (IFF1=0, old IFF1 saved into IFF2).
-    ; If we return with RET, IFF1 will stay cleared and maskable interrupts will never come back.
+	; If we return with 'RET' and not 'RETN', IFF1 will stay cleared and maskable interrupts will never come back.
+	; UPDATE: Above warning still applies - however this rule must be broken when the game is
+	;         running and the NMI fires to bring up the in-game menu, this time using bank switching
+	;         with control via idle JR -2 loops and NOPs in the mirror to swap into.
 
-	RETN 	; MIRROR 4 bytes to PUSH
-	NOP			
-	NOP
+	; -------------------------------------------
+	; The Sna ROM will use this routine 'RETN' while in the file browser menu.
+	; The idea is to get in and out from this NMI as quickly as possible!
+	RETN 	; 2 bytes				MIRROR ROM - Uses 4 bytes to PUSH 
+	NOP		; 1 byte			 	  			 The mirror ROM steps past this point			
+	NOP		; 1 byte			 	            it does not want to use a RETN for the in game menus
+	; -------------------------------------------
 
-    NOP		; MIRROR 2 bytes to ".idle: jr .idle" 
-    NOP
+	; -------------------------------------------
+	; These NOPs will release the mirror's idle loop and turn JR -2 into JR 0 (same as a slow NOP)
+    NOP		; 1 byte 				MIRROR ROM - Uses jr -2
+    NOP		; 1 byte 							
+	; -------------------------------------------
 
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
-
-	; jp L04AA
 	jp .IngameHook
 
 
@@ -201,19 +206,18 @@ sendFunctionList:
 
 
 ;------------------------------------------------------
-command_FillVariableEven:  ; Handles even byte fills
+command_FillVariableEven:  ; Fast memory fill for even byte counts
+; Input: Buffer end address, fill count/2, fill byte value
 ;------------------------------------------------------
-     LD IX, 0        
-     ADD IX, SP     
-
-    READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
-    halt                       ;
-    in b,(c)                   ; B = number of PUSH operations (count/2)
-    READ_ACC_WITH_HALT         ; A = fill byte
-
-    LD SP, HL                
-    LD H, A                  
-    LD L, A                  
+    LD IX, 0        
+    ADD IX, SP     
+    READ_PAIR_WITH_HALT h,l ; HL = buffer end (fill backwards) 
+    halt                    ; Synchronization 
+    in b,(c)                ; B = number of PUSH operations (count/2)
+    READ_ACC_WITH_HALT      ; A = fill byte
+    LD SP, HL          		; buffer
+    LD H, A                 ; 
+    LD L, A                 ; HL = fill value/pattern
 FillEvenLoop:
     PUSH HL                   
     DJNZ FillEvenLoop        
@@ -221,53 +225,55 @@ FillEvenLoop:
     jp mainloop                
 
 ;------------------------------------------------------
-command_FillVariableOdd:  ; Handles odd byte fills
+command_FillVariableOdd:  ;  Memory fill for odd byte counts
+; Input: Buffer end address, (count-1)/2, fill byte value
 ;------------------------------------------------------
-     LD IX, 0        
-     ADD IX, SP 
-
+    LD IX, 0        
+    ADD IX, SP 
 	READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
 	halt                       ;
 	in b,(c)                   ; B = number of PUSH operations ((count-1)/2)
 	halt                       ;
 	in d,(c)                   ; D = fill byte
-
 	dec hl                     ; handle the odd byte
 	ld (hl), d
-
 	ld sp, hl                  ; Set SP to buffer end - 1
 	ld h, d                   
-	ld l, d                   
-	
+	ld l, d                    ; HL = fill value/pattern
 FillOddLoop:
 	push hl                 
 	djnz FillOddLoop        
 	ld SP,IX   
 	jp mainloop             
 
-
 ;---------------------------------------------------------------------------------
 ; transmit16bitValue - Encodes/transmits using HALT pulses. It is used to send
 ; command function addresses to the Arduino.
 ; 
-; HL holds 16-bit value to transmit
-; Sends 0 bit as 1 HALT, 1 bit as 2 HALTs
+; HL holds 16-bit value to transmit, x1 HALT = '0' bit, x2 HALTs = '1' bit
 transmit16bitValue:  
-    ld d,16          ; Bit counter
+    ld d,16          		 ; Bit counter
 .bitloop:
     bit 7,h
     HALT
-    jr z,.bitEndMarkerDelay  ; If bit is 0, skip second HALT
+    jr z,.bitEndMarkerDelay  ; If bit is '0', skip second HALT
     HALT     	             ; Second HALT for bit '1'
 .bitEndMarkerDelay:
     ld e,40   	 	         ; Delay
 .delayMarkerLoop:
     dec e
     jr nz,.delayMarkerLoop
-    add hl,hl        ; Shift HL left
+    add hl,hl       		 ; Shift HL left
     dec d
     jr nz,.bitloop
     ret
+
+;------------------------------------------------------
+command_TransmitKeyAs8Bits:
+;------------------------------------------------------
+	JP GET_KEY            ; Returns key in A
+GET_KEY_RET:
+	; Fall through to transmit8bitValue
 
 ;------------------------------------------------------
 ; transmit8bitValue - Encodes/transmits using HALT pulses.
@@ -275,30 +281,20 @@ transmit16bitValue:
 ; like key presses and byte data to the Arduino.
 transmit8bitValue:
 ;------------------------------------------------------
-     ld d,8              ; Bit counter
+	ld d,8              ; Bit counter
  .bitlooptx:
-     bit 7,a             ; Test MSB of A
-     HALT
-     jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
-     HALT                 ; Second HALT for '1'
+    bit 7,a             ; Test MSB of A
+    HALT
+    jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
+    HALT                 ; Second HALT for '1'
  .bitEndMarkerDelaytx:
-     ld e,40              ; Inter-bit delay
+    ld e,40              ; Inter-bit delay
  .delayMarkerLooptx:
-     dec e
-     jr nz,.delayMarkerLooptx
-     add a,a              ; Shift A left
-     dec d
-     jr nz,.bitlooptx
-     ;ret
-	 jp transmit8bitValueRet
-
-;------------------------------------------------------
-command_TransmitKeyAs8Bits:
-;------------------------------------------------------
-	jp GET_KEY
-DONE_KEY:	
-	jp transmit8bitValue	; A=input
-transmit8bitValueRet:	
+    dec e
+    jr nz,.delayMarkerLooptx
+    add a,a              ; Shift left
+    dec d
+    jr nz,.bitlooptx
 	jp mainloop
 
 ;------------------------------------------------------
@@ -342,16 +338,9 @@ readDataLoop:
 	halt
 	ini   						; (HL)<-(C), B<-B-1, HL<-HL+1	[16]
 	JP nz,readDataLoop			;								[10]
-
-;	in a,($1f)   				; Read data byte [11]
-;	ld (hl),a					; Store byte	 [7]
-;  	inc hl						;				 [6]
-;	djnz readDataLoop			;			 	 [13]
-
 	ld a,R
 	AND LOADING_COLOUR_MASK  	; Use data for border flash
 	out ($fe), a
-
 	jp mainloop
 
 ;------------------------------------------------------
@@ -634,7 +623,7 @@ CheckKey:   RRCA                    ;
             JR      C, KEY_LOOP
 KEY_PRESSED: 
 			LD      A, (HL)         ; get char value from table          
-            JP 		DONE_KEY                  
+            JP 		GET_KEY_RET                  
 ; ----------------------------------------------
 KEY_TABLE:	; Key row mapping  		; $6649
 			defb $01,"ZXCV"		 	; $01=shift	
@@ -647,31 +636,26 @@ KEY_TABLE:	; Key row mapping  		; $6649
 			defb $20,$02,"MNB"  	; $20=space, $02=sym shft
 			defb $0					; tables end marker
 
-
 ;------------------------------------------------------------------------
 
-ORG $04AA  ; *** KEEP THIS 24 Bytes long to match stock ***
-; This routine is technically still running from inside the NMI.
-; However game code has been redirected to run from SNA rom.
+ORG $04AA  ; *** KEEP THIS 24 Bytes long to match stock ROM ***
+; CPU may fetch mid-instruction during ROM swap. If displacement byte comes from 
+; new ROM (which has NOPs), JR -2 becomes JR 0 (two cycle slow NOP).
 L04AA:
-
-; The CPU is fetching instructions from the ROM we are about to swap, so there’s a good chance
-; it might grab bytes mid-instruction. If that happens, the displacement byte could come from the “wrong” ROM.
-; However, since the new ROM has NOPs at that location, a JR -2 could become JR 0,
-; which just jumps to the next instruction (i.e. basically a slow NOP and it does nothing but waste 2 cycles).
-
 	NOP
 	NOP
 	NOP
-	NOP  ;0x04AD - Arduino will exit mainloop here.
+	; *************************************
+	; **** Arduino exits mainloop here. ***
+	; *************************************
+	NOP  ; 0x04AD:
+	NOP  ; 0x04AE:
+	; *************************************
 	NOP
-	NOP
-
     ld  HL,16384
-    bit 7,(HL)            	 ; check EI flag
-    jr  z,.ContinueGameIdle  ; if clear, don’t re-enable
-    ei    					 ; restore EI
-
+    bit 7,(HL)            	 			  ; check EI flag
+    jr  z,.ContinueGameIdle  			  ; if clear, don’t re-enable
+    ei    					 			  ; restore EI
 .ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
 	NOP
 	NOP
@@ -684,14 +668,13 @@ L04AA:
 
 ;------------------------------------------------------------------------
 
-ORG $0500  
+ORG $04AA+24  ; 0x04C2
 
 .IngameHook:
 
 		ld HL,16384  
-        ld   a,i          	; set flags, P/V = IFF2
-        jp   po,.WasOff    	; parity odd -> IFF2=0
-
+        ld a,i          	; set flags, P/V = IFF2
+        jp po,.WasOff    	; parity odd -> IFF2=0
 .WasOn:
 		set 7,(HL)            ; mark EI needed (bit7=1)
 	;;;	SET_BORDER 3  		; Magenta DEBUG
@@ -706,7 +689,7 @@ ORG $0500
 
 	jp mainloop
 
-.SkipEnable:  jp   L04AA  ; path back to stock ROM
+;;;.SkipEnable:  jp   L04AA  ; path back to stock ROM
 
 ;------------------------------------------------------------------------
 
@@ -716,12 +699,12 @@ ORG $0500
 ; This 7-byte section is unused in the stock ROM.
 ; We need it to navigate back to the game code without having to use another NMI to clear a HALT.
 ; Previously this required an extra messy HALT and a precise wait on the Arduino side for the NMI to complete.
+;
 ; Here we just bankswitch, with the SNA ROM blocking (idle loop) letting the mirrored stock ROM
-; take over and continue execution. If you look at L16D4 in the stock ROM you will see it
-; does a JP $3FFF. This is a little trick to allow me to get to RAM for free! Luckily,
-; the last byte in the stock ROM is 0x3C (INC A). After that runs, the next location is 0x4000, and that’s 
-; where the launch code is sitting (JP <GAME_START_ADDR>). That's why you see a DEC A at the start of 
-; this supporting startup method.
+; take over and continue execution. If you look at L16D4: in the stock ROM you will see I've modified it
+; to use a "JP $3FFF". This allows me to get to RAM for free! As luckily, the last byte ($3FFF) in the stock 
+; ROM is 0x3C (INC A). After that runs, the next location is $4000, and that’s where the launch code is 
+; sitting (JP <GAME_START_ADDR>). Hence DEC A here to correct the mirror roms INC A.
 ; -------------------------------------------------------------------------
 ORG $16D4       ; 7 bytes reserved
 L16D4:  
@@ -732,7 +715,6 @@ L16D4:
 	nop
 	nop
 ;-------------------------------------------------------------------------
-
 
 ;------------------------------------------------------------------------
 org $3ff0	  		; Locate near the end of ROM

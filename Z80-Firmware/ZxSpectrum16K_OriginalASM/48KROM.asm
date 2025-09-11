@@ -246,7 +246,6 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ;   placing two zeros in the NMIADD system variable.
 
 
-
 ;0013	DEFS $05,$FF	Unused locations.
 ;0025	DEFS $03,$FF	Unused locations.
 ;002B	DEFS $05,$FF	Unused locations.
@@ -259,44 +258,20 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ;386E	DEFS $0492,$FF	These locations are 'spare'. They all hold +FF.
 ;                       (some games use this for IM2 patch)
 
-; RESET = 96/91 clock cycles, 14 bytes
-L0066:
-;        PUSH AF
-;        PUSH HL
-;	
-;        JP L04AA_NMI_SUPPORT
-;NMI_SUPPORT_RET:
-;
-;        POP HL
-;       POP AF
-;        RETN
-
-        ; RETN 2 bytes
-  
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
+; L0066: is unused - We are going to use it to break into games 
+;                    and display an in game menu.
+; The Sna ROM is bank switched in 1/2 way down this section taking over.
+L0066:  ; /NMI line fired 
 	PUSH HL
 	PUSH DE
 	PUSH BC
 	PUSH AF
-
- ;***       LD A,I          ; IFF2 -> Parity/Overflow Flag
- ;***       SBC A,A         ; A=$00 if disabled, A=$FF if enabled
-
-        ; Need to use DI here as we will be firing a 2nd NMI from inside this NMI 
-        ; and so we can avoid the masable interrups state (IFF1) being restored unitil we are ready.
- ;***       DI  ; fudge to update IFF2 in future NMI (but now we must restore this if set on final RETN)
-        ; idea's...
-        ; (1) we will probably check and if needed EI and do an extra NMI after that ?!!??
-        ; (2) or maybe a RET with a EI before ?!?!?!
-    
-        ; Overview of IFF1 & IFF2:
-        ;   IFF1 is the master interrupt enable flip-flop
-        ;   IFF2 is a copy of IFF1, used during NMI handling
-        ;   EI -> sets IFF1=1, DI -> sets IFF1=0
-        ;   NMI -> clears IFF1, but keeps its value in IFF2 so that RETN restores IFF1=IFF2.
-
-    
-.idle: jr .idle
-
+        ;---------------------------------
+.idle: jr .idle   ; bank switch into NOPs
+        ;---------------------------------
         nop
         nop
         nop
@@ -304,24 +279,12 @@ L0066:
         nop
         nop
         nop
-        nop
+        nop     ; (Here the mirror rom will jump into a '.IngameHook')
 
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
 
-; ;; RESET
-; L0066:  PUSH    AF              ; save the
-;         PUSH    HL              ; registers.
-;         LD      HL,($5CB0)      ; fetch the system variable NMIADD.
-;         LD      A,H             ; test address
-;         OR      L               ; for zero.
-
-;         JR      NZ,L0070        ; skip to NO-RESET if NOT ZERO
-
-;         JP      (HL)            ; jump to routine ( i.e. L0000 )
-
-; ;; NO-RESET
-; L0070:  POP     HL              ; restore the
-;         POP     AF              ; registers.
-;         RETN                    ; return to previous interrupt state.
 
 ; ---------------------------
 ; THE 'CH ADD + 1' SUBROUTINE
@@ -1527,42 +1490,52 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ;   cassette handling routines in this ROM.
 
 
+; ----------------------------------------------------------------
+; ----------------------------------------------------------------
+; ----------------------------------------------------------------
+; The SNA ROM will be taken over by this section
+; and release the "JR -2" running in the mirror ROM with NOPs
+; (if the operand is hit mid-instruction, it will turn into a safe JR 0, basically a slower NOP)
+L04AA:  ; This section must use 24 bytes
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        
+        ;------------------------------------------------------------------
+        nop ; Mirror ROM uses 8 bytes to restore the 'ei' state (IFF)
+        nop 
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        ;------------------------------------------------------------------
+  
+        ;------------------------------------------------------------------
+        nop  ; Break out of                          MIRROR 2 bytes: jr -2 
+        nop  ;  the mirror roms loop                                       
+        ;------------------------------------------------------------------
 
-L04AA_NMI_SUPPORT:   ; must use up 24 bytes
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
         nop
         nop
 
-        nop     ; MIRROR 2 bytes ".ContinueGameIdle: jr .ContinueGameIdle"
-        nop
-
-        ; last 6 bytes to 
-
-	POP AF
+	POP AF ; last 6 bytes give back the games registers
  	POP BC
 	POP DE
  	POP HL 
-
-;        ei
-        ret
+        ;------------
+        ; Return back to game - technically still inside the first NMI.
+        ret    ; before this we dynamically restored the EI in the mirror ROM (L04AA)
         nop
 
-
-        ;;;RETN   ; does not work for NMI inside NMI
-
+; ----------------------------------------------------------------
+; ----------------------------------------------------------------
+; ----------------------------------------------------------------
+ 
 ;; zx81-name
 ; L04AA:  CALL    L24FB           ; routine SCANNING to evaluate expression.
 ;         LD      A,($5C3B)       ; fetch system variable FLAGS.
