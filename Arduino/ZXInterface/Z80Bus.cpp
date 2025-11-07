@@ -8,6 +8,7 @@
 #include "PacketTypes.h"
 #include "BufferManager.h"
 #include "Utils.h"
+#include "draw.h"
 
 constexpr uint8_t COMMAND_ADDR_SIZE = 2;
 
@@ -20,6 +21,11 @@ void Z80Bus::setupPins() {
   // best do ROM_HALF setting first
   pinModeFast(Pin::ROM_HALF, OUTPUT);
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
+
+
+  pinModeFast(PIN_A5, OUTPUT);
+
+ digitalWriteFast(PIN_A5,HIGH); 
 
   pinModeFast(Pin::Z80_HALT, INPUT);
   pinModeFast(Pin::Z80_NMI, OUTPUT);
@@ -35,6 +41,8 @@ void Z80Bus::setupPins() {
 
   // setup /NMI - Z80 /NMI, used to trigger a 'HALT' so the Z80 can be released and resume
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
+
+
 }
 
 __attribute__((optimize("-Os")))
@@ -165,15 +173,63 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
   sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
-__attribute__((optimize("-Os")))
-uint8_t Z80Bus::GetKeyPulses() {
-  //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
+uint8_t Z80Bus::getByte() {
+
   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
- // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
-  return Utils::get8bitPulseValue();
+ 
+  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // Wait for Halt (active low)
+//  DDRD  = 0xFF;  // Set all PORTD pins as outputs
+//  PORTD = 0x00;  // outputs start LOW
+  DDRD = 0x00 ; // make them inputs  
+  PORTD = 0x00;  // no pull-ups
+  // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+  digitalWriteFast(Pin::Z80_NMI, LOW);
+delayMicroseconds(1);
+  digitalWriteFast(Pin::Z80_NMI, HIGH);
+  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // block untill z80 is fully back
+
+//   while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
+//   //DDRD  = 0xFF;  // Set all PORTD pins as outputs
+//   //PORTD = 0x00;  // outputs start LOW
+//   digitalWriteFast(Pin::Z80_NMI, LOW);
+// delayMicroseconds(1);
+//   digitalWriteFast(Pin::Z80_NMI, HIGH);
+//   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
+
+  // need to read from Latch IC (74HC574) - set Nano data pins to read
+ // DDRD = 0x00 ; // make them inputs  
+ // PORTD = 0x00;  // no pull-ups
+
+  digitalWriteFast(PIN_A5,LOW); // #OE on the latch IC
+  //delay(1);
+  delayMicroseconds(10);
+  uint8_t byte = PIND;
+  digitalWriteFast(PIN_A5,HIGH);
+
+  // uint8_t b0 = byte & B00000001;   // CORRECT PCB ERROR - lines are swapped
+  // uint8_t b1 = (byte>>1) & B00000001;
+  // byte = (byte & B11111100) + (b1) + (b0<<1);
+
+   DDRD  = 0xFF;  // Set all PORTD pins as outputs
+  PORTD = 0x00;  // outputs start LOW
+
+   return byte;
+
 }
+
+
+// __attribute__((optimize("-Os")))
+// uint8_t Z80Bus::GetKeyPulses_NO_LONGER_USED() {
+//   //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
+//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
+//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
+//  // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+//   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
+//   return Utils::get8bitPulseValue();
+// }
+
 
 // Encode/send RLE-compressed data to the Speccy which is decompresses its side.
 // Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
@@ -296,3 +352,15 @@ void Z80Bus::clearScreen(uint8_t col) {
   Z80Bus::fillScreenAttributes(col);
   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
 }
+
+// void Z80Bus::syncWithZ80(uint8_t col) {
+//   // Wait for Halt (active low)
+//    while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
+// }
+
+// void Z80Bus::triggerNMI(uint8_t col) {
+//   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+//   digitalWriteFast(Pin::Z80_NMI, LOW);
+//   delayMicroseconds(1);
+//   digitalWriteFast(Pin::Z80_NMI, HIGH);
+// }

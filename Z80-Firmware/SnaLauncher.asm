@@ -1,7 +1,7 @@
-; NOTES:-
-;            rom: $0000 - $3FFF (16 KB ROM)
-;         screen: $4000 - $57FF (6144 bytes - screen display data)
-;     attributes: $5800 - $5AFF (768 bytes - screen color attributes)
+; ZX SPECTRUM 48K MEMORY MAP:-
+;        rom: $0000 - $3FFF (16 KB ROM)
+;     screen: $4000 - $57FF (6144 bytes - screen display data)
+; attributes: $5800 - $5AFF (768 bytes - screen color attributes)
 ;
 ;******************************************************************************
 ;   CONSTANTS
@@ -33,12 +33,6 @@ ENDM
 
 ; READ_PAIR_WITH_HALT - Reads a 16-bit value sent from Arduino into a register pair
 ; **DO NOT USE BC AS DESTINATION** - Macro uses C for I/O port ($1F)
-;   - If you need BC, use workaround:
-;       ld C, $1F				  ; Setup needed for this macro
-;       READ_PAIR_WITH_HALT e, d  ; Read into DE first
-;       push de                   ; 
-;       pop bc                    ; Now in BC
-;
 MACRO READ_PAIR_WITH_HALT ,reg_low,reg_high  
     halt
     in reg_low, (c)  ; Read lower byte
@@ -66,7 +60,6 @@ ENDM
 ORG $0000
 L0000:  
 	DI                
-	
 	;------------------------------------------
 	; For a test on both 48/128k machines (now using '_ROMCS' & 'ROM1_OE')
 	;       48k: _ROMCS (edge 25B) is NOT USED on +2a/b, +3 boards.
@@ -110,6 +103,9 @@ L0038:
 	RET 	; 10 t-states
 ;----------------------------------------------------------------------------------
 
+; notes: NMI Z80 timings
+; 		 Push PC onto Stack: 10/11 T-states
+; 		 RETN Instruction:   14 T-states.
 ;----------------------------------------------------------------------------------
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
@@ -131,6 +127,7 @@ L0066:
 	NOP		; 1 byte			 	            it does not want to use a RETN for the in game menus
 	; -------------------------------------------
 
+; 4 NOPs in mask ROM  -  8 bytes to skip (these comments updating!!!!!!! )
 	; -------------------------------------------
 	; These NOPs will release the mirror's idle loop and turn JR -2 into JR 0 (same as a slow NOP)
     NOP		; 1 byte 				MIRROR ROM - Uses jr -2
@@ -158,7 +155,7 @@ check_initial:
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
-	ld hl,command_TransmitKeyAs8Bits
+	ld hl,command_TransmitKey
 	call transmit16bitValue
 	;SET_BORDER 0
 	
@@ -269,33 +266,41 @@ transmit16bitValue:
     ret
 
 ;------------------------------------------------------
-command_TransmitKeyAs8Bits:
+command_TransmitKey:
 ;------------------------------------------------------
 	JP GET_KEY            ; Returns key in A
-GET_KEY_RET:
-	; Fall through to transmit8bitValue
+	GET_KEY_RET:		  ; (jump back - avoid stack usage)
 
-;------------------------------------------------------
-; transmit8bitValue - Encodes/transmits using HALT pulses.
-; A holds 8-bit value to transmit.  It is used to send things
-; like key presses and byte data to the Arduino.
-transmit8bitValue:
-;------------------------------------------------------
-	ld d,8              ; Bit counter
- .bitlooptx:
-    bit 7,a             ; Test MSB of A
-    HALT
-    jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
-    HALT                 ; Second HALT for '1'
- .bitEndMarkerDelaytx:
-    ld e,40              ; Inter-bit delay
- .delayMarkerLooptx:
-    dec e
-    jr nz,.delayMarkerLooptx
-    add a,a              ; Shift left
-    dec d
-    jr nz,.bitlooptx
+;;;;;;;;;;;;;;;;	halt
+
+    LD C, $1F			  ; #IORQ + A7 + #RD
+    OUT (C), A    		  ; Game cart latches value (latch ic: 74HC574PW)
+	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 	jp mainloop
+
+;
+; NEW PCB - 'transmit8bitValue' replaced with a simple out instraction (above).
+; ;------------------------------------------------------
+; ; transmit8bitValue - Encodes/transmits using HALT pulses.
+; ; A holds 8-bit value to transmit.  It is used to send things
+; ; like key presses and byte data to the Arduino.
+; transmit8bitValue:
+; ;------------------------------------------------------
+; 	ld d,8              ; Bit counter
+;  .bitlooptx:
+;     bit 7,a             ; Test MSB of A
+;     HALT
+;     jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
+;     HALT                 ; Second HALT for '1'
+;  .bitEndMarkerDelaytx:
+;     ld e,40              ; Inter-bit delay
+;  .delayMarkerLooptx:
+;     dec e
+;     jr nz,.delayMarkerLooptx
+;     add a,a              ; Shift left
+;     dec d
+;     jr nz,.bitlooptx
+; 	jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
@@ -687,32 +692,72 @@ ORG $04AA+24  ; 0x04C2
 	;;;	SET_BORDER 4  		; green DEBUG
 .StoreDone:
 
+; ------------------------------------------
+; ------------------------------------------
+; ------------------------------------------
+; Send the screen to the Arduino to store
+; We wish do modify the games screen by adding a ingame menu for
+; things like activating pokes
+
+	ld de, 6144+768  ; DE = Fill amount 2 bytes
+	ld hl, 16384  ; HL = Destination address
+	
+	LD C, $1F
+transmitScreenDataLoop:
+	ld a,(hl)	
+
+;;;;;;;;	ld a, %00011000  ; TEST ONLY
+
+   	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
+	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+
+    inc hl		
+    DEC DE      
+    LD A, D     
+    OR E        
+    JP NZ, transmitScreenDataLoop 
+
+; ------------------------------------------
+; ------------------------------------------
+; ------------------------------------------
+
 	jp mainloop
 
-;;;.SkipEnable:  jp   L04AA  ; path back to stock ROM
 
 ;------------------------------------------------------------------------
 
 ; -------------------------------------------------------------------------
-; *** ROM SWAP HANDOVER ***
+; *** ROM SWAP - GAME STARTUP ***
 ;
-; This 7-byte section is unused in the stock ROM.
-; We need it to navigate back to the game code without having to use another NMI to clear a HALT.
-; Previously this required an extra messy HALT and a precise wait on the Arduino side for the NMI to complete.
+; The stock ROM ends just before the screen memory at 0x4000.
+; L16D4: This area contains 7 unused bytes in the stock ROM that we mirror here.
+; We use it to safely return to the game code.
+; (Earlier versions without this technique required a precise wait 
+;  on the Arduino side to synchronize after HALT/NMI.)
 ;
-; Here we just bankswitch, with the SNA ROM blocking (idle loop) letting the mirrored stock ROM
-; take over and continue execution. If you look at L16D4: in the stock ROM you will see I've modified it
-; to use a "JP $3FFF". This allows me to get to RAM for free! As luckily, the last byte ($3FFF) in the stock 
-; ROM is 0x3C (INC A). After that runs, the next location is $4000, and that’s where the launch code is 
-; sitting (JP <GAME_START_ADDR>). Hence DEC A here to correct the mirror roms INC A.
+; Arduino process:
+; - The Arduino sends a "JP 0x04AD" command. 
+; - The Arduino then waits briefly to allow the Z80 enter the idle loop.
+; - The Arduino switches back to the STOCK ROM.
+;   The stock ROM does not contain the idle loop: it will POP the game registers and use
+;   RET (not RETN) to exit the NMI so we control interrupt restoration.
+;
+; Note:
+; In the stock ROM patches address L16D4 to execute "JP $3FFF".
+; ROM byte ($3FFF) which is 0x3C (INC A). After INC A the CPU continues into 
+; RAM at $4000 where our game launch code (JP <GAME_START_ADDR>) is.
 ; -------------------------------------------------------------------------
-ORG $16D4       ; 7 bytes reserved
+
+ORG $16D4       ; Must use all 7 bytes here (this code will be swapped out)
 L16D4:  
-	dec a  								; !!! LUCKY - Stock rom has "inc a" as last inctruction!!!
-	.idleGameStart: jr .idleGameStart   ;  Idle loop - this code will be swapped out
+	; --------------------------------------------------------------------
+	; **** idel loop - mirrow rom will break us out of this with nops ****
+	dec a  								; cancel out the mirrored ROM’s INC A
+	.idleGameStart: jr .idleGameStart   ; Idle loop
+	; -------------------------------------------------------------------- 
 	nop
 	nop
-	nop
+	nop  ; mirror rom does a "JP $3fff" here
 	nop
 ;-------------------------------------------------------------------------
 

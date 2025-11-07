@@ -21,13 +21,20 @@ extern void sendCopyCommand(uint16_t address, uint8_t amount);
 extern void sendWaitVBLCommand();
 extern void sendStackCommand(uint16_t addr);
 extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
-extern uint8_t GetKeyPulses();
+
+//extern uint8_t GetKeyPulses_NO_LONGER_USED();
+extern uint8_t getByte();
+
 extern void encodeTransferPacket(uint16_t input_len, uint16_t addr, bool borderLoadingEffect);
 extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
 extern void synchronizeForExecution();
 extern void executeSnapshot();
 extern boolean bootFromSnapshot(FatFile* pFile);
 extern void clearScreen(uint8_t col = 0);
+
+
+extern void syncWithZ80();
+extern void triggerNMI();
 
 }
 

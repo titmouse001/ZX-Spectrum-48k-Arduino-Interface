@@ -86,7 +86,8 @@ Menu::Button_t Menu::getButton() {
   if (joy & 0x04) return BUTTON_ADVANCE;
   if (joy & 0x08) return BUTTON_BACK;
 
-  switch (Z80Bus::GetKeyPulses()) {
+  //switch (Z80Bus::GetKeyPulses()) {
+  switch (Z80Bus::getByte()) {
     case 'Q': return BUTTON_BACK;
     case 'A': return BUTTON_ADVANCE;
     case 0x0D: return BUTTON_SELECT;   // 0x0D=enter
@@ -191,7 +192,7 @@ FatFile* Menu::handleMenu() {
 
       if (inSubFolder && currentFileIndex == 0) { // Go back to root
         root.close();
-        if (root.open("/")) {  // parent not supported - simply resets to root
+        if (root.open("/")) {  // navagating back simply resets to root
           inSubFolder = false;
           totalFiles = rescanFolder(true);
         }

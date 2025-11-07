@@ -1,3 +1,6 @@
+; CHANGES HAVE BEEN MADE TO THIS STOCK ROM - SEE L0066:
+
+
 ;************************************************************************
 ;** An Assembly File Listing to generate a 16K ROM for the ZX Spectrum **
 ;************************************************************************
@@ -246,32 +249,37 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ;   placing two zeros in the NMIADD system variable.
 
 
-;0013	DEFS $05,$FF	Unused locations.
-;0025	DEFS $03,$FF	Unused locations.
-;002B	DEFS $05,$FF	Unused locations.
-;005F	DEFS $07,$FF	Unused locations.
-;04AA   24 bytes - THE 'PROGRAM NAME' SUBROUTINE (ZX81)
-;16D4	 7 bytes - THE 'RECLAIM THE EDIT-LINE' SUBROUTINE
-;1988	 3 bytes	- Unused
-;1F1A	 9 byte  - THE 'FREE MEMORY' SUBROUTINE
-;2D8C 	 2 bytes - THE 'POSITIVE-INT-STORE' SUBROUTINE
-;386E	DEFS $0492,$FF	These locations are 'spare'. They all hold +FF.
-;                       (some games use this for IM2 patch)
-
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
-; L0066: is unused - We are going to use it to break into games 
-;                    and display an in game menu.
-; The Sna ROM is bank switched in 1/2 way down this section taking over.
+; *** UNUSED LOCATIONS REPURPOSED FOR ROM SWITCHING ***
+;              0x0013	DEFS $05,$FF	Unused locations.
+;              0x0025	DEFS $03,$FF	Unused locations.
+;              0x002B	DEFS $05,$FF	Unused locations.
+;              0x005F	DEFS $07,$FF	Unused locations.
+;REPURPOSED -> 0x04AA   24 bytes - THE 'PROGRAM NAME' SUBROUTINE (ZX81)
+;REPURPOSED -> 0x16D4	 7 bytes - THE 'RECLAIM THE EDIT-LINE' SUBROUTINE
+;              0x1988	 3 bytes - Unused
+;              0x1F1A	 9 byte  - THE 'FREE MEMORY' SUBROUTINE
+;              0x2D8C 	 2 bytes - THE 'POSITIVE-INT-STORE' SUBROUTINE
+;              0x386E	DEFS $0492,$FF	These locations are 'spare'. They all hold +FF.
+;                               (some games use this for IM2 patch - best leave alone)
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
+; --------------------------------------------------------------------
+; L0066: Is buggy and so is never used 
+; We are going to use it to break into games and display an in game menu.
+;
+; The Sna ROM is bank switched during this section taking over.
 L0066:  ; /NMI line fired 
 	PUSH HL
 	PUSH DE
 	PUSH BC
 	PUSH AF
-        ;---------------------------------
-.idle: jr .idle   ; bank switch into NOPs
-        ;---------------------------------
+        ;------------------------------------------------------
+        ; Bank switching NOPs this continuing on in the mirrow rom.
+.idle: jr .idle  
+        ;------------------------------------------------------
         nop
         nop
         nop
@@ -1500,7 +1508,7 @@ L04AA:  ; This section must use 24 bytes
         nop
         nop
         nop
-        nop
+        nop  ; 0x04AD:
         nop
         nop
         
@@ -1523,13 +1531,13 @@ L04AA:  ; This section must use 24 bytes
         nop
         nop
 
-	POP AF ; last 6 bytes give back the games registers
+	POP AF ; restore games registers
  	POP BC
 	POP DE
  	POP HL 
         ;------------
         ; Return back to game - technically still inside the first NMI.
-        ret    ; before this we dynamically restored the EI in the mirror ROM (L04AA)
+        ret    ; older code before this would dynamically restore the EI in the mirror ROM (L04AA)
         nop
 
 ; ----------------------------------------------------------------
@@ -6512,19 +6520,24 @@ L16C5:  LD      HL,($5C63)      ; fetch STKBOT value
 ;        JP      L19E5           ; jump forward to RECLAIM-1.
 
 ;----------------------------------------------------------------------------
-; See above as L16D4 is an unused section
-L16D4:  ; section must be 7 bytes
+;----------------------------------------------------------------------------
+;----------------------------------------------------------------------------
+; L16D4: is unused and has been repurposed. 
+; It's job is to continue on (breaks the mirror ROM idel loop) and jumps to the last location in ROM.
+; This last location is a INC A.  See SNA rom for more info about whats going on here.
+L16D4:  ; section must use up 7 bytes exactly.
 
        	nop ;  mirror rom = "dec a"
         ; -----------------------------------------------------------
-        ; this will coninue has sna rom idel loops
-	nop ;  mirror rom = ".idleGameStart: jr .idleGameStart" 
-	nop ;  mirror rom = jr operand
+        ; This mirror rom now coninues as the other rom was locked in a idel loop
+	nop ;  mirror rom  2bytes for ".idleGameStart: jr .idleGameStart" 
+	nop ;  mirror rom  
         ;------------------------------------------------------------
 	JP $3fff     ; stock rom has "inc a" here (so we can continue path into ram)
         nop
 ;----------------------------------------------------------------------------
-
+;----------------------------------------------------------------------------
+;----------------------------------------------------------------------------
 
 ; --------------------------
 ; The Table INDEXING routine

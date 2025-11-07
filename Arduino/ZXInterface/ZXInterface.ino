@@ -6,9 +6,9 @@
 // -------------------------------------------------------------------------------------
 
 // Board detection - will cause compile error if wrong board selected
-#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
-#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
-#endif
+//#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
+//#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
+//#endif
 
 #if F_CPU != 16000000L
 #warning "This sketch expects 16MHz clock speed."

@@ -2,6 +2,10 @@
 #include "Z80Bus.h"
 
 #include "draw.h"
+#include "SdCardSupport.h"
+#include "BufferManager.h"
+#include "CommandRegistry.h"
+#include "z80bus.h"
 
  __attribute__((optimize("-Os")))
 void Utils::frameDelay(unsigned long start) {
@@ -44,95 +48,80 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
-// 1,000,000 microseconds to a second
-// T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
-// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
-// 20 T-States / 0.285714 = 70 t-states
-
-// get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
-// The speccy broadcasts all the functions at power up.
-uint16_t Utils::get16bitPulseValue() {
-  constexpr uint16_t PULSE_TIMEOUT_US = 70; //120+20;
-  uint16_t value = 0;
-  for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
-    uint8_t pulseCount = 0;
-    uint32_t lastPulseTime = 0;
-    while (1) {
-      // Service current HALT if active
-      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
-//      if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
-        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-        digitalWriteFast(Pin::Z80_NMI, LOW);
-        digitalWriteFast(Pin::Z80_NMI, HIGH);
-        pulseCount++;
-        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      }
-      // Detect end marker delay at end of each single bit 
-      if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
-        break;
-      }
-    }
-    if (pulseCount == 2) {  // collect set bit
-      value += 1 << (15 - i);
-    }
-  }
-  return value;
-}
-
-uint8_t Utils::get8bitPulseValue() {
-  constexpr uint16_t PULSE_TIMEOUT_US = 70; //120+20;
-  uint8_t value = 0;
-  for (uint8_t i = 0; i < 8; i++) { // 16 bits, 2 bytes
-    uint8_t pulseCount = 0;
-    uint32_t lastPulseTime = 0;
-    while (1) {
-      // Service current HALT if active
-      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
-    //  if ((PINB & (1 << PINB0)) == 0) {  // Waits for Z80 HALT line to go HIGH
-        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-        digitalWriteFast(Pin::Z80_NMI, LOW);
-        digitalWriteFast(Pin::Z80_NMI, HIGH);
-        pulseCount++;
-        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      }
-      // Detect end marker delay at end of each single bit 
-      if ((pulseCount > 0) && ((micros() - lastPulseTime) > PULSE_TIMEOUT_US)) {
-        break;
-      }
-    }
-    if (pulseCount == 2) {  // collect set bit
-      value += 1 << (7 - i);
-    }
-  }
-  return value;
-}
-
 __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
   do {
-    unsigned long startTime = millis();
+    //    unsigned long startTime = millis();
     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
     uint8_t b = Utils::readJoystick();
     if (b & JOYSTICK_SELECT) {
       //----------------------------------------------------------------
-      // Fire an NMI in the stock ROM
-      // (uses modified unused locations: L0066 & L04AA)
+      // Fire NMI, this calls location 'L0066:' in the stock ROM.
+      // The NMI routine has bee modified to push registers and then idle in a loop forever.
       digitalWriteFast(Pin::Z80_NMI, LOW);
       digitalWriteFast(Pin::Z80_NMI, HIGH);
       //----------------------------------------------------------------
-      // Allow the Z80 to push registers and then idle in a loop forever
-      delay(5);
-      digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM
+      delay(5);                              // Allow time to reach the idle loop
+      digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM overrides idle loop with a new path
       //----------------------------------------------------------------
+
+      //************ HACK TEST **********
+
+      FatFile& file = SdCardSupport::getFile();
+      FatFile& root = SdCardSupport::getRoot();
+      if (root.isOpen()) { root.close();  }
+      if (file.isOpen()) { file.close();  }
+      if (root.open("/")) { 
+        file.open("scratch16384.SCR", O_CREAT | O_WRONLY);
+        // Read from Latch IC (74HC574) - set Nano data pins to read
+        DDRD = 0x00;   // make them inputs
+        PORTD = 0x00;  // no pull-ups
+
+
+ digitalWriteFast(PIN_A5, LOW);       
+   delayMicroseconds(1);
+
+        for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+          
+          while (digitalReadFast(Pin::Z80_HALT) != 0) {}; // Wait for Halt (active low)
+      //    digitalWriteFast(PIN_A5, LOW);                  // Enable latch output (#OE)
+     //     delayMicroseconds(10);
+          uint8_t byte = PIND;                            // Capture latched data
+      //    digitalWriteFast(PIN_A5, HIGH);                 // Disable #OE
+          // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU
+          digitalWriteFast(Pin::Z80_NMI, LOW);
+          delayMicroseconds(1);
+          digitalWriteFast(Pin::Z80_NMI, HIGH);
+          while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // block untill z80 is fully back
+
+          // Swap bits 0 and 1 (PCB data line error from latch)
+     //     uint8_t bit0 = byte & 0x01;
+     //     uint8_t bit1 = byte & 0x02;
+    //      file.write((byte & 0xFC) | (bit0 << 1) | (bit1 >> 1));
+          file.write(byte);
+        }
+       digitalWriteFast(PIN_A5, HIGH);                 // Disable #OE
+        file.flush();
+        file.close();
+      }
+
+      DDRD = 0xFF;   // Set all PORTD pins as outputs
+      PORTD = 0x00;  // outputs start LOW
+
+
+
       // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
       // (we are running inside an NMI handler that itself uses NMI!)
       for (uint8_t i = 80; i < 80 + 64; i += 8) {
         Draw::text_P(16 + (i / 4), i, F("THIS IS A TEST"));
         delay(100);
       }
+
+      //********
+
+
       //----------------------------------------------------------------
-      // Send a jump instruction to the Z80
-      // This will land in a forever loop in the SNA ROM.
-      // That loop starts the path back to the stock ROM.
+      // Send JMP to Z80, this will progress into a forever loop in the SNA ROM.
+      // When roms are swapped, this starts the path back to the stock ROM.
       uint8_t a[2];
       uint16_t val = 0x04AD;  // jp here
       a[0] = (uint8_t)(val >> 8);
@@ -141,7 +130,7 @@ __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
       //----------------------------------------------------------------
       // Allow the Z80 time to restore EI (if it was previously enabled)
       // and then start the idle loop.
-      delay(5);
+      delay(10);  //5);
       //----------------------------------------------------------------
       // Switch back to stock ROM. This ROM does not have the idle loop.
       // It will POP the game registers and use "RET" to exit the NMI
@@ -155,7 +144,69 @@ __attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
 }
 
 
-// 32*24 = 768
+
+// 1,000,000 microseconds to a second
+// T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
+// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
+// 20 T-States / 0.285714 = 70 t-states
+
+// get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
+// The speccy broadcasts all the functions at power up.
+uint16_t Utils::get16bitPulseValue() {
+  constexpr uint16_t BIT_TIMEOUT_US  = 70; //120+20;
+  uint16_t value = 0;
+  for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
+    uint8_t pulseCount = 0;
+    uint32_t lastPulseTime = 0;
+    while (1) {
+      // Service current HALT if active
+      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+        digitalWriteFast(Pin::Z80_NMI, LOW);
+        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        pulseCount++;
+        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      }
+      // Detect end marker delay at end of each single bit 
+      if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
+        break;
+      }
+    }
+    if (pulseCount == 2) {  // collect set bit
+      value += 1 << (15 - i);
+    }
+  }
+  return value;
+}
+
+uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
+  constexpr uint16_t BIT_TIMEOUT_US  = 25; // 70; //120+20;
+  uint8_t value = 0;
+  for (uint8_t i = 0; i < 8; i++) { // 8 bits
+    uint8_t pulseCount = 0;
+    uint32_t lastPulseTime = 0;
+    while (1) {
+      // Service current HALT if active
+      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+        digitalWriteFast(Pin::Z80_NMI, LOW);
+        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        pulseCount++;
+        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+      }
+      // Detect end marker delay at end of each single bit 
+      if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
+        break;
+      }
+    }
+    if (pulseCount == 2) {  // collect set bit
+      value += 1 << (7 - i);
+    }
+  }
+  return value;
+}
+
+
 
 
 
