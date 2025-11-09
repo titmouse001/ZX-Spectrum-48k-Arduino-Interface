@@ -66,7 +66,7 @@ void setup() {
 #if (SERIAL_DEBUG == 1)
   Serial.begin(9600);
   while (!Serial) {};
-  Serial.println("DEBUG MODE BREAKS TRANSFERS");
+  Serial.println("SERIAL DEBUG BREAKS COMMS TO Z80");
 #endif
 
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.

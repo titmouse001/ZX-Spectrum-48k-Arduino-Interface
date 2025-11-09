@@ -45,6 +45,9 @@ constexpr uint8_t Z80_NMI = A0;   // pin14, PIN_A0 to Z80 NMI
 constexpr uint8_t ROM_HALF = A1;  // pin15, PIN_A1 to ROM pin27 high/low bank select (sna or stock rom)
 constexpr uint8_t Z80_REST = 17;  // PIN_A3 to the Z80 Reset line
 
+//TODO ... A4  <->  SD-CARD CS    PCB NOW USES THIS PIN ... NEED TO UPDATE ALL COMMENTS
+
+
 // Status LED
 constexpr uint8_t ledPin = 13;  // onboard LED (error indicator)
 

@@ -1,0 +1,14 @@
+Versions prior to v2.00 are no longer supported by the software.
+Some changes have been made to the Arduino software, which means PCBs earlier
+than v2.00 will no longer work correctly.
+Versions starting from v2.xx now use a latch to read from the I/O. 
+
+WHY THE CHANGE TO LATCHED "OUT" DATA (Z80->Arduino)
+---------------------------------------------------
+Previously, a "HALT Fudge 1BIT Protocol" was used. Kind of hacky, but I’m proud it even worked! It relied 
+on a timing scheme using HALT-triggered NMI pulses to clock out data, it nailed the sync between the Z80
+and the Arduino, and was extremely reliable! However it was just a bit too slow for sending larger
+data amounts like a screenshot to the Arduino. 
+So the circuit design now uses a 74HC574 to Latch (rising edge) the I/O data bus, reading a 8 bits of I/O data
+and storing it for the Arduino to read.  Big improvement over the older HALT pulse timing trick, since the latch
+now captures a whole byte of data and hands it to the Arduino.

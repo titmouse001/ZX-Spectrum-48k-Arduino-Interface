@@ -46,104 +46,99 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
   pinModeFast(Pin::ShiftRegLatchPin, OUTPUT);
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
-}
+ }
 
-__attribute__((optimize("-Os"))) void Utils::waitForUserExit() {
-  do {
-    //    unsigned long startTime = millis();
-    PORTD = Utils::readJoystick() & JOYSTICK_MASK;
-    uint8_t b = Utils::readJoystick();
-    if (b & JOYSTICK_SELECT) {
-      //----------------------------------------------------------------
-      // Fire NMI, this calls location 'L0066:' in the stock ROM.
-      // The NMI routine has bee modified to push registers and then idle in a loop forever.
-      digitalWriteFast(Pin::Z80_NMI, LOW);
-      digitalWriteFast(Pin::Z80_NMI, HIGH);
-      //----------------------------------------------------------------
-      delay(5);                              // Allow time to reach the idle loop
-      digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM overrides idle loop with a new path
-      //----------------------------------------------------------------
+ __attribute__((optimize("-Os"))) void Utils::waitForUserExit()
+ {
+   do
+   {
+     //    unsigned long startTime = millis();
+     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
+     uint8_t b = Utils::readJoystick();
+     if (b & JOYSTICK_SELECT)
+     {
+       //----------------------------------------------------------------
+       // Fire NMI, this calls location 'L0066:' in the stock ROM.
+       // The NMI routine has bee modified to push registers and then idle in a loop forever.
+       Z80Bus::triggerZ80NMI();
+       //----------------------------------------------------------------
+       delay(5);                             // Allow time to reach the idle loop
+       digitalWriteFast(Pin::ROM_HALF, LOW); // SNA ROM overrides idle loop with a new path
+       //----------------------------------------------------------------
 
-      //************ HACK TEST **********
+       //************ HACK TEST **********
+       FatFile &file = SdCardSupport::getFile();
+       FatFile &root = SdCardSupport::getRoot();
+       if (root.isOpen()) { root.close();  }
+       if (file.isOpen()) { file.close();  }
+       if (root.open("/")) {
 
-      FatFile& file = SdCardSupport::getFile();
-      FatFile& root = SdCardSupport::getRoot();
-      if (root.isOpen()) { root.close();  }
-      if (file.isOpen()) { file.close();  }
-      if (root.open("/")) { 
-        file.open("scratch16384.SCR", O_CREAT | O_WRONLY);
-        // Read from Latch IC (74HC574) - set Nano data pins to read
-        DDRD = 0x00;   // make them inputs
-        PORTD = 0x00;  // no pull-ups
+         file.open("scratch16384.SCR", O_CREAT | O_WRONLY);
 
-
- digitalWriteFast(PIN_A5, LOW);       
-   delayMicroseconds(1);
+         // -------------------------------------------------------------
+         // Get ready to read from Latch IC (74HC574) - set Nano data pins to read
+         DDRD = 0x00;  // make them inputs
+         PORTD = 0x00; // no pull-ups
+         // Enable Latch for reading - we can keep it on for this section
+         digitalWriteFast(PIN_A5, LOW);  
+        // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
+        // The Nano can execute the next instruction before latch outputs are ready!
+        __asm__ __volatile__("nop\n\t"   // single nop is about 62ns @16MHz
+                            "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO 
+        // -------------------------------------------------------------
 
         for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+           Z80Bus::syncWithZ80();
+           uint8_t byte = PIND; // Capture latched data
+           Z80Bus::triggerZ80NMI();
+           Z80Bus::waitForZ80Resume();
+
+           file.write(byte);
+         }
+         file.flush();
+         file.close();
           
-          while (digitalReadFast(Pin::Z80_HALT) != 0) {}; // Wait for Halt (active low)
-      //    digitalWriteFast(PIN_A5, LOW);                  // Enable latch output (#OE)
-     //     delayMicroseconds(10);
-          uint8_t byte = PIND;                            // Capture latched data
-      //    digitalWriteFast(PIN_A5, HIGH);                 // Disable #OE
-          // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU
-          digitalWriteFast(Pin::Z80_NMI, LOW);
-          delayMicroseconds(1);
-          digitalWriteFast(Pin::Z80_NMI, HIGH);
-          while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // block untill z80 is fully back
+        // -------------------------------------------------------------
+        // Done with latch back disable and put Arduino back to sending mode
+        digitalWriteFast(PIN_A5, HIGH); // Disable #OE
+        DDRD = 0xFF;  // Set all PORTD pins as outputs
+        PORTD = 0x00; // outputs start LOW
+        // -------------------------------------------------------------
+       }
 
-          // Swap bits 0 and 1 (PCB data line error from latch)
-     //     uint8_t bit0 = byte & 0x01;
-     //     uint8_t bit1 = byte & 0x02;
-    //      file.write((byte & 0xFC) | (bit0 << 1) | (bit1 >> 1));
-          file.write(byte);
-        }
-       digitalWriteFast(PIN_A5, HIGH);                 // Disable #OE
-        file.flush();
-        file.close();
-      }
+       // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
+       // (we are running inside an NMI handler that itself uses NMI!)
+       for (uint8_t i = 80; i < 80 + 64; i += 8)
+       {
+         Draw::text_P(16 + (i / 4), i, F("THIS IS A TEST"));
+         delay(100);
+       }
 
-      DDRD = 0xFF;   // Set all PORTD pins as outputs
-      PORTD = 0x00;  // outputs start LOW
+       //----------------------------------------------------------------
+       // Send JMP to Z80, this will progress into a forever loop in the SNA ROM.
+       // When roms are swapped, this starts the path back to the stock ROM.
+       uint8_t a[2];
+       uint16_t val = 0x04AD; // jp here
+       a[0] = (uint8_t)(val >> 8);
+       a[1] = (uint8_t)(val & 0xFF);
+       Z80Bus::sendBytes(a, 2);
+       //----------------------------------------------------------------
+       // Allow the Z80 time to restore EI (if it was previously enabled)
+       // and then start the idle loop.
+       delay(10); // 5);
+       //----------------------------------------------------------------
+       // Switch back to stock ROM. This ROM does not have the idle loop.
+       // It will POP the game registers and use "RET" to exit the NMI
+       // (not "RETN"), because we must control the restoration of interrupts.
+       // We’ve been doing non-standard things with NMIs inside NMI!
+       digitalWriteFast(Pin::ROM_HALF, HIGH); // STOCK 48K ROM
+     }
+   } while (true); //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
 
-
-
-      // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
-      // (we are running inside an NMI handler that itself uses NMI!)
-      for (uint8_t i = 80; i < 80 + 64; i += 8) {
-        Draw::text_P(16 + (i / 4), i, F("THIS IS A TEST"));
-        delay(100);
-      }
-
-      //********
-
-
-      //----------------------------------------------------------------
-      // Send JMP to Z80, this will progress into a forever loop in the SNA ROM.
-      // When roms are swapped, this starts the path back to the stock ROM.
-      uint8_t a[2];
-      uint16_t val = 0x04AD;  // jp here
-      a[0] = (uint8_t)(val >> 8);
-      a[1] = (uint8_t)(val & 0xFF);
-      Z80Bus::sendBytes(a, 2);
-      //----------------------------------------------------------------
-      // Allow the Z80 time to restore EI (if it was previously enabled)
-      // and then start the idle loop.
-      delay(10);  //5);
-      //----------------------------------------------------------------
-      // Switch back to stock ROM. This ROM does not have the idle loop.
-      // It will POP the game registers and use "RET" to exit the NMI
-      // (not "RETN"), because we must control the restoration of interrupts.
-      // We’ve been doing non-standard things with NMIs inside NMI!
-      digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM
-    }
-  } while (true);  //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
-
-  while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}
-}
-
-
+   while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0)
+   {
+   }
+ }
 
 // 1,000,000 microseconds to a second
 // T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
@@ -162,8 +157,9 @@ uint16_t Utils::get16bitPulseValue() {
       // Service current HALT if active
       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-        digitalWriteFast(Pin::Z80_NMI, LOW);
-        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        // digitalWriteFast(Pin::Z80_NMI, LOW);
+        // digitalWriteFast(Pin::Z80_NMI, HIGH);
+        Z80Bus::triggerZ80NMI();
         pulseCount++;
         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
       }
@@ -189,8 +185,9 @@ uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
       // Service current HALT if active
       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-        digitalWriteFast(Pin::Z80_NMI, LOW);
-        digitalWriteFast(Pin::Z80_NMI, HIGH);
+//        digitalWriteFast(Pin::Z80_NMI, LOW);
+//        digitalWriteFast(Pin::Z80_NMI, HIGH);
+        Z80Bus::triggerZ80NMI();
         pulseCount++;
         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
       }

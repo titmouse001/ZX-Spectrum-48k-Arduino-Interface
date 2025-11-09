@@ -8,10 +8,8 @@
 namespace Z80Bus {
 
 void setupPins();
-extern void waitHalt();
-extern void resetZ80();
-extern void resetToSnaRom();
-extern void waitRelease_NMI();
+//extern void waitHalt();
+
 extern void sendBytes(uint8_t* data, uint16_t size);
 extern void sendSnaHeader(uint8_t* header);
 extern void fillScreenAttributes(const uint8_t col);
@@ -32,9 +30,12 @@ extern void executeSnapshot();
 extern boolean bootFromSnapshot(FatFile* pFile);
 extern void clearScreen(uint8_t col = 0);
 
-
+extern void resetZ80();
+extern void resetToSnaRom();
 extern void syncWithZ80();
-extern void triggerNMI();
+extern void triggerZ80NMI();
+extern void waitForZ80Resume();
+extern void waitRelease_NMI();
 
 }
 

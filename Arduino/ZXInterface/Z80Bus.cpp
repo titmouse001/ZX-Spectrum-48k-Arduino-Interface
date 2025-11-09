@@ -18,15 +18,11 @@ constexpr uint8_t COMMAND_ADDR_SIZE = 2;
 
 __attribute__((optimize("-Os")))
 void Z80Bus::setupPins() {
-  // best do ROM_HALF setting first
-  pinModeFast(Pin::ROM_HALF, OUTPUT);
+ 
+  pinModeFast(Pin::ROM_HALF, OUTPUT);  // set ROM_HALF first
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
-
-
   pinModeFast(PIN_A5, OUTPUT);
-
- digitalWriteFast(PIN_A5,HIGH); 
-
+  digitalWriteFast(PIN_A5,HIGH); 
   pinModeFast(Pin::Z80_HALT, INPUT);
   pinModeFast(Pin::Z80_NMI, OUTPUT);
   pinModeFast(Pin::Z80_REST, OUTPUT);
@@ -41,8 +37,6 @@ void Z80Bus::setupPins() {
 
   // setup /NMI - Z80 /NMI, used to trigger a 'HALT' so the Z80 can be released and resume
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
-
-
 }
 
 __attribute__((optimize("-Os")))
@@ -62,57 +56,38 @@ void Z80Bus::resetToSnaRom() {
   resetZ80();
 }
 
-// --------------------------------------------------------------------------------------------------------
-// waitRelease_NMI:
-// NMI (Non-Maskable Interrupt) on falling edge of the /NMI pin.
-// Used to synchronize the Z80 with Arduino.
-// --------------------------------------------------------------------------------------------------------
-__attribute__((optimize("-Ofast")))
-void Z80Bus::waitRelease_NMI() {
-  // Wait for Z80 HALT line to go LOW (active low)
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};
-  // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-  digitalWriteFast(Pin::Z80_NMI, LOW);
-  //   asm volatile(
-  //   "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 8 NOPs = 500ns @ 16MHz
-  //   "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 16 total NOPs
-  // );
-  digitalWriteFast(Pin::Z80_NMI, HIGH);
-  // Wait for HALT line to return HIGH again (shows Z80 has resumed)
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};
-}
+// // --------------------------------------------------------------------------------------------------------
+// // waitRelease_NMI:
+// // NMI (Non-Maskable Interrupt) on falling edge of the /NMI pin.
+// // Used to synchronize the Z80 with Arduino.
+// // --------------------------------------------------------------------------------------------------------
+// __attribute__((optimize("-Ofast")))
+// void Z80Bus::waitRelease_NMI() {
+//   syncWithZ80();
+//   triggerZ80NMI();
+//   waitForZ80Resume();
+// }
 
-// --------------------------------------------------------------------------------------------------------
-// waitHalt:
-// Waits for the Z80 CPU to complete a HALT cycle
-// The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
-// --------------------------------------------------------------------------------------------------------
-__attribute__((optimize("-Ofast")))
-void Z80Bus::waitHalt() {
-  // Together these synchronise with the end of the Z80's HALT state
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // wait until HALT goes LOW (Z80 is halted)
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // wait until HALT goes HIGH (Z80 resumes)
-}
-
+// // --------------------------------------------------------------------------------------------------------
+// // waitHalt:
+// // Waits for the Z80 CPU to complete a HALT cycle
+// // The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
+// // --------------------------------------------------------------------------------------------------------
+// __attribute__((optimize("-Ofast")))
+// void Z80Bus::waitHalt() {
+//   syncWithZ80();
+//   waitForZ80Resume();
+// }
 
 // TO-DO: measure the difference with cheap oscilloscope , would be interesting to see! (or call tons - results to screen or SD card)
 __attribute__((optimize("-Ofast")))
 void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   // cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
-    // Wait for Z80 HALT line to go LOW (active low)
-    while (digitalReadFast(Pin::Z80_HALT) != 0) {};
-    PORTD = data[i];  // Send Arduino d0-d7 to Z80 d0-d7
-    // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-    digitalWriteFast(Pin::Z80_NMI, LOW);
-    //   asm volatile(
-    //     "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 8 NOPs = 500ns @ 16MHz
-    //    "nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"  // 16 total NOPs
-    //  );
-    digitalWriteFast(Pin::Z80_NMI, HIGH);
-    // Wait for HALT line to return HIGH again (shows Z80 has resumed)
-    while (digitalReadFast(Pin::Z80_HALT) == 0) {};
-    
+    syncWithZ80();
+    PORTD = data[i];  // Send to Z80 data lines
+    triggerZ80NMI();
+    waitForZ80Resume();
   }
   //  sei();
 }
@@ -174,62 +149,38 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
 }
 
 uint8_t Z80Bus::getByte() {
-
+  // Command Z80 to send us a byte via the 'out' instruction.
   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
-  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
+  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey) & 0xFF);
   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
- 
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  // Wait for Halt (active low)
-//  DDRD  = 0xFF;  // Set all PORTD pins as outputs
-//  PORTD = 0x00;  // outputs start LOW
-  DDRD = 0x00 ; // make them inputs  
-  PORTD = 0x00;  // no pull-ups
-  // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-  digitalWriteFast(Pin::Z80_NMI, LOW);
-delayMicroseconds(1);
-  digitalWriteFast(Pin::Z80_NMI, HIGH);
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};  // block untill z80 is fully back
 
-//   while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
-//   //DDRD  = 0xFF;  // Set all PORTD pins as outputs
-//   //PORTD = 0x00;  // outputs start LOW
-//   digitalWriteFast(Pin::Z80_NMI, LOW);
-// delayMicroseconds(1);
-//   digitalWriteFast(Pin::Z80_NMI, HIGH);
-//   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
+  // -------------------------------------------------------------
+  // Prepare to read from Latch IC (74HC574)
+  // Set Nano data pins to input mode before Z80 writes to latch.
+  syncWithZ80();      // wait for Z80 to HALT
+  DDRD = 0x00;        // all inputs
+  triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
+  waitForZ80Resume(); // Wait for Z80 to complete the out instruction
+  // -------------------------------------------------------------
 
-  // need to read from Latch IC (74HC574) - set Nano data pins to read
- // DDRD = 0x00 ; // make them inputs  
- // PORTD = 0x00;  // no pull-ups
+  // -------------------------------------------------------------
+  // Enable and read the new latched data
+  digitalWriteFast(PIN_A5, LOW); // Enable: #OE on the latch IC
 
-  digitalWriteFast(PIN_A5,LOW); // #OE on the latch IC
-  //delay(1);
-  delayMicroseconds(10);
-  uint8_t byte = PIND;
-  digitalWriteFast(PIN_A5,HIGH);
+  // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
+  // The Nano can execute the next instruction before latch outputs are ready!
+  __asm__ __volatile__("nop\n\t"   // single nop is about 62ns @16MHz
+                       "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO ONLY!!)
+  uint8_t byte = PIND;             // Read all 8 bits from latch
+  // -------------------------------------------------------------
 
-  // uint8_t b0 = byte & B00000001;   // CORRECT PCB ERROR - lines are swapped
-  // uint8_t b1 = (byte>>1) & B00000001;
-  // byte = (byte & B11111100) + (b1) + (b0<<1);
-
-   DDRD  = 0xFF;  // Set all PORTD pins as outputs
-  PORTD = 0x00;  // outputs start LOW
-
-   return byte;
-
+  // -------------------------------------------------------------
+  // Cleanup: disable latch and restore Nano to output mode
+  digitalWriteFast(PIN_A5, HIGH); // Disable latch (#OE high=tri-state)
+  DDRD = 0xFF;                    // Set all PORTD pins as outputs
+  // -------------------------------------------------------------
+  return byte;
 }
-
-
-// __attribute__((optimize("-Os")))
-// uint8_t Z80Bus::GetKeyPulses_NO_LONGER_USED() {
-//   //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
-//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
-//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
-//  // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
-//   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
-//   return Utils::get8bitPulseValue();
-// }
-
 
 // Encode/send RLE-compressed data to the Speccy which is decompresses its side.
 // Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
@@ -320,8 +271,10 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 void Z80Bus::synchronizeForExecution() {
   // Enable Spectrum's 50Hz maskable interrupt and sync timing
   // Creates gap before next interrupt to avoid stack corruption during restore
-  Z80Bus::sendWaitVBLCommand();
-  Z80Bus::waitHalt();
+  sendWaitVBLCommand();
+//  Z80Bus::waitHalt();
+  syncWithZ80();
+  waitForZ80Resume();
 }
 
 
@@ -339,7 +292,11 @@ void Z80Bus::executeSnapshot() {
 
 boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
   Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3);  // Initialize stack pointer
-  Z80Bus::waitRelease_NMI();
+  //Z80Bus::waitRelease_NMI();
+   syncWithZ80();
+   triggerZ80NMI();
+   waitForZ80Resume();
+
   Z80Bus::fillScreenAttributes(0);
   Z80Bus::clearScreen();
   Z80Bus::transferSnaData(pFile, true);
@@ -353,14 +310,30 @@ void Z80Bus::clearScreen(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
 }
 
-// void Z80Bus::syncWithZ80(uint8_t col) {
-//   // Wait for Halt (active low)
-//    while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
-// }
+void Z80Bus::syncWithZ80() {
+  // Wait until the Z80 enters the HALT state (active low).
+  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
+}
 
-// void Z80Bus::triggerNMI(uint8_t col) {
-//   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
-//   digitalWriteFast(Pin::Z80_NMI, LOW);
-//   delayMicroseconds(1);
-//   digitalWriteFast(Pin::Z80_NMI, HIGH);
+void Z80Bus::triggerZ80NMI() {
+  // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
+  digitalWriteFast(Pin::Z80_NMI, LOW);
+ // delayMicroseconds(1);     // other platforms may need a pause
+  digitalWriteFast(Pin::Z80_NMI, HIGH);
+}
+
+
+void Z80Bus::waitForZ80Resume(){
+  // wait until HALT goes HIGH (Z80 resumes)
+   while (digitalReadFast(Pin::Z80_HALT) == 0) {};  
+}
+
+// __attribute__((optimize("-Os")))
+// uint8_t Z80Bus::GetKeyPulses_NO_LONGER_USED() {
+//   //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
+//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
+//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
+//  // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
+//   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
+//   return Utils::get8bitPulseValue();
 // }

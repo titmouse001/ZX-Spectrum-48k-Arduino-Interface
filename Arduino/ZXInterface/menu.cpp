@@ -21,6 +21,8 @@ bool     Menu::inSubFolder = false;
 // extern SSD1306AsciiAvrI2c oled;
 
 void Menu::displayItemList(uint16_t startFileIndex) {
+  // This function uses lazy evaluation to reduce slowdown.
+  // The deeper you scroll the more files are skipped avoiding extra operations.
 
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
@@ -44,6 +46,8 @@ void Menu::displayItemList(uint16_t startFileIndex) {
     if (filesSkipped < startFileIndex) {  // Skip until start index
       filesSkipped++;
       file.close();
+      // Rather then reading/processing every file from the beginning each time, 
+      // we fast forward through the directory.
       continue;
     }
 
@@ -168,7 +172,7 @@ uint16_t Menu::rescanFolder(bool reset) {
   if (totalFiles == 0) {
     Draw::text_P(80, 90, F("NO FILES FOUND"));
     do {
-      SdCardSupport::init(PIN_A4);
+      SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
       delay(20);
       totalFiles = SdCardSupport::countSnapshotFiles();
     } while (totalFiles == 0);

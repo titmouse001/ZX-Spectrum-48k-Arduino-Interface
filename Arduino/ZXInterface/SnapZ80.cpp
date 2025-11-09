@@ -440,13 +440,16 @@ int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 	}
 
 	Z80Bus::fillScreenAttributes(0);  
-  Z80Bus::clearScreen();
+  	Z80Bus::clearScreen();
 
 	const uint16_t stackAddress = 0x4004;  
 	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
-
 	Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
-	Z80Bus::waitRelease_NMI();           //Synchronize: Z80 knows it must halt after loading SP - Aruindo waits for NMI release.
+        
+	//Synchronize: Z80 knows it must halt after loading SP above - Aruindo waits for NMI release.
+   	Z80Bus::syncWithZ80();
+   	Z80Bus::triggerZ80NMI();
+   	Z80Bus::waitForZ80Resume();
 
 	int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
 	if (conversionResult < 0) { 
