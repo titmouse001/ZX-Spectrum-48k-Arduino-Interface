@@ -1,8 +1,20 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
- 
-#### Latest Version 0.21 - with 90° cartridge design
+
+## UPDATE: For latest PCB revision see: Documents/Gerbers/V2.20
+    A 74HC574 latch has been added to allow the Z80 to pass data to the Arduino, 
+    replacing the previous 1-bit pulse halt protocol. While adequate for reading 
+    keyboard input, it was too slow for reading large blocks of data I'll be needing 
+    for future plans like an in-game pause menu (with pokes and such). 
+    
+    Currently Arduino code is setup for developing the in-game menu. While in a game, 
+    the PCB button takes you to a test page and then returns you back to the game 
+    rather than returning you to the main game selection menu. My plan is to bring up 
+    a sub menu in-game, and from there you can select options like POKE, Exit for a 
+    new game, or Continue game.
+
+#### Version 0.21 - with 90° cartridge design
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Pictures0.21/20250823_105518.jpg" width="24%" >
 <img src="/Documents/Pictures0.21/20250823_103559.jpg" width="24%" >
