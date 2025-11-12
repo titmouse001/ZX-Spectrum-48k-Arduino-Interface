@@ -140,72 +140,78 @@ void Utils::setupJoystick() {
    }
  }
 
-// 1,000,000 microseconds to a second
-// T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
-// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
-// 20 T-States / 0.285714 = 70 t-states
 
-// get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
-// The speccy broadcasts all the functions at power up.
-uint16_t Utils::get16bitPulseValue() {
-  constexpr uint16_t BIT_TIMEOUT_US  = 70; //120+20;
-  uint16_t value = 0;
-  for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
-    uint8_t pulseCount = 0;
-    uint32_t lastPulseTime = 0;
-    while (1) {
-      // Service current HALT if active
-      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
-        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-        // digitalWriteFast(Pin::Z80_NMI, LOW);
-        // digitalWriteFast(Pin::Z80_NMI, HIGH);
-        Z80Bus::triggerZ80NMI();
-        pulseCount++;
-        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      }
-      // Detect end marker delay at end of each single bit 
-      if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
-        break;
-      }
-    }
-    if (pulseCount == 2) {  // collect set bit
-      value += 1 << (15 - i);
-    }
-  }
-  return value;
-}
+// ======================
+// ARCHIVED CODE SECTION:
+// ======================
 
-uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
-  constexpr uint16_t BIT_TIMEOUT_US  = 25; // 70; //120+20;
-  uint8_t value = 0;
-  for (uint8_t i = 0; i < 8; i++) { // 8 bits
-    uint8_t pulseCount = 0;
-    uint32_t lastPulseTime = 0;
-    while (1) {
-      // Service current HALT if active
-      if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
-        // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-//        digitalWriteFast(Pin::Z80_NMI, LOW);
-//        digitalWriteFast(Pin::Z80_NMI, HIGH);
-        Z80Bus::triggerZ80NMI();
-        pulseCount++;
-        lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-      }
-      // Detect end marker delay at end of each single bit 
-      if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
-        break;
-      }
-    }
-    if (pulseCount == 2) {  // collect set bit
-      value += 1 << (7 - i);
-    }
-  }
-  return value;
-}
+// The 1-bit HALT-pulse protocol has been replaced as I've added additional supporting hardware
+// to the curcuit design allowing the OUT instruction to be used instead.
+//
+// The HALT-pulse method is actually quite impressive - it's surprising how well it works.
+// It’s probably a bulletproof poor mans out method, since the pulse timing
+// makes it far less likely to be affected by interference - as HALT stays active
+// long enough to ride through most real-world noise.
 
+// // get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
+// // The speccy broadcasts all the functions at power up.
+// // uint16_t Utils::get16bitPulseValue() {
+// //   constexpr uint16_t BIT_TIMEOUT_US  = 70; //120+20;
+// //   uint16_t value = 0;
+// //   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
+// //     uint8_t pulseCount = 0;
+// //     uint32_t lastPulseTime = 0;
+// //     while (1) {
+// //       // Service current HALT if active
+// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+// //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+// //         // digitalWriteFast(Pin::Z80_NMI, LOW);
+// //         // digitalWriteFast(Pin::Z80_NMI, HIGH);
+// //         Z80Bus::triggerZ80NMI();
+// //         pulseCount++;
+// //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+// //       }
+// //       // Detect end marker delay at end of each single bit 
+// //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
+// //         break;
+// //       }
+// //     }
+// //     if (pulseCount == 2) {  // collect set bit
+// //       value += 1 << (15 - i);
+// //     }
+// //   }
+// //   return value;
+// // }
 
+// // uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
+// //   constexpr uint16_t BIT_TIMEOUT_US  = 25; // 70; //120+20;
+// //   uint8_t value = 0;
+// //   for (uint8_t i = 0; i < 8; i++) { // 8 bits
+// //     uint8_t pulseCount = 0;
+// //     uint32_t lastPulseTime = 0;
+// //     while (1) {
+// //       // Service current HALT if active
+// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+// //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+// // //        digitalWriteFast(Pin::Z80_NMI, LOW);
+// // //        digitalWriteFast(Pin::Z80_NMI, HIGH);
+// //         Z80Bus::triggerZ80NMI();
+// //         pulseCount++;
+// //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
+// //       }
+// //       // Detect end marker delay at end of each single bit 
+// //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
+// //         break;
+// //       }
+// //     }
+// //     if (pulseCount == 2) {  // collect set bit
+// //       value += 1 << (7 - i);
+// //     }
+// //   }
+// //   return value;
+// // }
 
-
+// ========================
 
 // Not used ...
 // 
@@ -235,3 +241,13 @@ uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
 //   a = b;
 //   b = temp;
 // }
+
+//=============================
+
+//
+// NOTES:
+// 1,000,000 microseconds to a second
+// T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
+// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
+// 20 T-States / 0.285714 = 70 t-states
+

@@ -148,7 +148,37 @@ void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInd
   sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
-uint8_t Z80Bus::getByte() {
+uint8_t Z80Bus::get_IO_Byte() {
+  // get_IO_Byte will be used inside a command like 'sendFunctionList' (se we don't use BufferManager here)
+  // -------------------------------------------------------------
+  // Prepare to read from Latch IC (74HC574)
+  // Set Nano data pins to input mode before Z80 writes to latch.
+  syncWithZ80();      // wait for Z80 to HALT
+  DDRD = 0x00;        // all inputs
+  triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
+  waitForZ80Resume(); // Wait for Z80 to complete the out instruction
+  // -------------------------------------------------------------
+
+  // -------------------------------------------------------------
+  // Enable and read the new latched data
+  digitalWriteFast(PIN_A5, LOW); // Enable: #OE on the latch IC
+
+  // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
+  // The Nano can execute the next instruction before latch outputs are ready!
+  __asm__ __volatile__("nop\n\t"   // single nop is about 62ns @16MHz
+                       "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO ONLY!!)
+  uint8_t byte = PIND;             // Read all 8 bits from latch
+  // -------------------------------------------------------------
+
+  // -------------------------------------------------------------
+  // Cleanup: disable latch and restore Nano to output mode
+  digitalWriteFast(PIN_A5, HIGH); // Disable latch (#OE high=tri-state)
+  DDRD = 0xFF;                    // Set all PORTD pins as outputs
+  // -------------------------------------------------------------
+  return byte;
+}
+
+uint8_t Z80Bus::getKeyboard() {
   // Command Z80 to send us a byte via the 'out' instruction.
   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey) & 0xFF);

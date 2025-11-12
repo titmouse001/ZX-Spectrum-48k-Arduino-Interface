@@ -155,52 +155,80 @@ check_initial:
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
+	; Hardware Info: The game cartridge latches these OUT values using a 74HC574PW latch IC.
+	; The hardware performs a lazy check on address lines - A7=0 enables latching (requires #IORQ + #RD).
+	; Each HALT synchronizes the Z80 with the Arduino. The Arduino enables the latch outputs for reading,
+	; then disables them (tri-state) and signals the z80 to continue (un-halts).
+
+ 	LD C, $1F			  
+	;--------------------------------
 	ld hl,command_TransmitKey
-	call transmit16bitValue
-	;SET_BORDER 0
-	
+   	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt				
+	;--------------------------------
 	ld hl,command_Fill
-	call transmit16bitValue
-	;SET_BORDER 1
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_SmallFill
-	call transmit16bitValue
-	;SET_BORDER 2
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Transfer
-	call transmit16bitValue
-	;SET_BORDER 3
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Copy
-	call transmit16bitValue
-	;SET_BORDER 4
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Copy32
-	call transmit16bitValue
-	;SET_BORDER 5
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Wait
-	call transmit16bitValue
-	;SET_BORDER 6
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Stack
-	call transmit16bitValue
-	;SET_BORDER 7
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_Execute
-	call transmit16bitValue
-	;SET_BORDER 0
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_FillVariableEven
-	call transmit16bitValue
-	;SET_BORDER 1
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ld hl,command_FillVariableOdd
-	call transmit16bitValue
-	;SET_BORDER 2
-
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ret
-
 
 ;------------------------------------------------------
 command_FillVariableEven:  ; Fast memory fill for even byte counts
@@ -243,27 +271,6 @@ FillOddLoop:
 	ld SP,IX   
 	jp mainloop             
 
-;---------------------------------------------------------------------------------
-; transmit16bitValue - Encodes/transmits using HALT pulses. It is used to send
-; command function addresses to the Arduino.
-; 
-; HL holds 16-bit value to transmit, x1 HALT = '0' bit, x2 HALTs = '1' bit
-transmit16bitValue:  
-    ld d,16          		 ; Bit counter
-.bitloop:
-    bit 7,h
-    HALT
-    jr z,.bitEndMarkerDelay  ; If bit is '0', skip second HALT
-    HALT     	             ; Second HALT for bit '1'
-.bitEndMarkerDelay:
-    ld e,40   	 	         ; Delay
-.delayMarkerLoop:
-    dec e
-    jr nz,.delayMarkerLoop
-    add hl,hl       		 ; Shift HL left
-    dec d
-    jr nz,.bitloop
-    ret
 
 ;------------------------------------------------------
 command_TransmitKey:
@@ -277,30 +284,6 @@ command_TransmitKey:
     OUT (C), A    		  ; Game cart latches value (latch ic: 74HC574PW)
 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 	jp mainloop
-
-;
-; NEW PCB - 'transmit8bitValue' replaced with a simple out instraction (above).
-; ;------------------------------------------------------
-; ; transmit8bitValue - Encodes/transmits using HALT pulses.
-; ; A holds 8-bit value to transmit.  It is used to send things
-; ; like key presses and byte data to the Arduino.
-; transmit8bitValue:
-; ;------------------------------------------------------
-; 	ld d,8              ; Bit counter
-;  .bitlooptx:
-;     bit 7,a             ; Test MSB of A
-;     HALT
-;     jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
-;     HALT                 ; Second HALT for '1'
-;  .bitEndMarkerDelaytx:
-;     ld e,40              ; Inter-bit delay
-;  .delayMarkerLooptx:
-;     dec e
-;     jr nz,.delayMarkerLooptx
-;     add a,a              ; Shift left
-;     dec d
-;     jr nz,.bitlooptx
-; 	jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
@@ -842,3 +825,61 @@ DS  16384 - last	; leave rest of rom blank
 	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
 	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
 
+
+
+
+; ======================
+; ARCHIVED CODE SECTION:
+; ======================
+
+; The 1-bit HALT-pulse protocol has been replaced as I've added additional supporting hardware
+; to the curcuit design allowing the OUT instruction to be used instead.
+;
+; The HALT-pulse method is actually quite impressive - it's surprising how well it works.
+; It’s probably a bulletproof poor mans out method, since the pulse timing
+; makes it far less likely to be affected by interference - as HALT stays active
+; long enough to ride through most real-world noise.
+
+; ;------------------------------------------------------
+; ; transmit8bitValue - Encodes/transmits using HALT pulses.
+; ; A holds 8-bit value to transmit.  It is used to send things
+; ; like key presses and byte data to the Arduino.
+; ; transmit8bitValue:
+; ; ;------------------------------------------------------
+; ; 	ld d,8              ; Bit counter
+; ;  .bitlooptx:
+; ;     bit 7,a             ; Test MSB of A
+; ;     HALT
+; ;     jr z,.bitEndMarkerDelaytx  ; If 0, skip second HALT
+; ;     HALT                 ; Second HALT for '1'
+; ;  .bitEndMarkerDelaytx:
+; ;     ld e,40              ; Inter-bit delay
+; ;  .delayMarkerLooptx:
+; ;     dec e
+; ;     jr nz,.delayMarkerLooptx
+; ;     add a,a              ; Shift left
+; ;     dec d
+; ;     jr nz,.bitlooptx
+; ; 	jp mainloop
+
+;---------------------------------------------------------------------------------
+; transmit16bitValue - Encodes/transmits using HALT pulses. It is used to send
+; command function addresses to the Arduino.
+; 
+; HL holds 16-bit value to transmit, x1 HALT = '0' bit, x2 HALTs = '1' bit
+; ; transmit16bitValue:  
+; ;     ld d,16          		 ; Bit counter
+; ; .bitloop:
+; ;     bit 7,h
+; ;     HALT
+; ;     jr z,.bitEndMarkerDelay  ; If bit is '0', skip second HALT
+; ;     HALT     	             ; Second HALT for bit '1'
+; ; .bitEndMarkerDelay:
+; ;     ld e,40   	 	         ; Delay
+; ; .delayMarkerLoop:
+; ;     dec e
+; ;     jr nz,.delayMarkerLoop
+; ;     add hl,hl       		 ; Shift HL left
+; ;     dec d
+; ;     jr nz,.bitloop
+; ;     ret
