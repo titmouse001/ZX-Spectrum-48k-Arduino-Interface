@@ -69,13 +69,12 @@ enum class SmallFillVariableOddPacket : uint8_t {
   PACKET_LEN
 };
 
-
-
 enum class StackPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
   CMD_SP_ADDR_HIGH = 2,
   CMD_SP_ADDR_LOW = 3,
+  CMD_ACTION = 4,
   PACKET_LEN
 };
 

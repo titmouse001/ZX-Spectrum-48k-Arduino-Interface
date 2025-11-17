@@ -14,9 +14,7 @@ extern uint16_t command_Copy32;
 extern uint16_t command_VBL_Wait;
 extern uint16_t command_Stack;
 extern uint16_t command_Execute;
-
-extern uint16_t command_FillVariableEven;
-extern uint16_t command_FillVariableOdd;
+extern uint16_t command_fill_mem_bytecount;
 
 void initialize();
 

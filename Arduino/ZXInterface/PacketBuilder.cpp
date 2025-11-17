@@ -34,27 +34,15 @@ uint8_t PacketBuilder::buildSmallFillCommand(uint8_t* buf, uint8_t amount, uint1
   return E(SmallFillPacket::PACKET_LEN);
 }
 
-
-uint8_t PacketBuilder::buildFillVariableEvenCommand(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
-  buf[E(SmallFillVariableEvenPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_FillVariableEven) >> 8);
-  buf[E(SmallFillVariableEvenPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_FillVariableEven)&0xFF);
-  buf[E(SmallFillVariableEvenPacket::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
-  buf[E(SmallFillVariableEvenPacket::CMD_ADDR_LOW)]  = (uint8_t)((address)&0xFF);
-  buf[E(SmallFillVariableEvenPacket::CMD_AMOUNT)] = amount;
-  buf[E(SmallFillVariableEvenPacket::CMD_FILL_VALUE)] = value;
-  return E(SmallFillVariableEvenPacket::PACKET_LEN);
-}
-
-uint8_t PacketBuilder::buildFillVariableOddCommand(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
-  buf[E(SmallFillVariableOddPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_FillVariableOdd) >> 8);
-  buf[E(SmallFillVariableOddPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_FillVariableOdd)&0xFF);
+uint8_t PacketBuilder::build_command_fill_mem_bytecount(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
+  buf[E(SmallFillVariableOddPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_fill_mem_bytecount) >> 8);
+  buf[E(SmallFillVariableOddPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_fill_mem_bytecount)&0xFF);
   buf[E(SmallFillVariableOddPacket::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
   buf[E(SmallFillVariableOddPacket::CMD_ADDR_LOW)] = (uint8_t)((address)&0xFF);
-  buf[E(SmallFillVariableOddPacket::CMD_AMOUNT)] = amount;
-  buf[E(SmallFillVariableOddPacket::CMD_FILL_VALUE)] = value;
+  buf[E(SmallFillVariableOddPacket::CMD_AMOUNT)] = amount;    // 1 to 255, only byte size count supported
+  buf[E(SmallFillVariableOddPacket::CMD_FILL_VALUE)] = value; // byte size value
   return E(SmallFillVariableOddPacket::PACKET_LEN);
 }
-
 
 // Fill supports a maximum fill amount of 0xFFFF bytes
 uint8_t PacketBuilder::buildFillCommand(uint8_t* buf, uint16_t amount, uint16_t address, uint8_t value) {
@@ -69,11 +57,12 @@ uint8_t PacketBuilder::buildFillCommand(uint8_t* buf, uint16_t amount, uint16_t 
 }
 
 // Sets the Z80's stack pointer and then halts
-uint8_t PacketBuilder::buildStackCommand(uint8_t* buf, uint16_t address) {
+uint8_t PacketBuilder::buildStackCommand(uint8_t* buf, uint16_t address,uint8_t action) {
   buf[E(StackPacket::CMD_HIGH)] = (uint8_t)(CommandRegistry::command_Stack >> 8);
   buf[E(StackPacket::CMD_LOW)] = (uint8_t)(CommandRegistry::command_Stack & 0xFF);
   buf[E(StackPacket::CMD_SP_ADDR_HIGH)] = (uint8_t)(address >> 8);
   buf[E(StackPacket::CMD_SP_ADDR_LOW)] = (uint8_t)(address & 0xFF);
+  buf[E(StackPacket::CMD_ACTION)] = action;
   return E(StackPacket::PACKET_LEN);
 }
 

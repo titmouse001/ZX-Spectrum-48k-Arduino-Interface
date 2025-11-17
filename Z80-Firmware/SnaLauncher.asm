@@ -216,13 +216,7 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-	ld hl,command_FillVariableEven
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_FillVariableOdd
+	ld hl,command_fill_mem_bytecount
 	OUT (C), l    		  
 	halt				
 	OUT (C), h    		  
@@ -230,46 +224,44 @@ sendFunctionList:
 	;--------------------------------
 	ret
 
-;------------------------------------------------------
-command_FillVariableEven:  ; Fast memory fill for even byte counts
-; Input: Buffer end address, fill count/2, fill byte value
-;------------------------------------------------------
-    LD IX, 0        
-    ADD IX, SP     
-    READ_PAIR_WITH_HALT h,l ; HL = buffer end (fill backwards) 
-    halt                    ; Synchronization 
-    in b,(c)                ; B = number of PUSH operations (count/2)
-    READ_ACC_WITH_HALT      ; A = fill byte
-    LD SP, HL          		; buffer
-    LD H, A                 ; 
-    LD L, A                 ; HL = fill value/pattern
-FillEvenLoop:
-    PUSH HL                   
-    DJNZ FillEvenLoop        
-	ld SP,IX    
-    jp mainloop                
 
 ;------------------------------------------------------
-command_FillVariableOdd:  ;  Memory fill for odd byte counts
-; Input: Buffer end address, (count-1)/2, fill byte value
+; Fast memory fill 
+; Input: Buffer end address, total fill count (byte), fill byte value (byte)
 ;------------------------------------------------------
-    LD IX, 0        
-    ADD IX, SP 
-	READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
-	halt                       ;
-	in b,(c)                   ; B = number of PUSH operations ((count-1)/2)
-	halt                       ;
-	in d,(c)                   ; D = fill byte
-	dec hl                     ; handle the odd byte
-	ld (hl), d
-	ld sp, hl                  ; Set SP to buffer end - 1
-	ld h, d                   
-	ld l, d                    ; HL = fill value/pattern
-FillOddLoop:
-	push hl                 
-	djnz FillOddLoop        
-	ld SP,IX   
-	jp mainloop             
+command_fill_mem_bytecount:  
+
+    READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
+    halt                     ; Synchronization 
+    in b,(c)                 ; B = total fill count
+    READ_ACC_WITH_HALT       ; A = fill byte value
+
+    LD IX, 0
+    ADD IX, SP               ; save SP
+
+CheckParity:
+    BIT 0, B                 ; odd or even count?
+    JR Z, StartEvenFill      
+
+HandleOddByte:
+	DEC HL
+	LD (HL),a
+    DEC B                    ; B is now even
+    JR Z, RestoreSP    		 ; zero (only when initial count of 1)
+
+StartEvenFill:
+    SRL B                    ; count/2 to give no# PUSH operations
+	LD SP, HL                ; Point SP to the end address for the PUSH trick
+
+	LD H, A                  ; fill byte
+    LD L, A                  ;  "
+FillLoopOptimized:
+    PUSH HL                  ; x2 byte fill
+    DJNZ FillLoopOptimized   
+        
+RestoreSP:
+	LD SP,IX               
+    jp mainloop             
 
 
 ;------------------------------------------------------
@@ -378,13 +370,28 @@ command_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
     jp mainloop 	; done - back for next transfer command
 
 ;-----------------------------------------------------
-command_Stack:  ; 'S'  - restores snapshots stack 
+command_Stack:  ; 'S'  - store or restores snapshots stack 
 ;-----------------------------------------------------
+
 	READ_PAIR_WITH_HALT h,l 
+  	READ_ACC_WITH_HALT       ; A = Save:0 or Resotre:1
+
+	or a    
+    jr nz, .restore 
+	
+.store:
+	ld HL,0
+	add HL,SP
+	OUT (C), L
+	halt				
+	OUT (C), H    		  
+	halt
+ 	jp mainloop    
+.restore 	
 	ld sp,hl
     halt  					; synchronization with Arduino
-    jp mainloop          	; Done - jump back for next command
-
+    jp mainloop          	
+	
 ;-------------------------------------------------------------------------------------------
 command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
 ; Restore snapshot states & execute stored jump point from the stack
@@ -394,6 +401,9 @@ command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	; Setup - Copy code to screen memory, as we'll be switching ROMs later.
 	; After the ROM swap, we lose this sna ROM code in exchange for the stock ROM,
 	; so the launch code will run from screen RAM.
+
+	; TODO - THIS RELOCATED CODE USED TO DO FAR MORE - NOW THIS COPY IS OVERKILL)
+
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
@@ -543,18 +553,19 @@ ClearScreen:
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------
-; CLEAR RAM 48KB 
+; CLEAR RAM 48KB - 273,725 T-states / 3,500,000 = 0.0782
+; +0.08 seconds (will be a bit more due to contended memory)
 ;-----------------------------------------------------------------------
-ClearAllRam:  ; 273,725 t-states ÷ 3,500,000 = 0.0782 seconds ?!?
+ClearAllRam: 
         LD IX, 0        
         ADD IX, SP               
         ld hl, 0                 
         ld sp, 16384 + (48*1024) ; top of RAM (65536)
         ld b, 0                  ; wraps so 256 times
 clr:    REPT 96
-        push hl           
+        push hl           		 ; 11 * 96 * 256
         ENDM
-        djnz clr                 
+        djnz clr          		 ; (256 * 13) - (13-8)
         ld sp, ix                
 
 		jp ClearAllRamRet 
@@ -883,3 +894,50 @@ DS  16384 - last	; leave rest of rom blank
 ; ;     dec d
 ; ;     jr nz,.bitloop
 ; ;     ret
+
+
+//===
+
+
+
+; ;------------------------------------------------------
+; command_FillVariableEven:  ; Fast memory fill for even byte counts
+; ; Input: Buffer end address, fill count/2, fill byte value
+; ;------------------------------------------------------
+;     LD IX, 0        
+;     ADD IX, SP     
+;     READ_PAIR_WITH_HALT h,l ; HL = buffer end (fill backwards) 
+;     halt                    ; Synchronization 
+;     in b,(c)                ; B = number of PUSH operations (count/2)
+;     READ_ACC_WITH_HALT      ; A = fill byte
+;     LD SP, HL          		; buffer
+;     LD H, A                 ; 
+;     LD L, A                 ; HL = fill value/pattern
+; FillEvenLoop:
+;     PUSH HL                   
+;     DJNZ FillEvenLoop        
+; 	ld SP,IX    
+;     jp mainloop                
+
+; ;------------------------------------------------------
+; command_FillVariableOdd:  ;  Memory fill for odd byte counts
+; ; Input: Buffer end address, (count-1)/2, fill byte value
+; ;------------------------------------------------------
+;     LD IX, 0        
+;     ADD IX, SP 
+; 	READ_PAIR_WITH_HALT h,l    ; HL = buffer END address
+; 	halt                       ;
+; 	in b,(c)                   ; B = number of PUSH operations ((count-1)/2)
+; 	halt                       ;
+; 	in d,(c)                   ; D = fill byte
+; 	dec hl                     ; handle the odd byte
+; 	ld (hl), d
+; 	ld sp, hl                  ; Set SP to buffer end - 1
+; 	ld h, d                   
+; 	ld l, d                    ; HL = fill value/pattern
+; FillOddLoop:
+; 	push hl                 
+; 	djnz FillOddLoop        
+; 	ld SP,IX   
+; 	jp mainloop             
+

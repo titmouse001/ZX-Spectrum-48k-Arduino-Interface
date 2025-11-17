@@ -48,7 +48,8 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
  }
 
- __attribute__((optimize("-Os"))) void Utils::waitForUserExit()
+ __attribute__((optimize("-Os"))) 
+ void Utils::waitForUserExit()
  {
    do
    {

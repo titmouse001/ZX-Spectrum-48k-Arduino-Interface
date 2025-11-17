@@ -133,8 +133,8 @@ void Z80Bus::sendWaitVBLCommand() {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
-void Z80Bus::sendStackCommand(uint16_t addr) {
-  uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr);
+void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
+  uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr, action);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
@@ -212,13 +212,26 @@ uint8_t Z80Bus::getKeyboard() {
   return byte;
 }
 
-// Encode/send RLE-compressed data to the Speccy which is decompresses its side.
-// Uses TransferPacket for raw blocks and SmallFillPacket for repeated byte runs.
-// Both packet types max out at 255 payload bytes.
+//------------------------------------------------------------------------------------------
+// This transfer has a simple look ahead to see if data can be RLE-compressed. 
+// When a performance payoff for using RLE is found, the data is encoded and the RLE-compressed 
+// block is sent to the Z80 using fast fill commands.
+// We do things this way as the Z80 can use PUSH instructions to fill 2 bytes per instruction, 
+// so runs of repeated bytes are handled very efficiently..
+//
+// Both buildFillVariableEvenCommand() and buildFillVariableOddCommand() are used to
+// maximise performance depending on whether the run length is even or odd.
+//
+// Currently, fill packets use a maximum of 255 payload bytes (as we /2 we could use 511).
+//
+// When no compression is found (short run/random data), raw bytes are sent instead,
+// limited by the working buffer size.
+//
 __attribute__((optimize("-Ofast")))
-void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
+void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
   // {
   //  DEBUG FOR TESTING WITHOUT RLE (RLE JUST HELPS SPEEDUP TRANSFER)
+  //  (!!all the code bellow is really doing this - but it's using the Z80 in a more efficient way!!!)
   //   uint8_t* pTransfer = &BufferManager::packetBuffer[0];
   //   uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, input_len);
   //   Z80Bus::sendBytes(pTransfer, packetLen + input_len);
@@ -246,27 +259,33 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
       if (value != 0) {               // ignore zero as we cleared memory at start
         // --- Send as SmallFillPacket ---
-        // Using offset after input header and data so we don't touch the lower part of packetBuffer as it still holds input to be processed
+        // Using offset after input header and data so we don't touch the lower part of
+        // packetBuffer as it still holds input to be processed
         uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
-        if ((run_len & 0x01) == 0) {  // even
-                                      // number of PUSH operations ((count-1)/2)
-          uint8_t packetLen = PacketBuilder::buildFillVariableEvenCommand(pFill, addr + run_len, run_len / 2, value);
-          Z80Bus::sendBytes(pFill, packetLen);
-        } else {
-          // number of PUSH operations (count/2)
-          uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(pFill, addr + run_len, (run_len - 1) / 2, value);
-          Z80Bus::sendBytes(pFill, packetLen);
-        }
+
+        uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, run_len, value);
+	      Z80Bus::sendBytes(pFill, packetLen);
+
+        // if ((run_len & 0x01) == 0) {  
+        //   // even number of PUSH operations ((count-1)/2)
+        //   uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, run_len / 2, value);
+        //   Z80Bus::sendBytes(pFill, packetLen);
+        // } else {
+        //   // number of PUSH operations (count/2)
+        //   uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, (run_len - 1) / 2, value);
+        //   Z80Bus::sendBytes(pFill, packetLen);
+        // }
       }
       addr += run_len;
       i += run_len;
     } else {
-      // --- Send as raw TransferPacket ---
+       // Fallback to sending plain byte data (as data was a bad fit for RLE) 
       uint16_t raw_start = i;
       uint16_t max_raw = (remaining > MAX_RAW_LENGTH) ? MAX_RAW_LENGTH : remaining;
       // Start with current byte, then gather more until a run is detected or max length hit
       uint16_t raw_len = 1;
       i++;
+      // Find where next RLE starts
       while (raw_len < max_raw && i < input_len) {
         if (raw_len + 1 < max_raw && input[i] == input[i + 1]) {
           break;  // stop - run found
@@ -275,11 +294,15 @@ void Z80Bus::encodeTransferPacket(uint16_t input_len, uint16_t addr, bool border
         i++;
       }
 
-      // Place packet header before payload in packetBuffer (now we can send as a single contiguous block)
+      // Packet header command is calculated to be placed just before the payload.
+      // The caller reading from file has added GLOBAL_MAX_PACKET_LEN to allow for any header type to be copied in.
+      // (this location is outside the range of the RLE buffer area)
       if (borderLoadingEffect) {
+        // Transfer gives a flashing border loader effect
         uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(TransferPacket::PACKET_LEN))];
         Z80Bus::sendBytes(pTransfer, PacketBuilder::buildTransferCommand(pTransfer, addr, raw_len) + raw_len);
       } else {
+        // Copy is plain transfer without flashing borders
         uint8_t* pTransfer = &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN + ((int16_t)raw_start - E(CopyPacket::PACKET_LEN))];
         Z80Bus::sendBytes(pTransfer, PacketBuilder::buildCopyCommand(pTransfer, addr, raw_len) + raw_len);
       }
@@ -293,7 +316,7 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   // Transfer data to Spectrum RAM
   while (pFile->available()) {
     uint16_t bytesRead = pFile->read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
-    encodeTransferPacket(bytesRead, currentAddress, borderLoadingEffect);
+    rleOptimisedTransfer(bytesRead, currentAddress, borderLoadingEffect);
     currentAddress += bytesRead;
   }
 }
@@ -321,17 +344,26 @@ void Z80Bus::executeSnapshot() {
 }
 
 boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
-  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3);  // Initialize stack pointer
+
+  // Navigation away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
+  // We need to put the Z80 stack somewhere it will do less damage.
+  // Temporary working stack in screen memory is 99.9% ok.
+  // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
+  // +3 as we can borrow that addr for push/pops until it's set near end of SNA restore.
+  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 ); 
+
   //Z80Bus::waitRelease_NMI();
-   syncWithZ80();
-   triggerZ80NMI();
-   waitForZ80Resume();
+  syncWithZ80();
+  triggerZ80NMI();
+  waitForZ80Resume();
 
   Z80Bus::fillScreenAttributes(0);
   Z80Bus::clearScreen();
   Z80Bus::transferSnaData(pFile, true);
   synchronizeForExecution();
   executeSnapshot();
+
+  // At this point the Z80's game has been fuly restored including it's stack and registers.
   return true;
 }
 

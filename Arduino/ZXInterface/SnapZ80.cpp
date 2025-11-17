@@ -236,7 +236,7 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo
 
 /*  NOTES ABOUT COMMAND HEADER, COMMAND_PAYLOAD_SECTION_SIZE, FILE_READ_BUFFER_SIZE :-
 +-----------------------+---------------------------+-------------------------+
-|   Header (5)          |   Payload (255)           |  File Read Buffer (128) |
+|   Header (size=5)     |   Payload (size=255)      |  Read Buffer (size=128) |
 |   [0..4]              |   [5..259]                |   [260..387]            |
 +-----------------------+---------------------------+-------------------------+
 ^                       ^                           ^
@@ -295,16 +295,19 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
 				uint8_t runAmount = getNextByteFromFile();
 				uint8_t value = getNextByteFromFile();
 
-				//		uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, runAmount, currentAddress, value);
-				//			Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-				if (value != 0) {               // ignore zero as we cleared memory at start
-					if ((runAmount & 0x01) == 0) {  // even
-						uint8_t packetLen = PacketBuilder::buildFillVariableEvenCommand(BufferManager::packetBuffer, currentAddress + runAmount, runAmount / 2, value);
-						Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-					} else {
-						uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(BufferManager::packetBuffer, currentAddress + runAmount, (runAmount - 1) / 2, value);
-						Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-					}
+				// Ignore zero fills as we zero memory at SNA-ROM start-up  (see Z80 start-up: jp ClearAllRam)
+				if (value != 0) {               
+	
+					uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(BufferManager::packetBuffer, currentAddress + runAmount, runAmount, value);
+					Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+
+					// if ((runAmount & 0x01) == 0) {  // even
+					// 	uint8_t packetLen = PacketBuilder::build_FillVariableEvenCommand(BufferManager::packetBuffer, currentAddress + runAmount, runAmount / 2, value);
+					// 	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+					// } else {
+					// 	uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(BufferManager::packetBuffer, currentAddress + runAmount, (runAmount - 1) / 2, value);
+					// 	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+					// }
 				}
 				currentAddress += runAmount;
 			} else {
@@ -439,12 +442,15 @@ int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 		return fileCheck;
 	}
 
+	// Clearing gives a reliable look, as some .z80 snapshots can load the screen last.
 	Z80Bus::fillScreenAttributes(0);  
-  	Z80Bus::clearScreen();
+  Z80Bus::clearScreen();
 
-	const uint16_t stackAddress = 0x4004;  
-	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
-	Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
+	//const uint16_t stackAddress = 0x4004;  
+//	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
+	//Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
+
+	Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);
         
 	//Synchronize: Z80 knows it must halt after loading SP above - Aruindo waits for NMI release.
    	Z80Bus::syncWithZ80();
