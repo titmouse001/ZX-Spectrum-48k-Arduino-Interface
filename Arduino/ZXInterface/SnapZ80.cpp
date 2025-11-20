@@ -6,6 +6,7 @@
 #include "BufferManager.h" 
 #include "Z80Bus.h" 
 #include "PacketBuilder.h"
+#include "Utils.h"
 
 /*
  *******************************************************************
@@ -443,24 +444,19 @@ int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 	}
 
 	// Clearing gives a reliable look, as some .z80 snapshots can load the screen last.
-	Z80Bus::fillScreenAttributes(0);  
-  Z80Bus::clearScreen();
-
-	//const uint16_t stackAddress = 0x4004;  
-//	PacketBuilder::buildStackCommand(BufferManager::packetBuffer,stackAddress);
-	//Z80Bus::sendBytes(BufferManager::packetBuffer, 4);
+	Utils::clearScreen(0);
 
 	Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);
-        
+
 	//Synchronize: Z80 knows it must halt after loading SP above - Aruindo waits for NMI release.
-   	Z80Bus::syncWithZ80();
-   	Z80Bus::triggerZ80NMI();
-   	Z80Bus::waitForZ80Resume();
+	Z80Bus::waitHalt_syncWithZ80();
+	Z80Bus::unHalt_triggerZ80NMI();
+	Z80Bus::waitForZ80Resume();
 
 	int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
-	if (conversionResult < 0) { 
-		return conversionResult; 
-	}else {
+	if (conversionResult < 0) {
+		return conversionResult;
+	} else {
 		return Z80_CHECK_SUCCESS;
 	}
 }

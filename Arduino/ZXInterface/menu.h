@@ -10,7 +10,7 @@ public:
   enum Button_t {
     BUTTON_NONE,
     BUTTON_BACK,
-    BUTTON_SELECT,
+    BUTTON_MENU,
     BUTTON_ADVANCE
   };
   enum MenuAction_t {
@@ -47,7 +47,7 @@ private:
   static bool inSubFolder;
 
   static void displayItemList(uint16_t startFileIndex);
-  static uint16_t rescanFolder(bool reset = false);
+  static uint16_t scanFolder(bool reset = false);
 
 };
 

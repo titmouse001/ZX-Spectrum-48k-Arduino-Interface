@@ -91,12 +91,10 @@ void setup() {
 
 
   Z80Bus::resetZ80();
-  
-  // TODO ... SEND A KNOWN VALUE AT START-UP???
-  // and wait for that as a clean start-up signal
   CommandRegistry::initialize();
 
-  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
+  //Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
+  Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
   // SD Init must eat a pin for CS! We use the free OLED debug pin A4 
@@ -106,7 +104,7 @@ void setup() {
     do {  
       delay(20);  
     } while (!SdCardSupport::init(PIN_A4));  // keep looking
-    Z80Bus::clearScreen(COL::BLACK_WHITE);
+    Utils::clearScreen(COL::BLACK_WHITE);
   }
 }
 
@@ -114,12 +112,14 @@ void setup() {
 // .SCR FILE 
 // ---------------------
 void handleScrFile(FatFile* pFile) {
-  Z80Bus::fillScreenAttributes(0);
-  Z80Bus::clearScreen();
+//Z80Bus::fillScreenAttributes(0);
+  Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper0Ink0);
+
+  Utils::clearScreen(0);
   Z80Bus::transferSnaData(pFile, false);  // No loading effects.
   constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
   while (Menu::getButton() == Menu::BUTTON_NONE) { delay(maxButtonInputMilliseconds); }
-  Z80Bus::clearScreen();
+  Utils::clearScreen(0);
 }
 
 // ---------------------
@@ -158,7 +158,7 @@ void handleZ80File(FatFile* pFile) {
  * Consumes \r\n, \r, or \n line endings.
  * Clamps chars to printable ASCII (32–127) in store mode.
  */
-static uint16_t readOrSkipLine(FatFile* pFile, char* lineBuffer, uint16_t maxCharsPerLine) {
+uint16_t readOrSkipLine(FatFile* pFile, char* lineBuffer, uint16_t maxCharsPerLine) {
   int16_t remaining = pFile->available();
   uint16_t bytesRead = 0;
 
@@ -176,7 +176,7 @@ static uint16_t readOrSkipLine(FatFile* pFile, char* lineBuffer, uint16_t maxCha
     }
     if (lineBuffer) {
       if (c < 32 || c > 127) {
-        c = 127;
+        c = 127; // del - solid fill
       }
       lineBuffer[bytesRead] = static_cast<char>(c);
     }
@@ -199,7 +199,7 @@ void handleTxtFile(FatFile* pFile) {
   uint16_t lastPageIndex = 0;  // index of that page
   //boolean lastPage = false;
 
-  Z80Bus::clearScreen(COL::BLACK_WHITE);
+  Utils::clearScreen(COL::BLACK_WHITE);
 
   while (true) {
 
@@ -228,12 +228,14 @@ void handleTxtFile(FatFile* pFile) {
     uint16_t currentLine = 0;
     while (currentLine < maxLinesPerScreen && pFile->available()) {
       uint16_t bytesRead = readOrSkipLine(pFile, lineBuffer, maxCharsPerLine);
-      if (bytesRead > 0) {
-        lineBuffer[bytesRead] = '\0';
-        Draw::textLine(currentLine * charHeight, lineBuffer);
-      } else {
-        Draw::textLine(currentLine * charHeight, " ");  // clear line
+      
+      // empty line becomes single space
+      if (bytesRead == 0) {
+        lineBuffer[0] = ' ';
+        bytesRead = 1;
       }
+      lineBuffer[bytesRead] = '\0';
+      Draw::textLine(currentLine * charHeight, lineBuffer);
       currentLine++;
     }
 
@@ -262,7 +264,7 @@ void handleTxtFile(FatFile* pFile) {
       if (currentPageIndex > 0) {
         currentPageIndex--;
       }
-    } else if (button == Menu::BUTTON_SELECT) {
+    } else if (button == Menu::BUTTON_MENU) {
       return;
     }
 
@@ -290,8 +292,6 @@ void loop() {
   }
 
   pFile->close();
-
-  Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
 }
 
 

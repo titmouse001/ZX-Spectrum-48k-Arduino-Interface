@@ -30,60 +30,32 @@ void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, 
     #undef PROCESS_ROW
 }
 
-
-//__attribute__((optimize("-Os")))  //24944
-//__attribute__((optimize("-O1")))  //25020
-//__attribute__((optimize("-O2")))  //24940
-//__attribute__((optimize("-O3")))  //24940
-__attribute__((optimize("-Ofast")))  //25048
+__attribute__((optimize("-Ofast"))) 
 uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char *message) {
     Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-
     uint8_t charCount = 0;
     uint16_t basePos = 0;
-    const char firstChar = message[0];
-//    if (firstChar == '\0') return 0; 
-    // NOTE: With this logic font width is fixed at 5 pixels. 
-    const uint8_t *fontPtr=&fudged_Adafruit5x7[((firstChar-0x20)<<2)+(firstChar-0x20)+SmallFont::FNT_HEADER_SIZE];
-
     while (true) {
+        const char ch = message[charCount];
+        if (!ch) break;   
+        const uint8_t idx = (ch - 0x20);
+        const uint8_t* fontPtr = &fudged_Adafruit5x7[(idx << 2) + idx + SmallFont::FNT_HEADER_SIZE];  // trick for 5 x idx
         processCharacter(finalOutput, fontPtr, basePos);
         charCount++;
-        basePos += SmallFont::FNT_CHAR_PITCH;
-        fontPtr += SmallFont::FNT_WIDTH; // Move to next glyph
-        const char ch = message[charCount];
-        if (ch=='\0') break;
-        // NOTE: Font width is fixed at 5 pixels. 
-        fontPtr = &fudged_Adafruit5x7[((ch-0x20)<<2)+(ch-0x20)+SmallFont::FNT_HEADER_SIZE];
+        basePos += SmallFont::FNT_CHAR_PITCH;   // next char along in building output buffer
     }
     return charCount;
 }
 
-
-// __attribute__((optimize("-Ofast")))
-// inline uint8_t prepareTextGraphics(byte* finalOutput, const char *message) {
-//     Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-//     uint8_t charCount = 0;
-//     for (uint8_t i = 0; message[i] != '\0'; i++) {   
-//         const uint8_t *fontPtr = &fudged_Adafruit5x7[((message[i] - 0x20) * SmallFont::FNT_WIDTH) + SmallFont::FNT_HEADER_SIZE];
-//         const uint16_t basePos = i * SmallFont::FNT_CHAR_PITCH;
-//         processCharacter(finalOutput, fontPtr, basePos);
-//         charCount++;
-//     }
-//     return charCount;
-// }
-
+// No need to optimise this one (used for error message and the odd piece of text)
 uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper *flashStr) {
     Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-    
     const char *message = (const char *)flashStr;
     uint8_t charCount = 0;
-    
     char ch;
     while ((ch = pgm_read_byte(message++)) != 0) {
         const uint8_t *fontPtr = &fudged_Adafruit5x7[((ch - 0x20) * SmallFont::FNT_WIDTH) + SmallFont::FNT_HEADER_SIZE];
         const uint16_t basePos = charCount * SmallFont::FNT_CHAR_PITCH;
-        
         processCharacter(finalOutput, fontPtr, basePos);
         charCount++;
     }

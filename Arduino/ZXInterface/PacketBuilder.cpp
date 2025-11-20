@@ -23,25 +23,14 @@ uint8_t PacketBuilder::buildCopyCommand(uint8_t* buf, uint16_t address, uint8_t 
   return E(CopyPacket::PACKET_LEN);
 }
 
-// SmallFill supports a maximum fill amount of 256 bytes (0 wraps to 256)
-uint8_t PacketBuilder::buildSmallFillCommand(uint8_t* buf, uint8_t amount, uint16_t address, uint8_t value) {
-  buf[E(SmallFillPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_SmallFill) >> 8);
-  buf[E(SmallFillPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_SmallFill)&0xFF);
-  buf[E(SmallFillPacket::CMD_AMOUNT)] = amount;
-  buf[E(SmallFillPacket::CMD_START_ADDR_HIGH)] = (uint8_t)((address) >> 8);
-  buf[E(SmallFillPacket::CMD_START_ADDR_LOW)]  = (uint8_t)((address)&0xFF);
-  buf[E(SmallFillPacket::CMD_FILL_VALUE)] = value;
-  return E(SmallFillPacket::PACKET_LEN);
-}
-
 uint8_t PacketBuilder::build_command_fill_mem_bytecount(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
-  buf[E(SmallFillVariableOddPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_fill_mem_bytecount) >> 8);
-  buf[E(SmallFillVariableOddPacket::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_fill_mem_bytecount)&0xFF);
-  buf[E(SmallFillVariableOddPacket::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
-  buf[E(SmallFillVariableOddPacket::CMD_ADDR_LOW)] = (uint8_t)((address)&0xFF);
-  buf[E(SmallFillVariableOddPacket::CMD_AMOUNT)] = amount;    // 1 to 255, only byte size count supported
-  buf[E(SmallFillVariableOddPacket::CMD_FILL_VALUE)] = value; // byte size value
-  return E(SmallFillVariableOddPacket::PACKET_LEN);
+  buf[E(Fill8Packet::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_fill_mem_bytecount) >> 8);
+  buf[E(Fill8Packet::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_fill_mem_bytecount)&0xFF);
+  buf[E(Fill8Packet::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);
+  buf[E(Fill8Packet::CMD_ADDR_LOW)] = (uint8_t)((address)&0xFF);
+  buf[E(Fill8Packet::CMD_AMOUNT)] = amount;    // 1 to 255, only byte size count supported
+  buf[E(Fill8Packet::CMD_FILL_VALUE)] = value; // byte size value
+  return E(Fill8Packet::PACKET_LEN);
 }
 
 // Fill supports a maximum fill amount of 0xFFFF bytes
@@ -82,3 +71,12 @@ uint8_t PacketBuilder::buildExecuteCommand(uint8_t* buf) {
   return E(ExecutePacket::PACKET_LEN);
 }
 
+uint8_t PacketBuilder::build_Request_CommandSendData(uint8_t* buf, uint16_t amount, uint16_t address) {
+  buf[E(RequestSendDataPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_SendData) >> 8);
+  buf[E(RequestSendDataPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_SendData)&0xFF);
+  buf[E(RequestSendDataPacket::CMD_AMOUNT_HIGH)] = (uint8_t)((amount) >> 8);
+  buf[E(RequestSendDataPacket::CMD_AMOUNT_LOW)] = (uint8_t)((amount)&0xFF);
+  buf[E(RequestSendDataPacket::CMD_START_ADDR_HIGH)] = (uint8_t)((address) >> 8);
+  buf[E(RequestSendDataPacket::CMD_START_ADDR_LOW)] = (uint8_t)((address)&0xFF);
+  return E(RequestSendDataPacket::PACKET_LEN);
+}

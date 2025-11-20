@@ -56,37 +56,13 @@ void Z80Bus::resetToSnaRom() {
   resetZ80();
 }
 
-// // --------------------------------------------------------------------------------------------------------
-// // waitRelease_NMI:
-// // NMI (Non-Maskable Interrupt) on falling edge of the /NMI pin.
-// // Used to synchronize the Z80 with Arduino.
-// // --------------------------------------------------------------------------------------------------------
-// __attribute__((optimize("-Ofast")))
-// void Z80Bus::waitRelease_NMI() {
-//   syncWithZ80();
-//   triggerZ80NMI();
-//   waitForZ80Resume();
-// }
-
-// // --------------------------------------------------------------------------------------------------------
-// // waitHalt:
-// // Waits for the Z80 CPU to complete a HALT cycle
-// // The HALT signal is active-low, so we wait for a falling edge (LOW) followed by a rising edge (HIGH)
-// // --------------------------------------------------------------------------------------------------------
-// __attribute__((optimize("-Ofast")))
-// void Z80Bus::waitHalt() {
-//   syncWithZ80();
-//   waitForZ80Resume();
-// }
-
-// TO-DO: measure the difference with cheap oscilloscope , would be interesting to see! (or call tons - results to screen or SD card)
 __attribute__((optimize("-Ofast")))
 void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   // cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
-    syncWithZ80();
+    waitHalt_syncWithZ80();
     PORTD = data[i];  // Send to Z80 data lines
-    triggerZ80NMI();
+    unHalt_triggerZ80NMI();
     waitForZ80Resume();
   }
   //  sei();
@@ -108,24 +84,9 @@ void Z80Bus::sendSnaHeader(uint8_t* header) {
   sendBytes(&header[PKT_LEN + SNA_AF_LOW], 2);
 }
 
-void Z80Bus::fillScreenAttributes(const uint8_t col) {
-  uint8_t packetLen = PacketBuilder::buildFillCommand(BufferManager::packetBuffer, ZX_SCREEN_ATTR_SIZE, ZX_SCREEN_ATTR_ADDRESS_START, col);
-  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-}
-
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
   uint8_t packetLen = PacketBuilder::buildFillCommand(BufferManager::packetBuffer, amount, address, color);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-}
-
-void Z80Bus::sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color) {
-  uint8_t packetLen = PacketBuilder::buildSmallFillCommand(BufferManager::packetBuffer, amount, address, color);
-  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-}
-
-void Z80Bus::sendCopyCommand(uint16_t address, uint8_t amount) {
-  uint8_t packetLen = PacketBuilder::buildCopyCommand(BufferManager::packetBuffer, address, amount);
-  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen + amount);
 }
 
 void Z80Bus::sendWaitVBLCommand() {
@@ -138,24 +99,14 @@ void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
-__attribute__((optimize("-Os")))
-void Z80Bus::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
-  const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
-  if (oldHighlightAddress != fillAddr) {  // Clear old highlight if it's different
-    sendFillCommand(oldHighlightAddress, ZX_SCREEN_WIDTH_BYTES, COL::BLACK_WHITE);
-    oldHighlightAddress = fillAddr;
-  }
-  sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
-}
-
 uint8_t Z80Bus::get_IO_Byte() {
   // get_IO_Byte will be used inside a command like 'sendFunctionList' (se we don't use BufferManager here)
   // -------------------------------------------------------------
   // Prepare to read from Latch IC (74HC574)
   // Set Nano data pins to input mode before Z80 writes to latch.
-  syncWithZ80();      // wait for Z80 to HALT
+  waitHalt_syncWithZ80();      // wait for Z80 to HALT
   DDRD = 0x00;        // all inputs
-  triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
+  unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
   waitForZ80Resume(); // Wait for Z80 to complete the out instruction
   // -------------------------------------------------------------
 
@@ -187,9 +138,9 @@ uint8_t Z80Bus::getKeyboard() {
   // -------------------------------------------------------------
   // Prepare to read from Latch IC (74HC574)
   // Set Nano data pins to input mode before Z80 writes to latch.
-  syncWithZ80();      // wait for Z80 to HALT
+  waitHalt_syncWithZ80();      // wait for Z80 to HALT
   DDRD = 0x00;        // all inputs
-  triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
+  unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
   waitForZ80Resume(); // Wait for Z80 to complete the out instruction
   // -------------------------------------------------------------
 
@@ -325,8 +276,7 @@ void Z80Bus::synchronizeForExecution() {
   // Enable Spectrum's 50Hz maskable interrupt and sync timing
   // Creates gap before next interrupt to avoid stack corruption during restore
   sendWaitVBLCommand();
-//  Z80Bus::waitHalt();
-  syncWithZ80();
+  waitHalt_syncWithZ80();
   waitForZ80Resume();
 }
 
@@ -338,7 +288,7 @@ void Z80Bus::synchronizeForExecution() {
  */
 void Z80Bus::executeSnapshot() {
   PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
-  Z80Bus::sendSnaHeader(BufferManager::head27_Execute);
+  sendSnaHeader(BufferManager::head27_Execute);
   delay(1);  // allow 'L16D4' time to reach idle loop
   digitalWriteFast(Pin::ROM_HALF, HIGH);
 }
@@ -350,16 +300,13 @@ boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
   // Temporary working stack in screen memory is 99.9% ok.
   // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
   // +3 as we can borrow that addr for push/pops until it's set near end of SNA restore.
-  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 ); 
+  sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 ); 
 
-  //Z80Bus::waitRelease_NMI();
-  syncWithZ80();
-  triggerZ80NMI();
+  waitHalt_syncWithZ80();
+  unHalt_triggerZ80NMI();
   waitForZ80Resume();
-
-  Z80Bus::fillScreenAttributes(0);
-  Z80Bus::clearScreen();
-  Z80Bus::transferSnaData(pFile, true);
+  Utils::clearScreen(0);
+  transferSnaData(pFile, true);
   synchronizeForExecution();
   executeSnapshot();
 
@@ -367,23 +314,17 @@ boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
   return true;
 }
 
-void Z80Bus::clearScreen(uint8_t col) {
-  Z80Bus::fillScreenAttributes(col);
-  Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
-}
-
-void Z80Bus::syncWithZ80() {
+void Z80Bus::waitHalt_syncWithZ80() {
   // Wait until the Z80 enters the HALT state (active low).
   while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
 }
 
-void Z80Bus::triggerZ80NMI() {
+void Z80Bus::unHalt_triggerZ80NMI() {
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
   digitalWriteFast(Pin::Z80_NMI, LOW);
- // delayMicroseconds(1);     // other platforms may need a pause
+ // delayMicroseconds(1);     // other Arduino platforms may need a pause
   digitalWriteFast(Pin::Z80_NMI, HIGH);
 }
-
 
 void Z80Bus::waitForZ80Resume(){
   // wait until HALT goes HIGH (Z80 resumes)

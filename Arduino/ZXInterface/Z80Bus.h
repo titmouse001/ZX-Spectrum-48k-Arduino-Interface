@@ -12,10 +12,10 @@ void setupPins();
 
 extern void sendBytes(uint8_t* data, uint16_t size);
 extern void sendSnaHeader(uint8_t* header);
-extern void fillScreenAttributes(const uint8_t col);
+//extern void fillScreenAttributes(const uint8_t col);
 extern void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color);
-extern void sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color);
-extern void sendCopyCommand(uint16_t address, uint8_t amount);
+//extern void sendSmallFillCommand(uint16_t address, uint8_t amount, uint8_t color);
+//extern void sendCopyCommand(uint16_t address, uint8_t amount);
 extern void sendWaitVBLCommand();
 extern void sendStackCommand(uint16_t addr, uint8_t action);
 extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
@@ -29,12 +29,12 @@ extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
 extern void synchronizeForExecution();
 extern void executeSnapshot();
 extern boolean bootFromSnapshot(FatFile* pFile);
-extern void clearScreen(uint8_t col = 0);
+//extern void clearScreen(uint8_t col = 0);
 
 extern void resetZ80();
 extern void resetToSnaRom();
-extern void syncWithZ80();
-extern void triggerZ80NMI();
+extern void waitHalt_syncWithZ80();
+extern void unHalt_triggerZ80NMI();
 extern void waitForZ80Resume();
 extern void waitRelease_NMI();
 

@@ -7,6 +7,25 @@
 #include "CommandRegistry.h"
 #include "z80bus.h"
 
+#include "PacketBuilder.h"
+
+
+__attribute__((optimize("-Os")))
+void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
+  const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
+  if (oldHighlightAddress != fillAddr) {  // Clear old highlight if it's different
+    Z80Bus::sendFillCommand(oldHighlightAddress, ZX_SCREEN_WIDTH_BYTES, COL::BLACK_WHITE);
+    oldHighlightAddress = fillAddr;
+  }
+  Z80Bus::sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
+}
+
+void Utils::clearScreen(uint8_t col) {
+   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
+   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
+}
+
+
  __attribute__((optimize("-Os")))
 void Utils::frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
@@ -51,21 +70,59 @@ void Utils::setupJoystick() {
  __attribute__((optimize("-Os"))) 
  void Utils::waitForUserExit()
  {
+
+  // delay(5); 
+  // //===============================================
+  // // Hop back into menu code, fill and back into game (!no stack usage!)
+  // // clear first 3 bytes of the screen (JP <addr>) we borrowed during SNA restore.
+  // //===============================================
+  // Z80Bus::unHalt_triggerZ80NMI();       // We are in stock rom with modified code
+  // delay(5);                             // Allow time to reach the idle loop
+  // digitalWriteFast(Pin::ROM_HALF, LOW); // SNA ROM overrides idle loop with a new path
+  // delay(10);    
+  
+  // //Z80Bus::sendFillCommand(0x4000, 3, 0);
+
+  //      uint8_t a[2];
+  //      uint16_t val = 0x04AD; // jp here - restore EI flag and idle loop
+  //      a[0] = (uint8_t)(val >> 8);
+  //      a[1] = (uint8_t)(val & 0xFF);
+  //      Z80Bus::sendBytes(a, 2);
+  // delay(10);  
+  // digitalWriteFast(Pin::ROM_HALF, HIGH); // STOCK 48K ROM - escapes out of idle loop
+  //   delay(10);  
+  // //===============================================
+
+// dummy read to flush garbage 
+// we use port 0x1F for everything in the SNA rom menu's, if not a big issue will work around this, 
+// otherwise will need to come up with another port or some other way.
+  readJoystick();    
+
    do
    {
      //    unsigned long startTime = millis();
-     PORTD = Utils::readJoystick() & JOYSTICK_MASK;
-     uint8_t b = Utils::readJoystick();
+    //  PORTD = Utils::readJoystick() & JOYSTICK_MASK;
+    //  uint8_t b = Utils::readJoystick();
+
+    uint8_t b = Utils::readJoystick();
+    PORTD = b & JOYSTICK_MASK;
      if (b & JOYSTICK_SELECT)
      {
        //----------------------------------------------------------------
        // Fire NMI, this calls location 'L0066:' in the stock ROM.
        // The NMI routine has bee modified to push registers and then idle in a loop forever.
-       Z80Bus::triggerZ80NMI();
+       // So when we switch over to the SNA ROM it overrides and takes over giving us back the SNA ROM's menu loop.
+       Z80Bus::unHalt_triggerZ80NMI();
        //----------------------------------------------------------------
        delay(5);                             // Allow time to reach the idle loop
-       digitalWriteFast(Pin::ROM_HALF, LOW); // SNA ROM overrides idle loop with a new path
+       digitalWriteFast(Pin::ROM_HALF, LOW); // SNA ROM overrides idle loop with a new execution path
        //----------------------------------------------------------------
+
+  delay(1);
+  uint8_t packetLen = PacketBuilder::build_Request_CommandSendData(
+                          BufferManager::packetBuffer, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+  // Arduino now recieves data via the latch it will need to acknowledge each byte read.
 
        //************ HACK TEST **********
        FatFile &file = SdCardSupport::getFile();
@@ -88,10 +145,11 @@ void Utils::setupJoystick() {
                             "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO 
         // -------------------------------------------------------------
 
+
         for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-           Z80Bus::syncWithZ80();
+           Z80Bus::waitHalt_syncWithZ80();
            uint8_t byte = PIND; // Capture latched data
-           Z80Bus::triggerZ80NMI();
+           Z80Bus::unHalt_triggerZ80NMI();
            Z80Bus::waitForZ80Resume();
 
            file.write(byte);
@@ -116,10 +174,10 @@ void Utils::setupJoystick() {
        }
 
        //----------------------------------------------------------------
-       // Send JMP to Z80, this will progress into a forever loop in the SNA ROM.
-       // When roms are swapped, this starts the path back to the stock ROM.
+       // Send JMP to Z80 - This will progress into a forever loop in the SNA ROM.
+       // When swithcing back the stock rom, it creats a overriding path back to the game.
        uint8_t a[2];
-       uint16_t val = 0x04AD; // jp here
+       uint16_t val = 0x04AD; // jp here - restore EI flag and idle loop
        a[0] = (uint8_t)(val >> 8);
        a[1] = (uint8_t)(val & 0xFF);
        Z80Bus::sendBytes(a, 2);
@@ -133,6 +191,7 @@ void Utils::setupJoystick() {
        // (not "RETN"), because we must control the restoration of interrupts.
        // We’ve been doing non-standard things with NMIs inside NMI!
        digitalWriteFast(Pin::ROM_HALF, HIGH); // STOCK 48K ROM
+  //     break;
      }
    } while (true); //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
 

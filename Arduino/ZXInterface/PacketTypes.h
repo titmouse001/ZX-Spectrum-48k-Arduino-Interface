@@ -9,7 +9,6 @@ constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;
 enum class ReceiveKeyboardPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
-//  CMD_DELAY = 2,
   PACKET_LEN
 };
 
@@ -39,27 +38,7 @@ enum class FillPacket : uint8_t {
   PACKET_LEN
 };
 
-enum class SmallFillPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_AMOUNT = 2,
-  CMD_START_ADDR_HIGH = 3,
-  CMD_START_ADDR_LOW = 4,
-  CMD_FILL_VALUE = 5,
-  PACKET_LEN
-};
-
-
-enum class SmallFillVariableEvenPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_ADDR_HIGH = 2,
-  CMD_ADDR_LOW = 3,
-  CMD_AMOUNT = 4,
-  CMD_FILL_VALUE = 5,
-  PACKET_LEN
-};
-enum class SmallFillVariableOddPacket : uint8_t {
+enum class Fill8Packet : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
   CMD_ADDR_HIGH = 2,
@@ -100,5 +79,16 @@ enum class WaitVBLPacket : uint8_t {
   CMD_LOW = 1,
   PACKET_LEN
 };
+
+enum class RequestSendDataPacket : uint8_t {
+  CMD_HIGH = 0,
+  CMD_LOW = 1,
+  CMD_AMOUNT_HIGH = 2,
+  CMD_AMOUNT_LOW = 3,
+  CMD_START_ADDR_HIGH = 4,
+  CMD_START_ADDR_LOW = 5,
+  PACKET_LEN
+};
+
 
 #endif

@@ -66,14 +66,12 @@ uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   return len;
 }
 
-__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileName(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   getFileName(pFile,buffer);
   return buffer;
 }
 
-__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   getFileName(pFile,&buffer[1]);

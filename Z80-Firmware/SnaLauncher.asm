@@ -122,18 +122,17 @@ L0066:
 	; -------------------------------------------
 	; The Sna ROM will use this routine 'RETN' while in the file browser menu.
 	; The idea is to get in and out from this NMI as quickly as possible!
-	RETN 	; 2 bytes				MIRROR ROM - Uses 4 bytes to PUSH 
-	NOP		; 1 byte			 	  			 The mirror ROM steps past this point			
-	NOP		; 1 byte			 	            it does not want to use a RETN for the in game menus
-	; -------------------------------------------
-
-; 4 NOPs in mask ROM  -  8 bytes to skip (these comments updating!!!!!!! )
-	; -------------------------------------------
+	;
+	; The mirror ROM continues here
+	RETN 	; 2 bytes		MIRROR STOCK ROM - Pushes x4 registers here
+	NOP		; 1 byte			 	  	   	   
+	NOP		; 1 byte			 	            
+	;
+	; Stock ROM has instructions to ".idle: jr .idle" here
 	; These NOPs will release the mirror's idle loop and turn JR -2 into JR 0 (same as a slow NOP)
     NOP		; 1 byte 				MIRROR ROM - Uses jr -2
     NOP		; 1 byte 							
-	; -------------------------------------------
-
+	;
 	NOP
 	NOP
 	NOP
@@ -174,11 +173,11 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-	ld hl,command_SmallFill
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
+	; ld hl,command_SmallFill
+	; OUT (C), l    		  
+	; halt				
+	; OUT (C), h    		  
+	; halt
 	;--------------------------------
 	ld hl,command_Transfer
 	OUT (C), l    		  
@@ -198,7 +197,7 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-	ld hl,command_Wait
+	ld hl,command_VBL_Wait
 	OUT (C), l    		  
 	halt				
 	OUT (C), h    		  
@@ -222,7 +221,39 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
+	ld hl,command_SendData
+	OUT (C), l    		  
+	halt				
+	OUT (C), h    		  
+	halt
+	;--------------------------------
 	ret
+
+
+
+;------------------------------------------------------;
+command_SendData:	
+
+	READ_PAIR_WITH_HALT d,e  ; DE = amount
+	;ld de, 6144+768  ; DE = Fill amount 2 bytes
+ 	READ_PAIR_WITH_HALT h,l  ; HL = start address 
+	;ld hl, 16384  ; HL = Destination address
+
+	LD C, $1F
+.transmitLoop:
+	ld a,(hl)	
+   	
+	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
+	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+
+    inc hl		
+    DEC DE      
+    LD A, D     
+    OR E        
+    JP NZ, .transmitLoop 
+
+	jp mainloop    
+;------------------------------------------------------;
 
 
 ;------------------------------------------------------
@@ -293,19 +324,19 @@ fillLoop:
     JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
     JP mainloop 	; Return back for next transfer command
 
-;------------------------------------------------------
-command_SmallFill:  ; "f" - Small Fill 
-;------------------------------------------------------
-	halt 
-	in b,(c)     			  ; Fill count (1 byte)
-	READ_PAIR_WITH_HALT h,l   ; HL = Destination address
-	halt                      ; Wait for Arduino
-	in a,(c)                  ; Read fill value into A
-smallfillLoop:
-	ld (hl),a                 ; Store fill byte
-	inc hl
-	djnz smallfillLoop             ; Loop until B == 0
-	JP mainloop
+; ;------------------------------------------------------
+; command_SmallFill:  ; "f" - Small Fill 
+; ;------------------------------------------------------
+; 	halt 
+; 	in b,(c)     			  ; Fill count (1 byte)
+; 	READ_PAIR_WITH_HALT h,l   ; HL = Destination address
+; 	halt                      ; Wait for Arduino
+; 	in a,(c)                  ; Read fill value into A
+; smallfillLoop:
+; 	ld (hl),a                 ; Store fill byte
+; 	inc hl
+; 	djnz smallfillLoop             ; Loop until B == 0
+; 	JP mainloop
 
 ;---------------------------------------------------
 command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
@@ -354,7 +385,7 @@ command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
   JP mainloop 			; done - back for next transfer command
 
 ;--------------------------------------------------------
-command_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
+command_VBL_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
 ;--------------------------------------------------------
     ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
     ; This will trigger an interrupt at 50Hz (every 20ms). 
@@ -637,19 +668,25 @@ KEY_TABLE:	; Key row mapping  		; $6649
 
 ;------------------------------------------------------------------------
 
-ORG $04AA  ; *** KEEP THIS 24 Bytes long to match stock ROM ***
-; CPU may fetch mid-instruction during ROM swap. If displacement byte comes from 
-; new ROM (which has NOPs), JR -2 becomes JR 0 (two cycle slow NOP).
+ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
+
+; Exit mechanism – the Arduino signals a jump to 0x04AD in SNA ROM (chosen arbitrarily),
+; initiating the path back to the game.
+
+; Path back to the game - when the stock ROM is swapped back in, it overrides the
+; idle loop, restores the registers, and returns execution to the game.
+; (Technically, from the game's perspective we are still inside the first NMI)
+
+; Safeguards: The CPU may fetch in the middle of an instruction during the ROM
+; swap. If the displacement byte comes from the new ROM (which contains NOPs),
+; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
+
 L04AA:
 	NOP
 	NOP
 	NOP
-	; *************************************
-	; **** Arduino exits mainloop here. ***
-	; *************************************
-	NOP  ; 0x04AD:
+	NOP  ; 0x04AD: <<< path back to stock rom 
 	NOP  ; 0x04AE:
-	; *************************************
 	NOP
     ld  HL,16384
     bit 7,(HL)            	 			  ; check EI flag
@@ -686,34 +723,34 @@ ORG $04AA+24  ; 0x04C2
 	;;;	SET_BORDER 4  		; green DEBUG
 .StoreDone:
 
-; ------------------------------------------
-; ------------------------------------------
-; ------------------------------------------
-; Send the screen to the Arduino to store
-; We wish do modify the games screen by adding a ingame menu for
-; things like activating pokes
+; ; ; ; ------------------------------------------
+; ; ; ; ------------------------------------------
+; ; ; ; ------------------------------------------
+; ; ; ; Send the screen to the Arduino to store
+; ; ; ; We wish do modify the games screen by adding a ingame menu for
+; ; ; ; things like activating pokes
 
-	ld de, 6144+768  ; DE = Fill amount 2 bytes
-	ld hl, 16384  ; HL = Destination address
+; ; ; 	ld de, 6144+768  ; DE = Fill amount 2 bytes
+; ; ; 	ld hl, 16384  ; HL = Destination address
 	
-	LD C, $1F
-transmitScreenDataLoop:
-	ld a,(hl)	
+; ; ; 	LD C, $1F
+; ; ; transmitScreenDataLoop:
+; ; ; 	ld a,(hl)	
 
-;;;;;;;;	ld a, %00011000  ; TEST ONLY
+; ; ; ;;;;;;;;	ld a, %00011000  ; TEST ONLY
 
-   	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
-	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+; ; ;    	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
+; ; ; 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 
-    inc hl		
-    DEC DE      
-    LD A, D     
-    OR E        
-    JP NZ, transmitScreenDataLoop 
+; ; ;     inc hl		
+; ; ;     DEC DE      
+; ; ;     LD A, D     
+; ; ;     OR E        
+; ; ;     JP NZ, transmitScreenDataLoop 
 
-; ------------------------------------------
-; ------------------------------------------
-; ------------------------------------------
+; ; ; ; ------------------------------------------
+; ; ; ; ------------------------------------------
+; ; ; ; ------------------------------------------
 
 	jp mainloop
 
@@ -896,7 +933,7 @@ DS  16384 - last	; leave rest of rom blank
 ; ;     ret
 
 
-//===
+;
 
 
 

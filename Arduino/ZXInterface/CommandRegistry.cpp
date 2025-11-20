@@ -5,7 +5,6 @@
 
 uint16_t CommandRegistry::command_TransmitKey;
 uint16_t CommandRegistry::command_Fill;
-uint16_t CommandRegistry::command_SmallFill;
 uint16_t CommandRegistry::command_Transfer;
 uint16_t CommandRegistry::command_Copy;
 uint16_t CommandRegistry::command_Copy32;
@@ -13,7 +12,7 @@ uint16_t CommandRegistry::command_VBL_Wait;
 uint16_t CommandRegistry::command_Stack;
 uint16_t CommandRegistry::command_Execute;
 uint16_t CommandRegistry::command_fill_mem_bytecount;
-
+uint16_t CommandRegistry::command_SendData;
 
 void CommandRegistry::initialize(){
 
@@ -23,16 +22,13 @@ void CommandRegistry::initialize(){
   command_Fill = Z80Bus::get_IO_Byte();
   command_Fill += Z80Bus::get_IO_Byte()<< 8;
 
-  command_SmallFill = Z80Bus::get_IO_Byte();
-  command_SmallFill += Z80Bus::get_IO_Byte()<< 8 ;
-
   command_Transfer = Z80Bus::get_IO_Byte();
   command_Transfer += Z80Bus::get_IO_Byte()<< 8 ;
 
   command_Copy = Z80Bus::get_IO_Byte();
   command_Copy += Z80Bus::get_IO_Byte()<< 8 ;
-  command_Copy32 = Z80Bus::get_IO_Byte();
 
+  command_Copy32 = Z80Bus::get_IO_Byte();
   command_Copy32 += Z80Bus::get_IO_Byte()<< 8 ;
 
   command_VBL_Wait = Z80Bus::get_IO_Byte();
@@ -46,4 +42,8 @@ void CommandRegistry::initialize(){
 
   command_fill_mem_bytecount = Z80Bus::get_IO_Byte();
   command_fill_mem_bytecount += Z80Bus::get_IO_Byte()<< 8;
+  
+  command_SendData = Z80Bus::get_IO_Byte();
+  command_SendData += Z80Bus::get_IO_Byte()<< 8;
+
 }

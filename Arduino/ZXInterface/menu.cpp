@@ -17,9 +17,7 @@ uint16_t Menu::currentFileIndex = 0;
 uint16_t Menu::startFileIndex = 0;
 bool     Menu::inSubFolder = false;
 
-// #include "SSD1306AsciiAvrI2c.h" 
-// extern SSD1306AsciiAvrI2c oled;
-
+__attribute__((optimize("-Ofast"))) 
 void Menu::displayItemList(uint16_t startFileIndex) {
   // This function uses lazy evaluation to reduce slowdown.
   // The deeper you scroll the more files are skipped avoiding extra operations.
@@ -32,11 +30,11 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   uint16_t filesSkipped = 0;
 
   if (inSubFolder && startFileIndex == 0) {
-    Draw::textLine(0, "[/]");
+    Draw::textLine(0, "[/]");  // parent directory indicator
     linesDrawn = 1;
   }
 
-  FatFile& file = SdCardSupport::getFile(); 
+  FatFile& file = SdCardSupport::getFile();
   while (file.openNext(&root, O_RDONLY)) {
     if (file.isHidden()) {
       file.close();
@@ -46,7 +44,7 @@ void Menu::displayItemList(uint16_t startFileIndex) {
     if (filesSkipped < startFileIndex) {  // Skip until start index
       filesSkipped++;
       file.close();
-      // Rather then reading/processing every file from the beginning each time, 
+      // Rather then reading/processing every file from the beginning each time,
       // we fast forward through the directory.
       continue;
     }
@@ -59,8 +57,8 @@ void Menu::displayItemList(uint16_t startFileIndex) {
         displayName = &nameBuffer[1];
       }
 
-     uint8_t len = SdCardSupport::getFileName(&file, displayName);
-      if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {  // Trim long names
+      uint8_t len = SdCardSupport::getFileName(&file, displayName);  // names are null terminated
+      if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {                       // Trim long names
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
         displayName[ZX_FILENAME_MAX_DISPLAY_LEN] = '\0';
@@ -83,30 +81,30 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   }
 }
 
+__attribute__((optimize("-Os")))
 Menu::Button_t Menu::getButton() {
 
   const uint8_t joy = Utils::readJoystick();
-  if (joy & (0x10 | 0x40)) return BUTTON_SELECT;
+  if (joy & (0x10 | 0x40)) return BUTTON_MENU;
   if (joy & 0x04) return BUTTON_ADVANCE;
   if (joy & 0x08) return BUTTON_BACK;
 
   switch (Z80Bus::getKeyboard()) {
     case 'Q': return BUTTON_BACK;
     case 'A': return BUTTON_ADVANCE;
-    case 0x0D: return BUTTON_SELECT;   // 0x0D=enter
+    case 0x0D: return BUTTON_MENU;   // 0x0D=enter
     default: return BUTTON_NONE;
-  }
-  
+  } 
 }
 
+__attribute__((optimize("-Os")))
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
  
   // +1 to account for when [/] is added to top of list for navigating back to root
   uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);  
-
   const Button_t button = getButton();
 
-  if (button == BUTTON_SELECT) { 
+  if (button == BUTTON_MENU) { 
     return ACTION_SELECT_FILE;
   }
 
@@ -160,8 +158,8 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
   return ACTION_NONE;
 }
 
-
-uint16_t Menu::rescanFolder(bool reset) {
+__attribute__((optimize("-Os")))
+uint16_t Menu::scanFolder(bool reset) {
  
   if (reset) {
     currentFileIndex = 0;
@@ -176,19 +174,26 @@ uint16_t Menu::rescanFolder(bool reset) {
       totalFiles = SdCardSupport::countSnapshotFiles();
     } while (totalFiles == 0);
   }
-  Z80Bus::clearScreen(COL::BLACK_WHITE);
+//  Utils::clearScreen(COL::BLACK_WHITE);
+  Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
   displayItemList(startFileIndex);
-  Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
+  Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
   return totalFiles;
 }
 
+__attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
-  uint16_t totalFiles = rescanFolder();
+
+  Utils::clearScreen(COL::BLACK_WHITE); 
+
+ // Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
+
+  uint16_t totalFiles = scanFolder();
   while (true) {
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
     if (action != ACTION_NONE) {
-      Z80Bus::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
+      Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
     } 
     if (action == ACTION_SELECT_FILE) {
        FatFile& root = SdCardSupport::getRoot();
@@ -197,7 +202,7 @@ FatFile* Menu::handleMenu() {
         root.close();
         if (root.open("/")) {  // navagating back simply resets to root
           inSubFolder = false;
-          totalFiles = rescanFolder(true);
+          totalFiles = scanFolder(true);
         }
         continue;
       }
@@ -215,7 +220,7 @@ FatFile* Menu::handleMenu() {
           inSubFolder = false;
           root.open("/");  // something failed!
         }
-        totalFiles = rescanFolder(true);
+        totalFiles = scanFolder(true);
       } else {
         return &file;  // actualFileIndex;
       }
