@@ -63,7 +63,7 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
     waitHalt_syncWithZ80();
     PORTD = data[i];  // Send to Z80 data lines
     unHalt_triggerZ80NMI();
-    waitForZ80Resume();
+ ////////////   waitForZ80Resume();
   }
   //  sei();
 }
@@ -107,7 +107,7 @@ uint8_t Z80Bus::get_IO_Byte() {
   waitHalt_syncWithZ80();      // wait for Z80 to HALT
   DDRD = 0x00;        // all inputs
   unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
-  waitForZ80Resume(); // Wait for Z80 to complete the out instruction
+  ///////////////waitForZ80Resume(); // Wait for Z80 to complete the out instruction
   // -------------------------------------------------------------
 
   // -------------------------------------------------------------
@@ -130,37 +130,12 @@ uint8_t Z80Bus::get_IO_Byte() {
 }
 
 uint8_t Z80Bus::getKeyboard() {
-  // Command Z80 to send us a byte via the 'out' instruction.
-  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
-  BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey) & 0xFF);
-  Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
+  // Send command packet to the Z80 asking it to send back a byte with the OUT instruction (TransmitKey) 
+  BufferManager::packetBuffer[(uint8_t)ReceiveKeyboardPacket::CMD_HIGH] = (uint8_t)(CommandRegistry::command_TransmitKey >> 8);
+  BufferManager::packetBuffer[(uint8_t)ReceiveKeyboardPacket::CMD_LOW] =  (uint8_t)(CommandRegistry::command_TransmitKey & 0xFF);
+  Z80Bus::sendBytes(BufferManager::packetBuffer, (uint8_t)ReceiveKeyboardPacket::PACKET_LEN);
 
-  // -------------------------------------------------------------
-  // Prepare to read from Latch IC (74HC574)
-  // Set Nano data pins to input mode before Z80 writes to latch.
-  waitHalt_syncWithZ80();      // wait for Z80 to HALT
-  DDRD = 0x00;        // all inputs
-  unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
-  waitForZ80Resume(); // Wait for Z80 to complete the out instruction
-  // -------------------------------------------------------------
-
-  // -------------------------------------------------------------
-  // Enable and read the new latched data
-  digitalWriteFast(PIN_A5, LOW); // Enable: #OE on the latch IC
-
-  // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
-  // The Nano can execute the next instruction before latch outputs are ready!
-  __asm__ __volatile__("nop\n\t"   // single nop is about 62ns @16MHz
-                       "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO ONLY!!)
-  uint8_t byte = PIND;             // Read all 8 bits from latch
-  // -------------------------------------------------------------
-
-  // -------------------------------------------------------------
-  // Cleanup: disable latch and restore Nano to output mode
-  digitalWriteFast(PIN_A5, HIGH); // Disable latch (#OE high=tri-state)
-  DDRD = 0xFF;                    // Set all PORTD pins as outputs
-  // -------------------------------------------------------------
-  return byte;
+  return get_IO_Byte();
 }
 
 //------------------------------------------------------------------------------------------
@@ -272,13 +247,18 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   }
 }
 
-void Z80Bus::synchronizeForExecution() {
-  // Enable Spectrum's 50Hz maskable interrupt and sync timing
-  // Creates gap before next interrupt to avoid stack corruption during restore
-  sendWaitVBLCommand();
-  waitHalt_syncWithZ80();
-  waitForZ80Resume();
-}
+// void Z80Bus::synchronizeForExecution() {
+//   // Re-enable the Spectrum's 50 Hz interrupt (IM 1).
+//   //
+//   // This gives a safty gap before the next interrupt so the game's ISR won't
+//   // corrupt the stack when execution resumes after restoring the snapshot.
+//   //
+//   // synchronizeForExecution() would normally be called just before executeSnapshot()
+//   // // // //
+//   // // // sendWaitVBLCommand();
+//   // // // waitHalt_syncWithZ80(); // Wait for HALT to assert (interrupt sync point)
+//   // // // waitForZ80Resume();     // Wait for HALT to clear (interrupt occurred, Z80 running again)
+// }
 
 
 /* executeSnapshot:
@@ -287,6 +267,23 @@ void Z80Bus::synchronizeForExecution() {
  * (Previously this needed an extra messy HALT and a precise wait for the NMI to complete)
  */
 void Z80Bus::executeSnapshot() {
+
+  // -----------------------------------
+  // Re-enable the Spectrum's 50 Hz maskable interrupt (IM 1).
+  // This provides a safety gap before the next interrupt so the game's ISR won't corrupt the stack
+  // when the launch code is in the last stages of resuming the game. The Arduino needs to synchronize via NMI 
+  // to send data and that also uses the Z80's stack.
+  // NOTE: On the Z80 side - the SNA ROM does not execute 'EI' when exiting the maskable interrupt
+  // (IM 1) at vector 0x0038. This means IM 1 interrupts remain disabled when the ISR returns.
+
+  sendWaitVBLCommand();
+  waitHalt_syncWithZ80(); // Wait for HALT to assert (interrupt sync point)
+  waitForZ80Resume();     // Wait for HALT to clear (interrupt occurred, Z80 running again)
+
+//TODO ... maybe do a 2nd stage to EI (at game time !??!?!) and avoid this IM 1 sync gap
+
+  // -----------------------------------
+
   PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
   sendSnaHeader(BufferManager::head27_Execute);
   delay(1);  // allow 'L16D4' time to reach idle loop
@@ -304,10 +301,10 @@ boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 
   waitHalt_syncWithZ80();
   unHalt_triggerZ80NMI();
-  waitForZ80Resume();
+ ///////////// waitForZ80Resume();
   Utils::clearScreen(0);
   transferSnaData(pFile, true);
-  synchronizeForExecution();
+  //////////synchronizeForExecution();
   executeSnapshot();
 
   // At this point the Z80's game has been fuly restored including it's stack and registers.
@@ -324,6 +321,8 @@ void Z80Bus::unHalt_triggerZ80NMI() {
   digitalWriteFast(Pin::Z80_NMI, LOW);
  // delayMicroseconds(1);     // other Arduino platforms may need a pause
   digitalWriteFast(Pin::Z80_NMI, HIGH);
+
+  waitForZ80Resume();
 }
 
 void Z80Bus::waitForZ80Resume(){

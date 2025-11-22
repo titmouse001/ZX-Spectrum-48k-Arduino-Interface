@@ -55,8 +55,14 @@ uint8_t PacketBuilder::buildStackCommand(uint8_t* buf, uint16_t address,uint8_t 
   return E(StackPacket::PACKET_LEN);
 }
 
-// Waits for the Speccy's vertical blanking Line (also called vertical blanking interval) and then halts
+// Waits for the Speccy's vertical blanking Line and then halts
 uint8_t PacketBuilder::buildWaitVBLCommand(uint8_t* buf) {
+  /*
+   * Z80 call looks like this:
+   *    IM 1    ; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
+   *    EI 
+   *    HALT 		; Signal Z80 halt line for Arduino to read
+   */
   buf[E(WaitVBLPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_VBL_Wait) >> 8);
   buf[E(WaitVBLPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_VBL_Wait)&0xFF);
   return E(WaitVBLPacket::PACKET_LEN);

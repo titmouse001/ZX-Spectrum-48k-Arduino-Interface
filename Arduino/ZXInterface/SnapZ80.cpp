@@ -451,7 +451,7 @@ int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
 	//Synchronize: Z80 knows it must halt after loading SP above - Aruindo waits for NMI release.
 	Z80Bus::waitHalt_syncWithZ80();
 	Z80Bus::unHalt_triggerZ80NMI();
-	Z80Bus::waitForZ80Resume();
+	///////////////Z80Bus::waitForZ80Resume();
 
 	int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
 	if (conversionResult < 0) {

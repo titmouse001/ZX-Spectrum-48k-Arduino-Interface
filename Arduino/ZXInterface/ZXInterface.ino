@@ -4,6 +4,9 @@
 // This software uses the Arduino's ATmega328P Nano (2K SRAM, 32K flash & 1K EEPROM)
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
 // -------------------------------------------------------------------------------------
+// My default compiler setting here (optimise='-O2'):-
+// C:\Users\Admin\AppData\Local\Arduino15\packages\arduino\hardware\avr\1.8.6\platform.txt
+// -------------------------------------------------------------------------------------
 
 // Board detection - will cause compile error if wrong board selected
 //#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
@@ -69,6 +72,11 @@ void setup() {
   Serial.println("SERIAL DEBUG BREAKS COMMS TO Z80");
 #endif
 
+// SdCardSupport::init(PIN_A4);
+//   uint16_t  a = SdCardSupport::countSnapshotFiles() ;
+//  Serial.print("count =");
+//  Serial.println(a);
+
   Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
   Utils::setupJoystick();  // Initializes joystick input pins.
 #if (DEBUG_OLED == 1)
@@ -106,6 +114,9 @@ void setup() {
     } while (!SdCardSupport::init(PIN_A4));  // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);
   }
+
+
+
 }
 
 // ---------------------
@@ -140,7 +151,7 @@ void handleSnaFile(FatFile* pFile) {
 // ---------------------
 void handleZ80File(FatFile* pFile) {
   if (SnapZ80::convertZ80toSNA(pFile) == BLOCK_SUCCESS) {
-    Z80Bus::synchronizeForExecution();
+ //   Z80Bus::synchronizeForExecution();
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();

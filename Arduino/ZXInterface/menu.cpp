@@ -166,15 +166,13 @@ uint16_t Menu::scanFolder(bool reset) {
     startFileIndex = 0;
   }
   uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
-  if (totalFiles == 0) {
+  while (totalFiles == 0) {
+    // SD card removed - retry
     Draw::text_P(80, 90, F("NO FILES FOUND"));
-    do {
-      SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
-      delay(20);
-      totalFiles = SdCardSupport::countSnapshotFiles();
-    } while (totalFiles == 0);
+    delay(100);
+    SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
+    totalFiles = SdCardSupport::countSnapshotFiles();
   }
-//  Utils::clearScreen(COL::BLACK_WHITE);
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
   displayItemList(startFileIndex);
   Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
@@ -185,8 +183,6 @@ __attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
 
   Utils::clearScreen(COL::BLACK_WHITE); 
-
- // Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
 
   uint16_t totalFiles = scanFolder();
   while (true) {

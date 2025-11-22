@@ -116,6 +116,9 @@ void Utils::setupJoystick() {
        //----------------------------------------------------------------
        delay(5);                             // Allow time to reach the idle loop
        digitalWriteFast(Pin::ROM_HALF, LOW); // SNA ROM overrides idle loop with a new execution path
+
+Z80Bus::waitForZ80Resume();
+
        //----------------------------------------------------------------
 
   delay(1);
@@ -150,7 +153,7 @@ void Utils::setupJoystick() {
            Z80Bus::waitHalt_syncWithZ80();
            uint8_t byte = PIND; // Capture latched data
            Z80Bus::unHalt_triggerZ80NMI();
-           Z80Bus::waitForZ80Resume();
+     ///////////////////      Z80Bus::waitForZ80Resume();
 
            file.write(byte);
          }

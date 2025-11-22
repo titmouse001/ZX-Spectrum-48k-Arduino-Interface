@@ -38,7 +38,7 @@ void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   }
 }
 
-__attribute__((optimize("-Ofast")))
+
 uint16_t SdCardSupport::countSnapshotFiles() {
 
   if (file.isOpen()) {
@@ -47,14 +47,69 @@ uint16_t SdCardSupport::countSnapshotFiles() {
 
   uint16_t totalFiles = 0;
   root.rewind();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (!file.isHidden() && (file.isFile() || file.isDir()) ) {
-      totalFiles++;
+  DirFat_t dir;
+
+  // readDir: see FsStructs.h for struct layout and defines
+  while (root.readDir(&dir) > 0) {
+    if (dir.name[0] == FAT_NAME_FREE) {
+      break;  // as in "Entry is free", no more entries exist in this dir.
     }
-    file.close();
+    if (dir.name[0] == '.'  ||  // Hide . and .. invisible links
+        dir.name[0] == FAT_NAME_DELETED) {
+      continue;
+    }
+    uint8_t attr = dir.attributes;
+    if ((attr & 0x3F) == FAT_ATTRIB_LONG_NAME) {
+      continue;  // skip LFN - count just "8.3" filenames
+    }
+    if (attr & (FS_ATTRIB_HIDDEN | FS_ATTRIB_SYSTEM | FAT_ATTRIB_LABEL)) {
+      continue;
+    }
+    totalFiles++;
+
+
+    // Serial.print(totalFiles,HEX);
+    // Serial.print("-");
+    // if (attr & FS_ATTRIB_DIRECTORY) {
+    //   Serial.print(" DIR:");
+    // }else {
+    //    Serial.print("FILE:");
+    // }
+    // for (int i = 0; i < 8; i++) {
+    //   Serial.print((char)dir.name[i]);
+    // }
+    // Serial.print(".");
+    // Serial.print((char)dir.name[8]);
+    // Serial.print((char)dir.name[9]);
+    // Serial.print((char)dir.name[10]);
+
+    // Serial.print(", SIZE:");
+    // Serial.print(dir.fileSize[3], HEX);
+    // Serial.print(dir.fileSize[2], HEX);
+    // Serial.print(dir.fileSize[1], HEX);
+    // Serial.println(dir.fileSize[0], HEX);
   }
   return totalFiles;
 }
+
+
+// __attribute__((optimize("-Ofast")))
+// uint16_t SdCardSupport::countSnapshotFiles() {
+
+//   if (file.isOpen()) {
+//     file.close();
+//   }
+
+//   uint16_t totalFiles = 0;
+//   root.rewind();
+//   while (file.openNext(&root, O_RDONLY)) {
+//     if (!file.isHidden() && (file.isFile() || file.isDir()) ) {
+//       totalFiles++;
+//     }
+//     file.close();
+//   }
+//   return totalFiles;
+// }
 
 // This version of getFileName is used for the file browser view, keeping this one optimised for speed.
 __attribute__((optimize("-Ofast")))

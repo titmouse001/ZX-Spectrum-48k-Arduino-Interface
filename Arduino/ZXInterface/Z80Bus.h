@@ -26,7 +26,7 @@ extern uint8_t get_IO_Byte();
 
 extern void rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect);
 extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
-extern void synchronizeForExecution();
+//extern void synchronizeForExecution();
 extern void executeSnapshot();
 extern boolean bootFromSnapshot(FatFile* pFile);
 //extern void clearScreen(uint8_t col = 0);

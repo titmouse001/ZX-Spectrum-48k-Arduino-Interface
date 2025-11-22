@@ -89,8 +89,9 @@ ClearAllRamRet:
 	; Now we know all RAM is zeroed
 	; This means we can now assume loading can skip large chunks of zero-length data
 	
-	ld SP,0xFFFF  ; !!! Stack is only for menu use !!!
+	ld SP,0xFFFF  ; !!! This stack location is only for menu use !!!
 	; Note: At game loading time, SP is reasigned with 'command_Stack' from the Arduino.
+	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
 
 	call sendFunctionList
 	jp mainloop
