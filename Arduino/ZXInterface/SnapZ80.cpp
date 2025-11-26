@@ -67,17 +67,12 @@ MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_M
 }
 
 __attribute__((optimize("-Ofast")))
-int16_t SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
+Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer for header storage
 	
-//	if (SdCardSupport::fileRead(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
-//		return Z80_VERSION_UNKNOWN;  // Error reading header
-//	}
-
 	if (pFile->read(v1_header, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
 		return Z80_VERSION_UNKNOWN;  // Error reading header
 	}
-
 
 	if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) {  // V1: PC!=0
 		headerInfo->pc_low = v1_header[Z80_V1_PC_LOW];
@@ -87,8 +82,6 @@ int16_t SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 		headerInfo->version = Z80_VERSION_1;
 		return Z80_VERSION_1;  // ... here we know PC must hold a valid address
 	} else {                 // (PC==0) check for a valid V2/V3
-		// Read into the file read buffer area
-	//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) return -1;
 		if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) { 
 			return Z80_VERSION_UNKNOWN;
 		}
@@ -100,18 +93,18 @@ int16_t SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 		uint16_t bytes_to_read_ext_header = ext_len;
 		uint16_t bytes_read_so_far = 0;
 
-		// Initialize extended header values
+		// Initialize extended header values (v2/v3)
 		headerInfo->pc_low = 0;
 		headerInfo->pc_high = 0;
 		headerInfo->hw_mode = 0;
 
 		while (bytes_read_so_far < bytes_to_read_ext_header) {
 			uint16_t chunk_size = min(FILE_READ_BUFFER_SIZE, (uint16_t)(bytes_to_read_ext_header - bytes_read_so_far));
-			//if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
 			if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, chunk_size) != (int16_t)chunk_size) {
 				return Z80_VERSION_UNKNOWN;  // Error reading extended header
 			}
 
+			// Find PC and Mode dor the extended/additional header part (v2/v3)
 			for (uint16_t i = 0; i < chunk_size; i++) {
 				uint16_t current_ext_byte_index = bytes_read_so_far + i;
 				uint8_t b = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + i];
@@ -177,26 +170,27 @@ bool SnapZ80::findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& r
 }
 
 __attribute__((optimize("-Ofast")))
-Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerInfo) {
-	Z80CheckResult result = Z80_CHECK_SUCCESS;
+bool SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerInfo) {
+//	Z80CheckResult result = Z80_CHECK_SUCCESS;
+	bool result = true;
 	int32_t initial_file_pos = pFile->curPosition();
-	if (initial_file_pos == -1) return Z80_CHECK_ERROR_UNEXPECTED_EOF;  // Error getting position
+	if (initial_file_pos == -1) return false ; //Z80_CHECK_ERROR_UNEXPECTED_EOF;  // Error getting position
 
 	if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {  // Check machine type (48K only for now)
-		result = Z80_CHECK_ERROR_UNSUPPORTED_TYPE;
+		result = false ; // Z80_CHECK_ERROR_UNSUPPORTED_TYPE;
 	} else {
 		if (headerInfo->version >= Z80_VERSION_2) {  // V2 or V3
 			while (pFile->available()) {
 				uint32_t current_pos = pFile->curPosition();
 				if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {  // Read 2 bytes for compressed_length
 					if (!pFile->available()) break;                                   // After reading a full block, it's fine if EOF
-					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete compressed_length
+					result = false ; //Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete compressed_length
 					break;
 				}
 				uint16_t compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
 				if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {  // Read 1 byte for page_number
-					result = Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete block (missing page number)
+					result = false ;//Z80_CHECK_ERROR_BLOCK_STRUCTURE;                                     // Incomplete block (missing page number)
 					break;
 				}
 				//uint8_t page_number = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
@@ -208,7 +202,7 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo
 				// skip: The 3 bytes are for compressed_length (2) + page_number (1)
 				uint32_t target_pos = current_pos + 3 + compressed_length;
 				if (!pFile->seekSet(target_pos)) {
-					result = Z80_CHECK_ERROR_EOF;  // Failed to seek, likely file too short for the stated compressed_length
+					result = false; //Z80_CHECK_ERROR_EOF;  // Failed to seek, likely file too short for the stated compressed_length
 					break;
 				}
 			}
@@ -217,20 +211,24 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo
 				int32_t start_of_rle_data = initial_file_pos;
 				uint32_t dummy_length;
 				if (!findMarkerOptimized(pFile,start_of_rle_data, dummy_length)) {
-					result = Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND;
+					result = false; //Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND;
 				}
 
 			} else {  // For uncompressed V1, the data is just raw bytes, 48K total.
 				int32_t current_pos = pFile->curPosition();
-				if (current_pos == -1) { result = Z80_CHECK_ERROR_UNEXPECTED_EOF; }
+				if (current_pos == -1) { 
+					result = false ; // Z80_CHECK_ERROR_UNEXPECTED_EOF; 
+				}
 				// Check if the file size matches expected 48K + header
-				if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) { result = Z80_CHECK_ERROR_UNEXPECTED_EOF; }
+				if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) { 
+					result = false ;// Z80_CHECK_ERROR_UNEXPECTED_EOF; 
+				}
 			}
 		}
 	}
 
 	if (!pFile->seekSet(initial_file_pos)) {  // Restore position to before the check
-		return Z80_CHECK_ERROR_SEEK;
+		return false; //Z80_CHECK_ERROR_SEEK;
 	}
 	return result;
 }
@@ -247,7 +245,6 @@ Z80CheckResult SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo
 └── Used by all command builders (Transfer, SmallFill, etc.)
 */
 
-
 __attribute__((optimize("-Ofast"))) 
 void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
@@ -263,7 +260,6 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
 	auto getNextByteFromFile = [&]() -> uint8_t {
 		if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
 			uint16_t bytesToRead = min(FILE_READ_BUFFER_SIZE, sourceLengthLimit - bytesReadFromSource);
-			//if (bytesToRead == 0) return 0;  // Should not happen due to validation
 			fileReadBufferBytesAvailable = pFile->read(fileReadBufferPtr, bytesToRead);
 			fileReadBufferCurrentPos = 0;
 		}
@@ -298,17 +294,8 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
 
 				// Ignore zero fills as we zero memory at SNA-ROM start-up  (see Z80 start-up: jp ClearAllRam)
 				if (value != 0) {               
-	
 					uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(BufferManager::packetBuffer, currentAddress + runAmount, runAmount, value);
 					Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-
-					// if ((runAmount & 0x01) == 0) {  // even
-					// 	uint8_t packetLen = PacketBuilder::build_FillVariableEvenCommand(BufferManager::packetBuffer, currentAddress + runAmount, runAmount / 2, value);
-					// 	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-					// } else {
-					// 	uint8_t packetLen = PacketBuilder::buildFillVariableOddCommand(BufferManager::packetBuffer, currentAddress + runAmount, (runAmount - 1) / 2, value);
-					// 	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-					// }
 				}
 				currentAddress += runAmount;
 			} else {
@@ -327,22 +314,19 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_num
 	uint16_t compressed_length;
 
 	// Read compressed_length (2 bytes, little-endian) into the file read buffer
-//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
 	if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 2) != 2) {
 		*page_number_out = (uint8_t)-1;         // Indicate end of file or read error for page number
-//		if (!SdCardSupport::fileAvailable()) {  // Check if it's genuinely EOF
 		if (!pFile->available()) {  // Check if it's genuinely EOF
 			return BLOCK_END_OF_FILE;
 		}
-		return BLOCK_ERROR_READ_LENGTH;
+		return  BLOCK_ERROR; //BLOCK_ERROR_READ_LENGTH;
 	}
 	compressed_length = (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET] + (uint16_t)BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET + 1] * 0x100;
 
 	// Read page_number into the file read buffer
-//	if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
 	if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, 1) != 1) {
 		*page_number_out = (uint8_t)-1;  // Indicate end of file or read error
-		return BLOCK_ERROR_READ_PAGE;
+		return  BLOCK_ERROR; // BLOCK_ERROR_READ_PAGE;
 	}
 	*page_number_out = BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
 
@@ -356,20 +340,19 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_num
 		uint16_t bytes_consumed = 0;
 		while (bytes_consumed < compressed_length) {
 			uint16_t bytes_to_read_this_chunk = min(FILE_READ_BUFFER_SIZE, (uint16_t)(compressed_length - bytes_consumed));
-	//		if (SdCardSupport::fileRead(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
 			if (pFile->read(BufferManager::packetBuffer + FILE_READ_BUFFER_OFFSET, bytes_to_read_this_chunk) != (int16_t)bytes_to_read_this_chunk) {
-				return BLOCK_ERROR_READ_DATA;  // Failed to consume all expected bytes
+				return  BLOCK_ERROR; // BLOCK_ERROR_READ_DATA;  // Failed to consume all expected bytes
 			}
 			bytes_consumed += bytes_to_read_this_chunk;
 		}
-		return BLOCK_UNSUPPORTED_PAGE;
+		return BLOCK_UNSUPPORTED_PAGE;  // caller can ignore this block and move onto next
 	}
 
 	decodeRLE_core(pFile, compressed_length,  (uint16_t)sna_offset);
 	return BLOCK_SUCCESS;
 }
 
-int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo) {
+bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 	uint16_t stackAddrForPushingPC = 0;
 	uint8_t* snaHeader = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)]; 
 	uint8_t* v1_header = &BufferManager::packetBuffer[0]; // Use global buffer where header is stored
@@ -389,7 +372,7 @@ int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo)
 			BlockReadResult block_result = z80_readAndWriteBlock(pFile,&page_number);  //, &uncompressed_length);
 			if (block_result == BLOCK_END_OF_FILE) break;
 			if (block_result == BLOCK_UNSUPPORTED_PAGE) { continue; }  // Skip to the next block
-			if (block_result < 0) { return block_result; }             // negative critical errors
+			if (block_result < 0) { return false ; } // block_result; }             // negative critical errors
 		}
 	} else {   // version 1
 		const uint32_t DEST_BUFFER_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY;  // Expected uncompressed size (48K machine)
@@ -400,17 +383,15 @@ int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo)
 	//		if (start_of_rle_data == -1) return -1;
 			uint32_t rle_data_length = 0;
 			if (!findMarkerOptimized(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
-				return BLOCK_ERROR_NO_V1_MARKER;
+				return false ;//  BLOCK_ERROR_NO_V1_MARKER;
 			}
 			decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
 
 			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
 			uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
-	//		if (SdCardSupport::filePosition() < expected_pos_after_marker) {
-	//			if (!SdCardSupport::fileSeek(expected_pos_after_marker)) {
 				if (pFile->curPosition() < expected_pos_after_marker) {
 					if (!pFile->seekSet(expected_pos_after_marker)) {
-						return -1;  // Failed to seek past marker
+						return false ;// -1;  // Failed to seek past marker
 				}
 			}
 		} else {  // Uncompressed V1 data
@@ -427,38 +408,38 @@ int16_t SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo)
 	uint8_t packetLen = PacketBuilder::buildTransferCommand(BufferManager::packetBuffer,stackAddrForPushingPC, payloadAmount);
 	Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen + payloadAmount);
 
-	return BLOCK_SUCCESS;
+	return true; // BLOCK_SUCCESS;
 }
 
-int16_t SnapZ80::convertZ80toSNA(FatFile* pFile) {
+bool SnapZ80::convertZ80toSNA(FatFile* pFile) {
 	// Read header once and store in structure
 	Z80HeaderInfo headerInfo;
-	int16_t header_result = readZ80Header(pFile, &headerInfo);
-	if (header_result < 0) {
-		return Z80_CHECK_ERROR_READ_HEADER;
+//	Z80HeaderVersion versionFound = readZ80Header(pFile, &headerInfo);
+//	if (versionFound < 0) {
+//		return Z80_CHECK_ERROR_READ_HEADER;
+//	}
+
+	if (readZ80Header(pFile, &headerInfo) == Z80_VERSION_UNKNOWN ) {
+		return false ; //Z80_CHECK_ERROR_READ_HEADER;
 	}
 
-	Z80CheckResult fileCheck = checkZ80FileValidity(pFile, &headerInfo);
-	if (fileCheck != Z80_CHECK_SUCCESS) {
-		return fileCheck;
-	}
+	// Z80CheckResult fileCheck = checkZ80FileValidity(pFile, &headerInfo);
+	// if (fileCheck != Z80_CHECK_SUCCESS) {
+	// 	return false; // fileCheck;
+	// }
 
-	// Clearing gives a reliable look, as some .z80 snapshots can load the screen last.
-	Utils::clearScreen(0);
+	 if (checkZ80FileValidity(pFile, &headerInfo)) {
 
-	Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);
+			return convertZ80toSNA_impl(pFile, &headerInfo);
 
-	//Synchronize: Z80 knows it must halt after loading SP above - Aruindo waits for NMI release.
-	Z80Bus::waitHalt_syncWithZ80();
-	Z80Bus::unHalt_triggerZ80NMI();
-	///////////////Z80Bus::waitForZ80Resume();
-
-	int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
-	if (conversionResult < 0) {
-		return conversionResult;
-	} else {
-		return Z80_CHECK_SUCCESS;
-	}
+//			int16_t conversionResult = convertZ80toSNA_impl(pFile, &headerInfo);
+//			if (conversionResult < 0) {
+//				return false ; //conversionResult;
+//			} else {
+//				return true; //Z80_CHECK_SUCCESS;
+//			}
+	 }
+	return false;
 }
 
 

@@ -24,6 +24,8 @@ uint8_t PacketBuilder::buildCopyCommand(uint8_t* buf, uint16_t address, uint8_t 
 }
 
 uint8_t PacketBuilder::build_command_fill_mem_bytecount(uint8_t* buf, uint16_t address, uint8_t amount, uint8_t value) {
+  // The Z80 end of this uses IX to store SP - so best not use this the in-game pause menu
+  // It's fine to use main menu and copying game to Z80s RAM.
   buf[E(Fill8Packet::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_fill_mem_bytecount) >> 8);
   buf[E(Fill8Packet::CMD_LOW)]  = (uint8_t)((CommandRegistry::command_fill_mem_bytecount)&0xFF);
   buf[E(Fill8Packet::CMD_ADDR_HIGH)] = (uint8_t)((address) >> 8);

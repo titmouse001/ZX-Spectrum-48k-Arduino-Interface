@@ -147,27 +147,28 @@ constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL
 //-----------------------------------------
 
 // New enum for Z80 file validity check results
-enum Z80CheckResult {
-    Z80_CHECK_SUCCESS = 0,
-    Z80_CHECK_ERROR_OPEN_FILE = -1,
-    Z80_CHECK_ERROR_READ_HEADER = -2,
-    Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND = -3,
-    Z80_CHECK_ERROR_BLOCK_STRUCTURE = -4, // For V2/V3 block read issues
-    Z80_CHECK_ERROR_UNEXPECTED_EOF = -5, // For general file truncation
-    Z80_CHECK_ERROR_UNSUPPORTED_TYPE = -6, // For machine type check
-    Z80_CHECK_ERROR_EOF = -7,
-    Z80_CHECK_ERROR_SEEK = -8   
-};
+// enum Z80CheckResult {
+//     Z80_CHECK_SUCCESS = 0,
+//     Z80_CHECK_ERROR_OPEN_FILE = -1,
+//     Z80_CHECK_ERROR_READ_HEADER = -2,
+//     Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND = -3,
+//     Z80_CHECK_ERROR_BLOCK_STRUCTURE = -4, // For V2/V3 block read issues
+//     Z80_CHECK_ERROR_UNEXPECTED_EOF = -5, // For general file truncation
+//     Z80_CHECK_ERROR_UNSUPPORTED_TYPE = -6, // For machine type check
+//     Z80_CHECK_ERROR_EOF = -7,
+//     Z80_CHECK_ERROR_SEEK = -8   
+// };
 
 enum BlockReadResult {
     BLOCK_SUCCESS = 0,
     BLOCK_END_OF_FILE = 1,
     BLOCK_UNSUPPORTED_PAGE = 2,
-    BLOCK_ERROR_READ_LENGTH = -21,
-    BLOCK_ERROR_READ_PAGE = -22,
-    BLOCK_ERROR_READ_DATA = -23,
-    BLOCK_ERROR_VERSION = -24,
-    BLOCK_ERROR_NO_V1_MARKER = -25
+    BLOCK_ERROR = 13
+//    BLOCK_ERROR_READ_LENGTH = -21,
+//    BLOCK_ERROR_READ_PAGE = -22,
+//    BLOCK_ERROR_READ_DATA = -23,
+//    BLOCK_ERROR_VERSION = -24,
+//    BLOCK_ERROR_NO_V1_MARKER = -25
 };
 
 enum MachineType {
@@ -177,7 +178,7 @@ enum MachineType {
 };
 
 enum Z80HeaderVersion {
-    Z80_VERSION_UNKNOWN = -1,
+    Z80_VERSION_UNKNOWN = 0,
     Z80_VERSION_1 = 1,
     Z80_VERSION_2 = 2,
     Z80_VERSION_3 = 3

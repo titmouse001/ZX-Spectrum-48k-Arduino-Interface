@@ -174,12 +174,6 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-	; ld hl,command_SmallFill
-	; OUT (C), l    		  
-	; halt				
-	; OUT (C), h    		  
-	; halt
-	;--------------------------------
 	ld hl,command_Transfer
 	OUT (C), l    		  
 	halt				
@@ -233,33 +227,52 @@ sendFunctionList:
 
 
 ;------------------------------------------------------;
+; *** Transmit to Arduno ***
+; command_SendData:	
+
+; 	READ_PAIR_WITH_HALT d,e  ; DE = amount
+; 	;ld de, 6144+768  ; DE = Fill amount 2 bytes
+;  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
+; 	;ld hl, 16384  ; HL = Destination address
+
+; 	LD C, $1F
+; .transmitLoop:
+; 	ld a,(hl)	
+   	
+; 	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
+; 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+
+;     inc hl		
+;     DEC DE      
+;     LD A, D     
+;     OR E        
+;     JP NZ, .transmitLoop 
+
+; 	jp mainloop    
+
 command_SendData:	
-
-	READ_PAIR_WITH_HALT d,e  ; DE = amount
-	;ld de, 6144+768  ; DE = Fill amount 2 bytes
+	READ_PAIR_WITH_HALT b,c  ; BC = amount
  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
-	;ld hl, 16384  ; HL = Destination address
-
-	LD C, $1F
 .transmitLoop:
 	ld a,(hl)	
-   	
-	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
+	OUT ($1f), A    	  ; Game cart automatically latches value (with latch ic: 74HC574PW)
 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
-
     inc hl		
-    DEC DE      
-    LD A, D     
-    OR E        
+    DEC bc      
+    LD A, b     
+    OR c        
     JP NZ, .transmitLoop 
-
 	jp mainloop    
+
 ;------------------------------------------------------;
 
 
 ;------------------------------------------------------
 ; Fast memory fill 
 ; Input: Buffer end address, total fill count (byte), fill byte value (byte)
+;
+; WARNING: DON'T USE THIS FILL FOR THE IN_GAME PAUSE MENU
+;		   TRASHES IX AND DE - we dont save those from a running game into pause state.
 ;------------------------------------------------------
 command_fill_mem_bytecount:  
 
@@ -299,45 +312,44 @@ RestoreSP:
 ;------------------------------------------------------
 command_TransmitKey:
 ;------------------------------------------------------
+	; JP GET_KEY            ; Returns key in A
+	; GET_KEY_RET:		  ; (jump back - avoid stack usage)
+    ; LD C, $1F			  ; #IORQ + A7 + #RD
+    ; OUT (C), A    		  ; Game cart latches value (latch ic: 74HC574PW)
+	; halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+	; jp mainloop
+
 	JP GET_KEY            ; Returns key in A
-	GET_KEY_RET:		  ; (jump back - avoid stack usage)
-
-;;;;;;;;;;;;;;;;	halt
-
-    LD C, $1F			  ; #IORQ + A7 + #RD
-    OUT (C), A    		  ; Game cart latches value (latch ic: 74HC574PW)
+GET_KEY_RET:		  ; (jump back - avoid stack usage)
+    OUT ($1F), A    		  ; Game cart latches value (latch ic: 74HC574PW)
 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 	jp mainloop
 
 ;------------------------------------------------------
 command_Fill:  ; "F" - FILL
 ;------------------------------------------------------
-	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
-	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
-	halt		 	; Synchronizes with Arduino (NMI to continue)
-	in b,(c)		; Read fill value from the z80 I/O port
-fillLoop:
-	ld (hl),b	 	; Write to memory   [7]
-    inc hl			;					[6]
-    DEC DE      	;					[6]
-    LD A, D      	;					[4]
-    OR E         	;					[4]
-    JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
-    JP mainloop 	; Return back for next transfer command
+; 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
+; 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
+; 	halt		 	; Synchronizes with Arduino (NMI to continue)
+; 	in b,(c)		; Read fill value from the z80 I/O port
+; fillLoop:
+; 	ld (hl),b	 	; Write to memory   [7]
+;     inc hl			;					[6]
+;     DEC DE      	;					[6]
+;     LD A, D      	;					[4]
+;     OR E         	;					[4]
+;     JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
+;     JP mainloop 	; Return back for next transfer command
 
-; ;------------------------------------------------------
-; command_SmallFill:  ; "f" - Small Fill 
-; ;------------------------------------------------------
-; 	halt 
-; 	in b,(c)     			  ; Fill count (1 byte)
-; 	READ_PAIR_WITH_HALT h,l   ; HL = Destination address
-; 	halt                      ; Wait for Arduino
-; 	in a,(c)                  ; Read fill value into A
-; smallfillLoop:
-; 	ld (hl),a                 ; Store fill byte
-; 	inc hl
-; 	djnz smallfillLoop             ; Loop until B == 0
-; 	JP mainloop
+    READ_PAIR_WITH_HALT b,c   ; BC = Fill amount (Counter)
+    READ_PAIR_WITH_HALT h,l   ; HL = Destination address
+    halt                      ; Sync
+    in a,($1f)                ; Fill value 
+fillLoop:
+    ld (hl), a      ; [7]  Write the fill value to memory
+    cpi             ; [16] A-[HL], HL := HL+1, BC := BC-1, P/V := 0 if BC == 0
+    jp pe, fillLoop ; [10] Parity Even, Counter > 0
+    jp mainloop  
 
 ;---------------------------------------------------
 command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
@@ -389,9 +401,8 @@ command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
 command_VBL_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
 ;--------------------------------------------------------
     ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
-    ; This will trigger an interrupt at 50Hz (every 20ms). 
-	; Once an interrupt occurs, execution resumes at address $0038 (default ISR).
-    ; Our ISR does not re-enable interrupts, so no further interrupts will occur after this.
+    ; This will trigger an interrupt at 50Hz (every 20ms) at address $0038 (default ISR).
+    ; NOTE: Our ISR does not re-enable interrupts.
     IM 1    ; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
     EI 
     ; We use HALT here to pause execution until the next interrupt occurs. Giving us a 20ms delay 
@@ -683,80 +694,82 @@ ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 ; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
 
 L04AA:
+
+	JP .restoreInGameState
+.restoreInGameStateCompleted:
+
+.ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
+
 	NOP
 	NOP
 	NOP
 	NOP  ; 0x04AD: <<< path back to stock rom 
 	NOP  ; 0x04AE:
 	NOP
-    ld  HL,16384
-    bit 7,(HL)            	 			  ; check EI flag
-    jr  z,.ContinueGameIdle  			  ; if clear, don’t re-enable
-    ei    					 			  ; restore EI
-.ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
+   ; ld  HL,16384+10
+  ;  bit 7,(HL)            	 			  ; check EI flag
+ ;   jr  z,.ContinueGameIdle  			  ; if clear, don’t re-enable
+;    ei    					 			  ; restore EI
 	NOP
 	NOP
 	NOP
 	NOP
 	NOP
-	NOP
-	NOP
-	NOP
-
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
 ;------------------------------------------------------------------------
 
-ORG $04AA+24  ; 0x04C2
+;------------------------------------------------------------------------
+ ; We came here from the NMI - that will disable interrupts for us
+ ; and we can use RETN on the way out to restore the original interrupt status.
+.IngameHook: 
+		PUSH HL
+		PUSH DE
+		PUSH BC
+		PUSH AF
 
-.IngameHook:
-
-		ld HL,16384  
-        ld a,i          	; set flags, P/V = IFF2
-        jp po,.WasOff    	; parity odd -> IFF2=0
-.WasOn:
-		set 7,(HL)            ; mark EI needed (bit7=1)
-	;;;	SET_BORDER 3  		; Magenta DEBUG
-	    ; We're running inside an NMI handler.  To avoid surprises,
-        ; set interrupt state to disabled and restore later.
-		di
-        jr   .StoreDone
-.WasOff: 
- 		res 7,(HL)            ; clear EI flag (bit7=0)
-	;;;	SET_BORDER 4  		; green DEBUG
-.StoreDone:
-
-; ; ; ; ------------------------------------------
-; ; ; ; ------------------------------------------
-; ; ; ; ------------------------------------------
-; ; ; ; Send the screen to the Arduino to store
-; ; ; ; We wish do modify the games screen by adding a ingame menu for
-; ; ; ; things like activating pokes
-
-; ; ; 	ld de, 6144+768  ; DE = Fill amount 2 bytes
-; ; ; 	ld hl, 16384  ; HL = Destination address
-	
-; ; ; 	LD C, $1F
-; ; ; transmitScreenDataLoop:
-; ; ; 	ld a,(hl)	
-
-; ; ; ;;;;;;;;	ld a, %00011000  ; TEST ONLY
-
-; ; ;    	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
-; ; ; 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
-
-; ; ;     inc hl		
-; ; ;     DEC DE      
-; ; ;     LD A, D     
-; ; ;     OR E        
-; ; ;     JP NZ, transmitScreenDataLoop 
-
-; ; ; ; ------------------------------------------
-; ; ; ; ------------------------------------------
-; ; ; ; ------------------------------------------
+ 		ld HL,16384+6  
+         ld a,i          	; set flags, P/V = IFF2
+         jp po,.WasOff    	; parity odd -> IFF2=0
+ .WasOn:
+ 		set 7,(HL)            ; mark EI needed (bit7=1)
+ 		SET_BORDER 3  		; Magenta DEBUG
+ 	    ; We're running inside an NMI handler disabled 50Hz interrupt and restore later
+ 		di
+ 		jr   .StoreDone
+ .WasOff: 
+  		res 7,(HL)            ; clear EI flag (bit7=0)
+ 		SET_BORDER 4  		; green DEBUG
+ .StoreDone:
 
 	jp mainloop
-
+;------------------------------------------------------------------------
 
 ;------------------------------------------------------------------------
+.restoreInGameState
+    ld  HL,16384+6
+    bit 7,(HL)	 		 	; check EI flag
+    jr  z,.restoreWithoutEI
+	POP AF 
+ 	POP BC
+	POP DE
+ 	POP HL 
+    ei 		 				; restore last
+	jp .restoreInGameStateCompleted
+.restoreWithoutEI:
+	POP AF 
+ 	POP BC
+	POP DE
+ 	POP HL 
+	jp .restoreInGameStateCompleted
+;------------------------------------------------------------------------
+
 
 ; -------------------------------------------------------------------------
 ; *** ROM SWAP - GAME STARTUP ***

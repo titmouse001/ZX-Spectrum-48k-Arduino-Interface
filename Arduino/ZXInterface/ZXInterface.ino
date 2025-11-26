@@ -114,32 +114,43 @@ void setup() {
     } while (!SdCardSupport::init(PIN_A4));  // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);
   }
-
-
-
 }
 
 // ---------------------
 // .SCR FILE 
 // ---------------------
 void handleScrFile(FatFile* pFile) {
-//Z80Bus::fillScreenAttributes(0);
-  Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper0Ink0);
-
-  Utils::clearScreen(0);
-  Z80Bus::transferSnaData(pFile, false);  // No loading effects.
-  constexpr unsigned long maxButtonInputMilliseconds = 1000 / 50;
-  while (Menu::getButton() == Menu::BUTTON_NONE) { delay(maxButtonInputMilliseconds); }
-  Utils::clearScreen(0);
+    Utils::clearScreen(0);
+    if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) { 
+    Z80Bus::transferSnaData(pFile, false);  // No loading effects.
+    while (Menu::getButton() == Menu::BUTTON_NONE) { delay(1000/50); }
+    Utils::clearScreen(0);
+  }
 }
+
+// -----------------------------------------------------------------------------------------------
+// NOTES: Leaving the menu and restoring the snapshot. Before continuing, we must relocate 
+// the Z80 stack to a safer working area. The menu uses 0xFFFF which cannot be left in place.
+//
+// We use a temporary stack in screen memory (0x4000). This is effectively safe:
+//  - 0x4000 also contains the Z80 "jp <patched-start-addr>" bootstrap, we can reuse the location
+//    at 0x4003 for temporary 1 deep push/pops, which land at 0x4001/0x4002 due to the SP–2 push behavior.
+// This temporary SP is only used until the SNA restore positions the final stack.
+// -----------------------------------------------------------------------------------------------
 
 // ---------------------
 // .SNA FILE 
 // ---------------------
 void handleSnaFile(FatFile* pFile) {
-  uint8_t* snaPtr = &BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)];
-  pFile->read((void*)snaPtr, (size_t)SNA_TOTAL_ITEMS);
-  if (Z80Bus::bootFromSnapshot(pFile)) {
+
+  Utils::clearScreen(0);
+
+  if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // 1=set
+    // Header information stored globaly in head27_Execute[] for later - will need it for executing the snapshot
+    pFile->read((void*)&BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)], (size_t)SNA_TOTAL_ITEMS);
+    Z80Bus::transferSnaData(pFile, true);
+    Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
     CommandRegistry::initialize();
@@ -150,8 +161,10 @@ void handleSnaFile(FatFile* pFile) {
 // .Z80 FILE 
 // ---------------------
 void handleZ80File(FatFile* pFile) {
-  if (SnapZ80::convertZ80toSNA(pFile) == BLOCK_SUCCESS) {
- //   Z80Bus::synchronizeForExecution();
+  Utils::clearScreen(0);
+
+  if (SnapZ80::convertZ80toSNA(pFile)) {  //  == BLOCK_SUCCESS) {
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
     Z80Bus::resetToSnaRom();
@@ -160,46 +173,9 @@ void handleZ80File(FatFile* pFile) {
 }
 
 // ---------------------
-// .TXT FILE - Support
-// ---------------------
-
-/**
- * Reads or skips a line from the file.
- * skips if lineBuffer=nullptr
- * Consumes \r\n, \r, or \n line endings.
- * Clamps chars to printable ASCII (32–127) in store mode.
- */
-uint16_t readOrSkipLine(FatFile* pFile, char* lineBuffer, uint16_t maxCharsPerLine) {
-  int16_t remaining = pFile->available();
-  uint16_t bytesRead = 0;
-
-  while ((remaining--) > 0 && (bytesRead < maxCharsPerLine)) {
-    uint8_t c = pFile->read();
-    if (c == '\r') {
-      if (remaining > 0 && pFile->peek() == '\n') {
-        pFile->read();  // consume LF
-        remaining--;
-      }
-      break;
-    }
-    if (c == '\n') {
-      break;
-    }
-    if (lineBuffer) {
-      if (c < 32 || c > 127) {
-        c = 127; // del - solid fill
-      }
-      lineBuffer[bytesRead] = static_cast<char>(c);
-    }
-    bytesRead++;
-  }
-
-  return (lineBuffer != nullptr) ? bytesRead : 0;
-}
-
-// ---------------------
 // .TXT FILE
 // ---------------------
+
 void handleTxtFile(FatFile* pFile) {
   constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
   constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
@@ -208,7 +184,6 @@ void handleTxtFile(FatFile* pFile) {
   uint16_t currentPageIndex = 0;
   uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
   uint16_t lastPageIndex = 0;  // index of that page
-  //boolean lastPage = false;
 
   Utils::clearScreen(COL::BLACK_WHITE);
 
@@ -223,7 +198,7 @@ void handleTxtFile(FatFile* pFile) {
       for (uint16_t i = 0; i < currentPageIndex; ++i) {
         uint16_t linesReadOnPage = 0;
         while (linesReadOnPage < maxLinesPerScreen) {
-          readOrSkipLine(pFile, nullptr, maxCharsPerLine);  // skip
+          Utils::readLineTxt(pFile,NULL,maxCharsPerLine);  // skip
           linesReadOnPage++;
         }
       }
@@ -238,7 +213,7 @@ void handleTxtFile(FatFile* pFile) {
     // Draw the current page
     uint16_t currentLine = 0;
     while (currentLine < maxLinesPerScreen && pFile->available()) {
-      uint16_t bytesRead = readOrSkipLine(pFile, lineBuffer, maxCharsPerLine);
+      uint16_t bytesRead = Utils::readLineTxt(pFile, lineBuffer, maxCharsPerLine);
       
       // empty line becomes single space
       if (bytesRead == 0) {
@@ -285,6 +260,7 @@ void handleTxtFile(FatFile* pFile) {
       }
     }
   }
+  while (Menu::getButton() != Menu::BUTTON_NONE) { delay(20); }
 }
 
 
@@ -292,9 +268,11 @@ void loop() {
   
   FatFile* pFile = Menu::handleMenu();
 
-  if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
+  //if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
+  if (strcasestr( SdCardSupport::getFileName(pFile) , ".scr")) {
     handleScrFile(pFile);
-  } else if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
+//  } else if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
+  } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".sna")) {
     handleSnaFile(pFile);
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".z80")) {
     handleZ80File(pFile);

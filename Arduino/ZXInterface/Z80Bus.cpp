@@ -68,6 +68,8 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   //  sei();
 }
 
+// PUT THIS IN Snapshot.cpp  (rename snapZ80 - allow for all sna,z80 ...)
+
 __attribute__((optimize("-Os")))
 void Z80Bus::sendSnaHeader(uint8_t* header) {
   // NOTE: Order is critical - restoring registers destroys others needed for the restoration process
@@ -94,9 +96,21 @@ void Z80Bus::sendWaitVBLCommand() {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
+//RENAME THESE TO THINGS LIKE "CMD_STACK"  ????
+
+// Stack command:
+//   action = 0 -> Read SP
+//   action = 1 -> Write SP
+// The Z80-side routine finishes with a HALT. We wait for that HALT
+// to confirm things have completed and release with NMI.
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr, action);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
+
+  Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
+  Z80Bus::unHalt_triggerZ80NMI();   // Clear the HALT by firing an NMI
+
+   // TODO: Implement reading SP over I/O if needed.
 }
 
 uint8_t Z80Bus::get_IO_Byte() {
@@ -139,19 +153,10 @@ uint8_t Z80Bus::getKeyboard() {
 }
 
 //------------------------------------------------------------------------------------------
-// This transfer has a simple look ahead to see if data can be RLE-compressed. 
-// When a performance payoff for using RLE is found, the data is encoded and the RLE-compressed 
-// block is sent to the Z80 using fast fill commands.
-// We do things this way as the Z80 can use PUSH instructions to fill 2 bytes per instruction, 
-// so runs of repeated bytes are handled very efficiently..
-//
-// Both buildFillVariableEvenCommand() and buildFillVariableOddCommand() are used to
-// maximise performance depending on whether the run length is even or odd.
-//
-// Currently, fill packets use a maximum of 255 payload bytes (as we /2 we could use 511).
-//
-// When no compression is found (short run/random data), raw bytes are sent instead,
-// limited by the working buffer size.
+// This transfer has a simple look ahead to see if data can be RLE-compressed.  When a performance payoff 
+// for using RLE is found, the data is encoded and the RLE-compressed block is sent to the Z80 using fast
+// fill commands. We do things this way as the Z80 can use PUSH instructions to fill 2 bytes per
+// instruction. When no compression is found raw bytes are sent instead.
 //
 __attribute__((optimize("-Ofast")))
 void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
@@ -188,19 +193,8 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool border
         // Using offset after input header and data so we don't touch the lower part of
         // packetBuffer as it still holds input to be processed
         uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
-
         uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, run_len, value);
 	      Z80Bus::sendBytes(pFill, packetLen);
-
-        // if ((run_len & 0x01) == 0) {  
-        //   // even number of PUSH operations ((count-1)/2)
-        //   uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, run_len / 2, value);
-        //   Z80Bus::sendBytes(pFill, packetLen);
-        // } else {
-        //   // number of PUSH operations (count/2)
-        //   uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, (run_len - 1) / 2, value);
-        //   Z80Bus::sendBytes(pFill, packetLen);
-        // }
       }
       addr += run_len;
       i += run_len;
@@ -247,19 +241,6 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   }
 }
 
-// void Z80Bus::synchronizeForExecution() {
-//   // Re-enable the Spectrum's 50 Hz interrupt (IM 1).
-//   //
-//   // This gives a safty gap before the next interrupt so the game's ISR won't
-//   // corrupt the stack when execution resumes after restoring the snapshot.
-//   //
-//   // synchronizeForExecution() would normally be called just before executeSnapshot()
-//   // // // //
-//   // // // sendWaitVBLCommand();
-//   // // // waitHalt_syncWithZ80(); // Wait for HALT to assert (interrupt sync point)
-//   // // // waitForZ80Resume();     // Wait for HALT to clear (interrupt occurred, Z80 running again)
-// }
-
 
 /* executeSnapshot:
  * See Z80 code around L16D4. It will idle-loop to allow bankswitching into the 
@@ -269,18 +250,16 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 void Z80Bus::executeSnapshot() {
 
   // -----------------------------------
-  // Re-enable the Spectrum's 50 Hz maskable interrupt (IM 1).
+  // For a short while we will re-enable the Spectrum's 50 Hz maskable interrupt (IM 1).
   // This provides a safety gap before the next interrupt so the game's ISR won't corrupt the stack
   // when the launch code is in the last stages of resuming the game. The Arduino needs to synchronize via NMI 
   // to send data and that also uses the Z80's stack.
   // NOTE: On the Z80 side - the SNA ROM does not execute 'EI' when exiting the maskable interrupt
   // (IM 1) at vector 0x0038. This means IM 1 interrupts remain disabled when the ISR returns.
 
-  sendWaitVBLCommand();
-  waitHalt_syncWithZ80(); // Wait for HALT to assert (interrupt sync point)
-  waitForZ80Resume();     // Wait for HALT to clear (interrupt occurred, Z80 running again)
-
-//TODO ... maybe do a 2nd stage to EI (at game time !??!?!) and avoid this IM 1 sync gap
+  sendWaitVBLCommand();    // Ask Speccy to start 50Hz interrupt and halt itself.
+  waitHalt_syncWithZ80();  // Halt line has gone is active low (Arduino sync point)
+  waitForZ80Resume();      // Wait for HALT to clear (50Hz interrupt occurred, Z80 running again)
 
   // -----------------------------------
 
@@ -292,29 +271,43 @@ void Z80Bus::executeSnapshot() {
 
 boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 
-  // Navigation away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
-  // We need to put the Z80 stack somewhere it will do less damage.
-  // Temporary working stack in screen memory is 99.9% ok.
-  // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
-  // +3 as we can borrow that addr for push/pops until it's set near end of SNA restore.
-  sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 ); 
+  // // // Utils::clearScreen(0);
 
-  waitHalt_syncWithZ80();
-  unHalt_triggerZ80NMI();
- ///////////// waitForZ80Resume();
-  Utils::clearScreen(0);
+  // // // // Navigating away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
+  // // // // We need to put the Z80 stack somewhere it will do less damage.
+  // // // // Temporary working stack in screen memory is 99.9% ok.
+  // // // // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
+  // // // // +3 as we can borrow that addr for push/pops until it's set near end of SNA restore.
+  // // // sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
+
+ ///////////////// waitHalt_syncWithZ80();   // Synchronize with Z80 Halt from the last Command
+  //////////////////////unHalt_triggerZ80NMI();   // Un-Halt Z80
+
+  //////////////////////////////////////////Utils::clearScreen(0);
+
   transferSnaData(pFile, true);
-  //////////synchronizeForExecution();
-  executeSnapshot();
+ ////////// executeSnapshot();
 
   // At this point the Z80's game has been fuly restored including it's stack and registers.
   return true;
 }
 
-void Z80Bus::waitHalt_syncWithZ80() {
-  // Wait until the Z80 enters the HALT state (active low).
-  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
-}
+// bool Z80Bus::waitHalt_syncWithZ80(uint32_t timeoutMs) {
+//     uint32_t start = millis();
+//     // Wait until the Z80 enters the HALT state (active low).
+//     while (digitalReadFast(Pin::Z80_HALT) != 0) {
+//         if ((millis() - start) >= timeoutMs) {
+//             return false;
+//         }
+//     }
+//     return true;
+// }
+
+
+ void Z80Bus::waitHalt_syncWithZ80() {
+   // Wait until the Z80 enters the HALT state (active low).
+   while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
+ }
 
 void Z80Bus::unHalt_triggerZ80NMI() {
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.

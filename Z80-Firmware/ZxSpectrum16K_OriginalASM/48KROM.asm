@@ -267,29 +267,40 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
-; L0066: Is buggy and so is never used 
+
 ; ******************************************************************************************
-; *** This /NMI area has been repurposed to break into games and display an in game menu ***
+; *** This NMI area has been repurposed to break into games and display an in game menu  ***
+; *** The NMI will prevent further interrupts until reenabled by the programmer          ***
+; *** Method has no 'RETN' exit path, meaning the maskable interrupt if kept disabled.   ***
 ; ******************************************************************************************
-L0066:  ; /NMI line fired 
+L0066:  ; /NMI line fired  ; location needs to use up 14 bytes
 ;// TODO - don't use the games stack ... send regs to Arduino to save!
 ;// MAYBE BEST (MORE WORKING ROOM) TO STORE THESE IN THE SNA ROM IN THE .IngameHook 
-	PUSH HL
-	PUSH DE
-	PUSH BC
-	PUSH AF
+;	PUSH HL
+;	PUSH DE
+;	PUSH BC
+;	PUSH AF
+
+        NOP
+        NOP
+        NOP
+        NOP
+
         ;------------------------------------------------------
         ; Bank switching happens here and the SNA ROM takes over with NOPs.
 .idle: jr .idle  
         ;------------------------------------------------------
+        ; Will never get here
+        nop
+  ;;;      nop
+   ;;;     nop
         nop
         nop
+        ; last 3 bytes in mirror ROM will "JP .IngameHook"
         nop
-        nop
-        nop
-        nop
-        nop
-        nop     ; (Here the mirror rom will jump into a '.IngameHook')
+    ;;;;    nop
+        nop   
+        jp 0  ;  Show something bad
 
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
@@ -1515,6 +1526,8 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ; swap. If the displacement byte comes from the new ROM (which contains NOPs),
 ; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
 
+
+RESTORE_PAUSED_GAME:
 L04AA:  ; This section must use 24 bytes
         nop
         nop
@@ -1533,7 +1546,6 @@ L04AA:  ; This section must use 24 bytes
         nop
         nop
         ;------------------------------------------------------------------
-  
         ; The SNA ROM has an idle loop here, so the Arduino only has to wait a tiny bit 
         ; and then swap back to the stock ROM, knowing that the stock ROM will be 100% 
         ; idling here. This makes it a robust technique to swap ROMs and have the code 
@@ -1543,18 +1555,28 @@ L04AA:  ; This section must use 24 bytes
         ; These two mirror ROM bytes hold: jr -2 
         nop  ; Break out of 
         nop  ; the mirror ROM's loop
+; CHANGED - NOW ALSO USES HALT ... this may not line up
+ ; TODO fix comments
         ;------------------------------------------------------------------
         nop
         nop
 
-	POP AF ; restore games registers
- 	POP BC
-	POP DE
- 	POP HL 
+;	POP AF ; restore games registers
+; 	POP BC
+;	POP DE
+ ;	POP HL 
+        NOP
+        NOP
+        NOP
+        NOP
         ;------------
-        ; Return back to game - technically still inside the first NMI.
         ret    
         nop
+
+        ; NOTE: Technically the game still thinks it's inside the first NMI.
+        ;       So we can use 'RETN' here, it will restore the IFF flag to the
+        ;       state before the NMI was triggered.
+     ;   RETN   ; Return back to game  
 
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------

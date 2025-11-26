@@ -1,7 +1,7 @@
 #include <stdint.h>
-#include "SdCardSupport.h"  
-#include "BufferManager.h" 
-#include "SdFat.h" 
+#include "SdCardSupport.h"
+#include "BufferManager.h"
+#include "SdFat.h"
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
