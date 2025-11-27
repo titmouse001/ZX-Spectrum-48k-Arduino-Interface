@@ -38,7 +38,7 @@ void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   }
 }
 
-
+__attribute__((optimize("-Ofast"))) 
 uint16_t SdCardSupport::countSnapshotFiles() {
 
   if (file.isOpen()) {
@@ -111,22 +111,23 @@ uint16_t SdCardSupport::countSnapshotFiles() {
 //   return totalFiles;
 // }
 
-// This version of getFileName is used for the file browser view, keeping this one optimised for speed.
-__attribute__((optimize("-Ofast")))
+__attribute__((optimize("-Os")))
 uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   uint8_t len = pFile->getName7(pFileNameBuffer, MAX_FILENAME_LEN);
   if (len == 0) {
-    len = pFile->getSFN(pFileNameBuffer, 13); // fallback, XXXXXXXX.XXX
+    len = pFile->getSFN(pFileNameBuffer, 13); // 8.3 fallback e.g. "filename.sna"
   }
   return len;
 }
 
+__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileName(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   getFileName(pFile,buffer);
   return buffer;
 }
 
+__attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
   char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   getFileName(pFile,&buffer[1]);

@@ -9,6 +9,13 @@
 
 #include "PacketBuilder.h"
 
+static uint8_t REG_D;
+static uint8_t REG_E;
+static uint8_t REG_B;
+static uint8_t REG_C;
+static uint8_t REG_H;
+static uint8_t REG_L;
+static uint8_t REG_IFF2;
 
 __attribute__((optimize("-Os")))
 void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
@@ -20,6 +27,7 @@ void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInde
   Z80Bus::sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
+ __attribute__((optimize("-Os")))
 void Utils::clearScreen(uint8_t col) {
    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
    Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
@@ -95,13 +103,37 @@ void Utils::waitForUserExit() {
 
   digitalWriteFast(Pin::ROM_HALF, LOW);  // swapping to SNA ROM - this is a new run path back to menus
 
+  delay(5); // allow Z80 time to reach MainLoop
+
+
+ REG_IFF2 = Z80Bus::get_IO_Byte();
+
+ REG_D = Z80Bus::get_IO_Byte();
+ REG_E = Z80Bus::get_IO_Byte();
+ REG_B = Z80Bus::get_IO_Byte();
+ REG_C = Z80Bus::get_IO_Byte();
+ REG_H = Z80Bus::get_IO_Byte();
+ REG_L  = Z80Bus::get_IO_Byte();
+
+
   // At this point - if all is well we should be back in the menu loop waiting for a new command request.
 
   //  Z80Bus::sendFillCommand(0x4000+20, 64, 244);    .. TEST MARKER
 
-  uint8_t addr[] = { 0x04, 0xAA };  // 0x04AA = Z80 idle loop
-  Z80Bus::sendBytes(addr, sizeof(addr));
-  delay(5);
+  uint8_t addr0x04AA[] = { 0x04, 0xAA };  // 0x04AA = Z80 idle loop
+  Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
+
+
+  Z80Bus::sendBytes(&REG_D, 1);
+  Z80Bus::sendBytes(&REG_E, 1);
+  Z80Bus::sendBytes(&REG_B, 1);
+  Z80Bus::sendBytes(&REG_C, 1);
+  Z80Bus::sendBytes(&REG_H, 1);
+  Z80Bus::sendBytes(&REG_L, 1);
+  
+  Z80Bus::sendBytes(&REG_IFF2, 1);
+   
+  delay(5); // allow Z80 time to reach idle loop - NEEDED
 
   digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM - escapes out of idle loop
 
@@ -126,12 +158,12 @@ void Utils::waitForUserExit() {
       //----------------------------------------------------------------
       delay(5);                              // Allow time to reach the idle loop
       digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM overrides idle loop with a new execution path
-
-      Z80Bus::waitForZ80Resume();
-
+      Z80Bus::waitForZ80Resume(); // needed ?
       //----------------------------------------------------------------
 
       delay(1);
+
+
 
       // Ask Speccy to send its screen data
       uint8_t len = PacketBuilder::build_Request_CommandSendData(BufferManager::packetBuffer,

@@ -64,6 +64,11 @@ extern bool setupOled();  // debugging with a 128x32 pixel oled
 #endif
 // ----------------------------------------------------------------------------------
 
+// __attribute__((optimize("-O1")))  //28370 
+// __attribute__((optimize("-O2")))  // 28346 
+// __attribute__((optimize("-O3")))  // 28864 
+// __attribute__((optimize("-Ofast")))  // 29010  
+__attribute__((optimize("-Os")))  // 28332  
 void setup() {
 
 #if (SERIAL_DEBUG == 1)
@@ -160,6 +165,7 @@ void handleSnaFile(FatFile* pFile) {
 // ---------------------
 // .Z80 FILE 
 // ---------------------
+
 void handleZ80File(FatFile* pFile) {
   Utils::clearScreen(0);
 
@@ -176,6 +182,7 @@ void handleZ80File(FatFile* pFile) {
 // .TXT FILE
 // ---------------------
 
+__attribute__((optimize("-Os")))
 void handleTxtFile(FatFile* pFile) {
   constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
   constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;

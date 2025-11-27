@@ -141,7 +141,6 @@ L0066:
 	NOP
 	jp .IngameHook
 
-
 ;------------------------------------------------------
 ;******************
 ; *** MAIN LOOP ***
@@ -222,8 +221,8 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-	ret
 
+	ret
 
 
 ;------------------------------------------------------;
@@ -725,48 +724,149 @@ L04AA:
 	nop
 ;------------------------------------------------------------------------
 
-;------------------------------------------------------------------------
- ; We came here from the NMI - that will disable interrupts for us
- ; and we can use RETN on the way out to restore the original interrupt status.
-.IngameHook: 
-		PUSH HL
-		PUSH DE
-		PUSH BC
-		PUSH AF
+; ;------------------------------------------------------------------------
+;  ; We came here from the NMI - that will disable interrupts for us
+;  ; and we can use RETN on the way out to restore the original interrupt status.
+; .IngameHook: 
+; 		; Doing this is kind of risky since we are running in game code.
+; 		; So every push we do here possibably means hitting the end of the 
+; 		; games stack if it was design to make full use of it.
+; 		; Care has been taken to avoid using DE in methods during the game pause stage.
+; 		PUSH HL
+; 	;	PUSH DE  ... no longer used, see things like command_Fill using CPI
+; 		PUSH BC
+; 		PUSH AF
 
- 		ld HL,16384+6  
-         ld a,i          	; set flags, P/V = IFF2
-         jp po,.WasOff    	; parity odd -> IFF2=0
- .WasOn:
- 		set 7,(HL)            ; mark EI needed (bit7=1)
- 		SET_BORDER 3  		; Magenta DEBUG
- 	    ; We're running inside an NMI handler disabled 50Hz interrupt and restore later
- 		di
- 		jr   .StoreDone
- .WasOff: 
-  		res 7,(HL)            ; clear EI flag (bit7=0)
- 		SET_BORDER 4  		; green DEBUG
- .StoreDone:
+; 		; ---------------------------------------------------------
+;     	; MANUALLY SAVE INTERRUPT STATE 
+;     	; If a 2nd NMI hits after this, IFF2 will be Clobbered 
+;     	; ---------------------------------------------------------
+;  		ld HL,16384+6  
+;         ld a,i          	; set flags, P/V = IFF2
+;         jp po,.WasOff    	; Parity Odd = Interrupts were OFF
+;  .WasOn:
+;  		set 7,(HL)          ; They were ON (bit7=1)
+;  		SET_BORDER 3  		; Magenta DEBUG
+;  		DI      			; redundant but safe - we get here via NMI, that disables interrupts
+;  		jr   .StoreDone
+;  .WasOff: 
+;   		res 7,(HL)          ; They were OFF (bit7=0)
+;  		SET_BORDER 4  		; green DEBUG
+;  .StoreDone:
 
-	jp mainloop
+; 	ld A,B
+; 	OUT ($1f), A  
+; 	halt
+; 	ld A,C
+; 	OUT ($1f), A  
+; 	halt
+; 	ld A,H
+; 	OUT ($1f), A  
+; 	halt
+; 	ld A,L
+; 	OUT ($1f), A  
+; 	halt
+
+; 	jp mainloop
 ;------------------------------------------------------------------------
+
+; Ingame NMI hook
+.IngameHook:
+		; We use OUT's to avoiding PUSHing to stack as the stack is not ours!
+        ; However we cannot send AF directly, using OUT requires HALT + NMI to synchronize 
+		; with the Arduino - that would overwrite the games IFF2 state so we need to save
+		; IFF2 manualy first. We also can't use RETN as IFF2 would be lost while in the pause menu.
+        ; Because we have no guarantee about how much stack space the game left us,
+        ; we must avoid pushing extra registers.
+		; Note: Push AF takes us to 2 deep (NMI return address takes one already)
+		; 		The Halts in this method bump the stack to 3 deep.
+
+        PUSH AF              	; minimal stack usage - push AF onto games stack
+								
+        ; capture IFF2 and send it to Arduino
+        ld   a,i                ; IFF2 state is copied to the parity flag
+        jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
+.WasOn:
+        or   128                ; set bit7
+        out  (0x1F), a          ;
+		halt					; Sync with Arduino
+        di                      ; just incase - interrupts are disabled anyway
+        jr   .SendRegs
+.WasOff:
+        and  127                ; clear bit7
+        out  (0x1F), a          ;
+		halt					; Sync
+
+.SendRegs:
+
+        ld   a,d
+        out  (0x1F), a
+        halt
+		ld   a,e
+        out  (0x1F), a
+        halt
+
+        ld   a,b
+        out  (0x1F), a
+        halt
+        ld   a,c
+        out  (0x1F), a
+        halt
+        ld   a,h
+        out  (0x1F), a
+        halt
+        ld   a,l
+        out  (0x1F), a
+        halt
+
+        jp mainloop         
+
 
 ;------------------------------------------------------------------------
 .restoreInGameState
-    ld  HL,16384+6
-    bit 7,(HL)	 		 	; check EI flag
-    jr  z,.restoreWithoutEI
+;;    ld  HL,16384+6
+;;    bit 7,(HL)	 		 	; check EI flag
+;;    jr  z,.ExitDisabled
+
+    ld   a,d
+    out  (0x1F), a
+    halt
+	ld   a,e
+    out  (0x1F), a
+    halt
+
+	halt 
+    in a, ($1f) 
+	ld b,a
+	halt 
+    in a, ($1f) 
+	ld c,a
+	halt 
+    in a, ($1f) 
+	ld h,a
+	halt 
+    in a, ($1f) 
+	ld l,a
+
+	halt 
+    in a, ($1f)   ; IFF2
+	bit 7,a
+	jr  z,.ExitDisabled
+
+.ExitEnabled:
 	POP AF 
- 	POP BC
-	POP DE
- 	POP HL 
-    ei 		 				; restore last
+ ;	POP BC
+;	;POP DE
+; 	POP HL 
+    EI 		; Enable Interrupts manually
 	jp .restoreInGameStateCompleted
-.restoreWithoutEI:
+
+.ExitDisabled:
 	POP AF 
- 	POP BC
-	POP DE
- 	POP HL 
+ ;	POP BC
+;	;POP DE
+ ;	POP HL 
+	DI      ; redundant but safe
 	jp .restoreInGameStateCompleted
 ;------------------------------------------------------------------------
 

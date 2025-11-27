@@ -47,7 +47,8 @@ uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char *messag
     return charCount;
 }
 
-// No need to optimise this one (used for error message and the odd piece of text)
+// Not speed critial - for error message and the odd piece of text
+// __attribute__((optimize("-O2"))) is my default, code produced is smaller by 2bytes than using -Os ?!!?
 uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper *flashStr) {
     Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
     const char *message = (const char *)flashStr;

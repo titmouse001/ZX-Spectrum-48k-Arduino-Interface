@@ -91,6 +91,7 @@ void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
+__attribute__((optimize("-Os"))) 
 void Z80Bus::sendWaitVBLCommand() {
   uint8_t packetLen = PacketBuilder::buildWaitVBLCommand(BufferManager::packetBuffer);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
@@ -103,6 +104,7 @@ void Z80Bus::sendWaitVBLCommand() {
 //   action = 1 -> Write SP
 // The Z80-side routine finishes with a HALT. We wait for that HALT
 // to confirm things have completed and release with NMI.
+__attribute__((optimize("-Os"))) 
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr, action);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
@@ -113,12 +115,11 @@ void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
    // TODO: Implement reading SP over I/O if needed.
 }
 
+__attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::get_IO_Byte() {
-  // get_IO_Byte will be used inside a command like 'sendFunctionList' (se we don't use BufferManager here)
-  // -------------------------------------------------------------
+  waitHalt_syncWithZ80();      // wait for Z80 to HALT
   // Prepare to read from Latch IC (74HC574)
   // Set Nano data pins to input mode before Z80 writes to latch.
-  waitHalt_syncWithZ80();      // wait for Z80 to HALT
   DDRD = 0x00;        // all inputs
   unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
   ///////////////waitForZ80Resume(); // Wait for Z80 to complete the out instruction
@@ -143,6 +144,7 @@ uint8_t Z80Bus::get_IO_Byte() {
   return byte;
 }
 
+__attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::getKeyboard() {
   // Send command packet to the Z80 asking it to send back a byte with the OUT instruction (TransmitKey) 
   BufferManager::packetBuffer[(uint8_t)ReceiveKeyboardPacket::CMD_HIGH] = (uint8_t)(CommandRegistry::command_TransmitKey >> 8);
@@ -231,6 +233,7 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool border
   }
 }
 
+__attribute__((optimize("-Os"))) 
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
   // Transfer data to Spectrum RAM
@@ -247,6 +250,7 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
  * stock ROM to continue execution into RAM to jump back into game code. 
  * (Previously this needed an extra messy HALT and a precise wait for the NMI to complete)
  */
+ __attribute__((optimize("-Os"))) 
 void Z80Bus::executeSnapshot() {
 
   // -----------------------------------
@@ -269,6 +273,7 @@ void Z80Bus::executeSnapshot() {
   digitalWriteFast(Pin::ROM_HALF, HIGH);
 }
 
+__attribute__((optimize("-Os"))) 
 boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 
   // // // Utils::clearScreen(0);
@@ -303,12 +308,13 @@ boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 //     return true;
 // }
 
-
+__attribute__((optimize("-Os"))) 
  void Z80Bus::waitHalt_syncWithZ80() {
    // Wait until the Z80 enters the HALT state (active low).
    while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
  }
 
+__attribute__((optimize("-Os"))) 
 void Z80Bus::unHalt_triggerZ80NMI() {
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
   digitalWriteFast(Pin::Z80_NMI, LOW);
@@ -318,6 +324,7 @@ void Z80Bus::unHalt_triggerZ80NMI() {
   waitForZ80Resume();
 }
 
+__attribute__((optimize("-Os"))) 
 void Z80Bus::waitForZ80Resume(){
   // wait until HALT goes HIGH (Z80 resumes)
    while (digitalReadFast(Pin::Z80_HALT) == 0) {};  
