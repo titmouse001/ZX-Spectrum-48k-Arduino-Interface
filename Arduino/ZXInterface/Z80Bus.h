@@ -27,7 +27,7 @@ extern boolean bootFromSnapshot(FatFile* pFile);
 extern void resetZ80();
 extern void resetToSnaRom();
 extern void waitHalt_syncWithZ80();
-extern void unHalt_triggerZ80NMI();
+extern void triggerZ80NMI();
 extern void waitForZ80Resume();
 extern void waitRelease_NMI();
 

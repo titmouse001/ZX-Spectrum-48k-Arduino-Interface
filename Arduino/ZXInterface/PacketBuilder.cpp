@@ -80,6 +80,7 @@ uint8_t PacketBuilder::buildExecuteCommand(uint8_t* buf) {
 }
 
 uint8_t PacketBuilder::build_Request_CommandSendData(uint8_t* buf, uint16_t amount, uint16_t address) {
+  // After this command call get_IO_Byte() for each bytes requested.
   buf[E(RequestSendDataPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_SendData) >> 8);
   buf[E(RequestSendDataPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_SendData)&0xFF);
   buf[E(RequestSendDataPacket::CMD_AMOUNT_HIGH)] = (uint8_t)((amount) >> 8);

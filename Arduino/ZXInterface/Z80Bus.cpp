@@ -62,7 +62,7 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   for (uint16_t i = 0; i < size; i++) {
     waitHalt_syncWithZ80();
     PORTD = data[i];  // Send to Z80 data lines
-    unHalt_triggerZ80NMI();
+    triggerZ80NMI();
  ////////////   waitForZ80Resume();
   }
   //  sei();
@@ -97,9 +97,7 @@ void Z80Bus::sendWaitVBLCommand() {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
-//RENAME THESE TO THINGS LIKE "CMD_STACK"  ????
-
-// Stack command:
+// sendStackCommand:
 //   action = 0 -> Read SP
 //   action = 1 -> Write SP
 // The Z80-side routine finishes with a HALT. We wait for that HALT
@@ -108,40 +106,48 @@ __attribute__((optimize("-Os")))
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   uint8_t packetLen = PacketBuilder::buildStackCommand(BufferManager::packetBuffer, addr, action);
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
-
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
-  Z80Bus::unHalt_triggerZ80NMI();   // Clear the HALT by firing an NMI
-
-   // TODO: Implement reading SP over I/O if needed.
+  Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
 
 __attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::get_IO_Byte() {
-  waitHalt_syncWithZ80();      // wait for Z80 to HALT
-  // Prepare to read from Latch IC (74HC574)
-  // Set Nano data pins to input mode before Z80 writes to latch.
-  DDRD = 0x00;        // all inputs
-  unHalt_triggerZ80NMI();    // Unhalt Z80 to allow it to do a I/O out instruction
-  ///////////////waitForZ80Resume(); // Wait for Z80 to complete the out instruction
-  // -------------------------------------------------------------
 
-  // -------------------------------------------------------------
-  // Enable and read the new latched data
-  digitalWriteFast(PIN_A5, LOW); // Enable: #OE on the latch IC
+  DDRD = 0x00;  // Reading from port - all Nano data pins to input
 
-  // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
-  // The Nano can execute the next instruction before latch outputs are ready!
-  __asm__ __volatile__("nop\n\t"   // single nop is about 62ns @16MHz
-                       "nop\n\t"); // playing it safe with 124 ns (!!TIMINGS FOR NANO ONLY!!)
-  uint8_t byte = PIND;             // Read all 8 bits from latch
-  // -------------------------------------------------------------
+  waitHalt_syncWithZ80();  // wait for Z80 to HALT - once hit indicates an OUT instruction ran
+  digitalWriteFast(PIN_A5, LOW);    // Enable output on the latch (74HC574)
+                                    // Capture time for latch  - spec says around 38ns.
+  __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
+                      "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
 
-  // -------------------------------------------------------------
-  // Cleanup: disable latch and restore Nano to output mode
-  digitalWriteFast(PIN_A5, HIGH); // Disable latch (#OE high=tri-state)
-  DDRD = 0xFF;                    // Set all PORTD pins as outputs
-  // -------------------------------------------------------------
+  uint8_t byte = PIND;             // read the Z80:OUT data fed in from the latch
+  digitalWriteFast(PIN_A5, HIGH);  // Disable #OE on latch (tri-state)
+  triggerZ80NMI();  // we have data captured - safe to continue
+  DDRD = 0xFF;  // Set PORTD pins back to output
   return byte;
+
+// optimised runs can do this with #OE pin set once at start and end ....
+  //       for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+  //         Z80Bus::waitHalt_syncWithZ80();
+  //         uint8_t byte = PIND;  // Capture latched data
+  //         Z80Bus::triggerZ80NMI();
+  //         file.write(byte);
+  //       }
+
+
+  // DDRD = 0x00;                      // Reading from port - all Nano data pins to input
+  // waitHalt_syncWithZ80();           // indicates an OUT instruction ran
+  // triggerZ80NMI();                  // Unhalt Z80 - latch has data Z80 can continue
+
+  // digitalWriteFast(PIN_A5, LOW);    // Enable output on the latch (74HC574)
+  // // Capture time for latch  - spec says around 38ns.
+  // __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
+  //                      "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
+  // uint8_t byte = PIND;              //  read the Z80:OUT data fed in from the latch
+  // digitalWriteFast(PIN_A5, HIGH);   // Disable #OE on latch (tri-state)
+  // DDRD = 0xFF;                      // Set PORTD pins back to output
+  // return byte;
 }
 
 __attribute__((optimize("-Os"))) 
@@ -315,7 +321,7 @@ __attribute__((optimize("-Os")))
  }
 
 __attribute__((optimize("-Os"))) 
-void Z80Bus::unHalt_triggerZ80NMI() {
+void Z80Bus::triggerZ80NMI() {
   // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
   digitalWriteFast(Pin::Z80_NMI, LOW);
  // delayMicroseconds(1);     // other Arduino platforms may need a pause

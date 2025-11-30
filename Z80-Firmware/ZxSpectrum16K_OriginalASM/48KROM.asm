@@ -268,39 +268,23 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
 
-; ******************************************************************************************
-; *** This NMI area has been repurposed to break into games and display an in game menu  ***
-; *** The NMI will prevent further interrupts until reenabled by the programmer          ***
-; *** Method has no 'RETN' exit path, meaning the maskable interrupt if kept disabled.   ***
-; ******************************************************************************************
-L0066:  ; /NMI line fired  ; location needs to use up 14 bytes
-;// TODO - don't use the games stack ... send regs to Arduino to save!
-;// MAYBE BEST (MORE WORKING ROOM) TO STORE THESE IN THE SNA ROM IN THE .IngameHook 
-;	PUSH HL
-;	PUSH DE
-;	PUSH BC
-;	PUSH AF
-
+; ***************************************************************************************
+; *** NMI has been repurposed to break into games and display an in game menu         ***
+; *** Method has no 'RETN' exit path, meaning the maskable interrupt is kept disabled ***
+; ***************************************************************************************
+L0066:  ; /NMI line fired   (method length must be 14 bytes)
         NOP
         NOP
         NOP
         NOP
-
-        ;------------------------------------------------------
         ; Bank switching happens here and the SNA ROM takes over with NOPs.
 .idle: jr .idle  
-        ;------------------------------------------------------
-        ; Will never get here
-        nop
-  ;;;      nop
-   ;;;     nop
         nop
         nop
-        ; last 3 bytes in mirror ROM will "JP .IngameHook"
         nop
-    ;;;;    nop
+        nop
         nop   
-        jp 0  ;  Show something bad
+        jp 0  ;  Show something bad (Should never get here)
 
 ; --------------------------------------------------------------------
 ; --------------------------------------------------------------------
@@ -1515,29 +1499,27 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------
 
-; Path back to the game - when the stock ROM is swapped back in, it overrides the
-; idle loop, restores the registers, and returns execution to the game.
-; (Technically, from the game's perspective we are still inside the first NMI)
-
-; The SNA ROM will be taken over by this section
-; and release the "JR -2" running in the mirror ROM with NOPs
-
+; Path back to the game - when the stock ROM is swapped back in, it overrides
+; the idle loop, restores the registers, and returns execution to the game.
+; Technically, from the game's perspective we are still inside the first NMI
+; that got us into the ingame pause menu.
+; INFO: The SNA ROM "JR -2" gets overriden by running this mirror ROM with NOPs.
 ; Safeguards: The CPU may fetch in the middle of an instruction during the ROM
 ; swap. If the displacement byte comes from the new ROM (which contains NOPs),
 ; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
 
-
+; This section must use 24 bytes
 RESTORE_PAUSED_GAME:
-L04AA:  ; This section must use 24 bytes
+L04AA:         
+        nop  ;  
+        nop  ; 
+        ; The SNA ROM has an idle loop here.
+        nop  ; (mirror uses jr -2 here)
+        nop  ; (we take over with this coe)
+
         nop
         nop
-        nop
-        nop  ; 0x04AD:
-        nop
-        nop
-        
-        ;------------------------------------------------------------------
-        nop ; Mirror ROM uses 8 bytes to restore the 'ei' state (IFF)
+        nop 
         nop 
         nop
         nop
@@ -1545,38 +1527,16 @@ L04AA:  ; This section must use 24 bytes
         nop
         nop
         nop
-        ;------------------------------------------------------------------
-        ; The SNA ROM has an idle loop here, so the Arduino only has to wait a tiny bit 
-        ; and then swap back to the stock ROM, knowing that the stock ROM will be 100% 
-        ; idling here. This makes it a robust technique to swap ROMs and have the code 
-        ; path go in a different direction to return to the game.
-
-        ; SWAP IN STOCK ROM - WILL REPLACE THE SNA ROM'S CODE WITH THESE NOPS
-        ; These two mirror ROM bytes hold: jr -2 
-        nop  ; Break out of 
-        nop  ; the mirror ROM's loop
-; CHANGED - NOW ALSO USES HALT ... this may not line up
- ; TODO fix comments
-        ;------------------------------------------------------------------
+        nop 
+        nop 
         nop
         nop
-
-;	POP AF ; restore games registers
-; 	POP BC
-;	POP DE
- ;	POP HL 
         NOP
         NOP
         NOP
         NOP
-        ;------------
-        ret    
+        ret    ; normal RET (not a RETN as IFF restore was hand rolled)
         nop
-
-        ; NOTE: Technically the game still thinks it's inside the first NMI.
-        ;       So we can use 'RETN' here, it will restore the IFF flag to the
-        ;       state before the NMI was triggered.
-     ;   RETN   ; Return back to game  
 
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------

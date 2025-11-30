@@ -681,11 +681,11 @@ KEY_TABLE:	; Key row mapping  		; $6649
 
 ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 
-; Exit mechanism – the Arduino signals a jump to 0x04AD in SNA ROM (chosen arbitrarily),
+; Exit mechanism – the Arduino signals a jump to L04AA in SNA ROM,
 ; initiating the path back to the game.
 
-; Path back to the game - when the stock ROM is swapped back in, it overrides the
-; idle loop, restores the registers, and returns execution to the game.
+; When the this stock ROM swaps in, it overrides the idle loop, restores the 
+; registers, and returns execution to the game.
 ; (Technically, from the game's perspective we are still inside the first NMI)
 
 ; Safeguards: The CPU may fetch in the middle of an instruction during the ROM
@@ -694,21 +694,17 @@ ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 
 L04AA:
 
-	JP .restoreInGameState
-.restoreInGameStateCompleted:
+	JR .restoreInGameState
+.restoreInGameStateCompleted:  ; avoid stack usage
 
 .ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
 
 	NOP
 	NOP
 	NOP
-	NOP  ; 0x04AD: <<< path back to stock rom 
-	NOP  ; 0x04AE:
 	NOP
-   ; ld  HL,16384+10
-  ;  bit 7,(HL)            	 			  ; check EI flag
- ;   jr  z,.ContinueGameIdle  			  ; if clear, don’t re-enable
-;    ei    					 			  ; restore EI
+	NOP
+	NOP
 	NOP
 	NOP
 	NOP
@@ -722,54 +718,9 @@ L04AA:
 	nop
 	nop
 	nop
+	nop
+
 ;------------------------------------------------------------------------
-
-; ;------------------------------------------------------------------------
-;  ; We came here from the NMI - that will disable interrupts for us
-;  ; and we can use RETN on the way out to restore the original interrupt status.
-; .IngameHook: 
-; 		; Doing this is kind of risky since we are running in game code.
-; 		; So every push we do here possibably means hitting the end of the 
-; 		; games stack if it was design to make full use of it.
-; 		; Care has been taken to avoid using DE in methods during the game pause stage.
-; 		PUSH HL
-; 	;	PUSH DE  ... no longer used, see things like command_Fill using CPI
-; 		PUSH BC
-; 		PUSH AF
-
-; 		; ---------------------------------------------------------
-;     	; MANUALLY SAVE INTERRUPT STATE 
-;     	; If a 2nd NMI hits after this, IFF2 will be Clobbered 
-;     	; ---------------------------------------------------------
-;  		ld HL,16384+6  
-;         ld a,i          	; set flags, P/V = IFF2
-;         jp po,.WasOff    	; Parity Odd = Interrupts were OFF
-;  .WasOn:
-;  		set 7,(HL)          ; They were ON (bit7=1)
-;  		SET_BORDER 3  		; Magenta DEBUG
-;  		DI      			; redundant but safe - we get here via NMI, that disables interrupts
-;  		jr   .StoreDone
-;  .WasOff: 
-;   		res 7,(HL)          ; They were OFF (bit7=0)
-;  		SET_BORDER 4  		; green DEBUG
-;  .StoreDone:
-
-; 	ld A,B
-; 	OUT ($1f), A  
-; 	halt
-; 	ld A,C
-; 	OUT ($1f), A  
-; 	halt
-; 	ld A,H
-; 	OUT ($1f), A  
-; 	halt
-; 	ld A,L
-; 	OUT ($1f), A  
-; 	halt
-
-; 	jp mainloop
-;------------------------------------------------------------------------
-
 ; Ingame NMI hook
 .IngameHook:
 		; We use OUT's to avoiding PUSHing to stack as the stack is not ours!
@@ -799,23 +750,22 @@ L04AA:
 
 .SendRegs:
 
-        ld   a,d
+        ld   a,d				; D
         out  (0x1F), a
         halt
-		ld   a,e
+		ld   a,e				; E
         out  (0x1F), a
         halt
-
-        ld   a,b
+        ld   a,b				; B
         out  (0x1F), a
         halt
-        ld   a,c
+        ld   a,c				; C
         out  (0x1F), a
         halt
-        ld   a,h
+        ld   a,h				; H
         out  (0x1F), a
         halt
-        ld   a,l
+        ld   a,l				; L
         out  (0x1F), a
         halt
 
@@ -824,48 +774,37 @@ L04AA:
 
 ;------------------------------------------------------------------------
 .restoreInGameState
-;;    ld  HL,16384+6
-;;    bit 7,(HL)	 		 	; check EI flag
-;;    jr  z,.ExitDisabled
-
-    ld   a,d
-    out  (0x1F), a
-    halt
-	ld   a,e
-    out  (0x1F), a
-    halt
-
+ 
 	halt 
     in a, ($1f) 
-	ld b,a
+	ld d,a			; D
 	halt 
     in a, ($1f) 
-	ld c,a
+	ld e,a			; E
 	halt 
     in a, ($1f) 
-	ld h,a
+	ld b,a			; B
 	halt 
     in a, ($1f) 
-	ld l,a
-
+	ld c,a			; C
 	halt 
-    in a, ($1f)   ; IFF2
-	bit 7,a
+    in a, ($1f) 	
+	ld h,a			; H
+	halt 
+    in a, ($1f) 
+	ld l,a			; L
+	halt 
+    in a, ($1f)   	
+	bit 7,a			; IFF2
 	jr  z,.ExitDisabled
 
 .ExitEnabled:
 	POP AF 
- ;	POP BC
-;	;POP DE
-; 	POP HL 
     EI 		; Enable Interrupts manually
 	jp .restoreInGameStateCompleted
 
 .ExitDisabled:
 	POP AF 
- ;	POP BC
-;	;POP DE
- ;	POP HL 
 	DI      ; redundant but safe
 	jp .restoreInGameStateCompleted
 ;------------------------------------------------------------------------

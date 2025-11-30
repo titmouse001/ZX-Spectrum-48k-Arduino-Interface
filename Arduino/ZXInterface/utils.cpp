@@ -9,6 +9,7 @@
 
 #include "PacketBuilder.h"
 
+
 static uint8_t REG_D;
 static uint8_t REG_E;
 static uint8_t REG_B;
@@ -74,174 +75,133 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
-__attribute__((optimize("-Os")))
-void Utils::waitForUserExit() {
-
-  //===============================================
-  // Hop back into menu code - TEST CODE
-  //===============================================
-
-  // Wait around for maskable interrupts to occur - create a safty gap as about to ROM swap.
-  // (During ROM swap,  NMI prevents further interrupts until re-enabled by the programmer)
-  // Waiting for the 50 Hz NMI also ensures we don't double up on stack pushes, since some games may be 
-  // designed to use the entire stack. 
-  // WARNING: We still need to preserve registers when entering the in-game pause menu - this could cause issues!
+void Utils::storeZ80StateExitToMenu() {
+  // Wait for the game's own 50 Hz interrupt to fire - this avoids pushing onto a stack
+  // the game may already be using heavily.
   uint32_t start = millis();
-  // Wait until the Z80 enters the HALT state (active low).
   while (digitalReadFast(Pin::Z80_HALT) != 0) {
     if ((millis() - start) >= 80) {    // Allow 80ms timeout
-      break;  // looks like interrupts are disabled
+      break;  // give up - looks like interrupts are disabled
     }
   }
-  Z80Bus::waitForZ80Resume();
+  Z80Bus::waitForZ80Resume();  // Currently still in the stock (modified) ROM.
+  
+  // Triggering NMI gives us a path back to the SNA ROM
+  Z80Bus::triggerZ80NMI();              // NMI - jmp to modified ROM method 'L0066:'
+  delay(1);                             // Allow time to reach the idle loop - NEEDED
+  // Above to swap ROM back to stock giving us a new run path back to menus
+  digitalWriteFast(Pin::ROM_HALF, LOW); // swapping from stock to SNA ROM 
+  REG_IFF2 = Z80Bus::get_IO_Byte();     // get_IO_Byte: Z80 will HALT and OUT
+  REG_D = Z80Bus::get_IO_Byte();
+  REG_E = Z80Bus::get_IO_Byte();
+  REG_B = Z80Bus::get_IO_Byte();
+  REG_C = Z80Bus::get_IO_Byte();
+  REG_H = Z80Bus::get_IO_Byte();
+  REG_L = Z80Bus::get_IO_Byte();
+}
 
-
-  // We are currently in stock rom (modified), NMI now gives us a path back the the SNA menu ROM
-  Z80Bus::unHalt_triggerZ80NMI();  // NMI - jmp to modified ROM method 'L0066:'
-  delay(5);                        // Allow time to reach the idle loop - NEEDED
-
-
-  digitalWriteFast(Pin::ROM_HALF, LOW);  // swapping to SNA ROM - this is a new run path back to menus
-
-  delay(5); // allow Z80 time to reach MainLoop
-
-
- REG_IFF2 = Z80Bus::get_IO_Byte();
-
- REG_D = Z80Bus::get_IO_Byte();
- REG_E = Z80Bus::get_IO_Byte();
- REG_B = Z80Bus::get_IO_Byte();
- REG_C = Z80Bus::get_IO_Byte();
- REG_H = Z80Bus::get_IO_Byte();
- REG_L  = Z80Bus::get_IO_Byte();
-
-
-  // At this point - if all is well we should be back in the menu loop waiting for a new command request.
-
-  //  Z80Bus::sendFillCommand(0x4000+20, 64, 244);    .. TEST MARKER
-
-  uint8_t addr0x04AA[] = { 0x04, 0xAA };  // 0x04AA = Z80 idle loop
+void Utils::restoreZ80StateBackToGame() {
+  uint8_t addr0x04AA[] = { 0x04, 0xAA };  // 0x04AA:  Z80 .restoreInGameState -> idle loop
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
-
-
-  Z80Bus::sendBytes(&REG_D, 1);
+  Z80Bus::sendBytes(&REG_D, 1); // sendBytes: Z80 will IN and HALT
   Z80Bus::sendBytes(&REG_E, 1);
   Z80Bus::sendBytes(&REG_B, 1);
   Z80Bus::sendBytes(&REG_C, 1);
   Z80Bus::sendBytes(&REG_H, 1);
   Z80Bus::sendBytes(&REG_L, 1);
-  
-  Z80Bus::sendBytes(&REG_IFF2, 1);
-   
-  delay(5); // allow Z80 time to reach idle loop - NEEDED
-
+  Z80Bus::sendBytes(&REG_IFF2, 1);  // send last - important for restore order
+  delay(1); // allow Z80 time to reach idle loop - NEEDED
   digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM - escapes out of idle loop
+}
+
+__attribute__((optimize("-Os")))
+void Utils::waitForUserExit() {
+
+  // ------- fudge  ----------------
+  // TO-DO - restore the real values in screen memory from game launch using 3 bytes of screen memory
+  // + 2nd time into the pause menu (same game) would not need this again.
+  storeZ80StateExitToMenu();
+  Z80Bus::sendFillCommand(0x4000, 3, 0); //for now, just clear borrowed screen memory!
+  restoreZ80StateBackToGame();
+  // -------------------------------
 
 
-  //===============================================
 
-  // dummy read to flush garbage
-  // we use port 0x1F for everything in the SNA rom menu's, if not a big issue will work around this,
-  // otherwise will need to come up with another port or some other way.
+  // storeZ80StateExitToMenu();
 
+  //  TEST CODE TO SEND SCREEN DATA TO SD CARD
+
+  //     // Ask Speccy to send its screen data
+  //     uint8_t len = PacketBuilder::build_Request_CommandSendData(BufferManager::packetBuffer,
+  //                                                                ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+  //     Z80Bus::sendBytes(BufferManager::packetBuffer, len);
+
+  //     FatFile &file = SdCardSupport::getFile();
+  //     FatFile &root = SdCardSupport::getRoot();
+  //     if (root.isOpen()) { root.close(); }
+  //     if (file.isOpen()) { file.close(); }
+  //     if (root.open("/")) {
+
+  //       file.open("scratch16384.SCR", O_CREAT | O_WRONLY);
+
+  //       // -------------------------------------------------------------
+  //       // Get ready to read from Latch IC (74HC574) - set Nano data pins to read
+  //       DDRD = 0x00;   // make them inputs
+  //       PORTD = 0x00;  // no pull-ups
+  //       // Enable Latch for reading - we can keep it on for this section
+  //       digitalWriteFast(PIN_A5, LOW);
+  //       // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
+  //       // The Nano can execute the next instruction before latch outputs are ready!
+  //       __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
+  //                            "nop\n\t");  // playing it safe with 124 ns (!!TIMINGS FOR NANO
+  //       // -------------------------------------------------------------
+
+  //       for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+  //         Z80Bus::waitHalt_syncWithZ80();
+  //         uint8_t byte = PIND;  // Capture latched data
+  //         Z80Bus::triggerZ80NMI();
+  //         file.write(byte);
+  //       }
+  //       file.flush();
+  //       file.close();
+
+  //       // -------------------------------------------------------------
+  //       // Done with latch back disable and put Arduino back to sending mode
+  //       digitalWriteFast(PIN_A5, HIGH);  // Disable #OE
+  //       DDRD = 0xFF;                     // Set all PORTD pins as outputs
+  //      // PORTD = 0x00;                    // outputs start LOW
+  //       // -------------------------------------------------------------
+  //     }
+
+
+ // restoreZ80StateBackToGame();
+
+
+
+  // Dummy flush read - SNA ROM also uses port 0x1F (KEMPSTONE PORT) for send/receiving
   readJoystick();
 
-  do {
-    uint8_t b = Utils::readJoystick();
+  uint8_t b;
+  while(true) {
+    b = Utils::readJoystick();
+
+    // Ready PORTD — this (and the cart hardware) behaves like a Kempston joystick interface.
+    // Note: We will let this joystick loop run as fast as possible, since a real 
+    // Kempston interface returns results instantly.
     PORTD = b & JOYSTICK_MASK;
+
     if (b & JOYSTICK_SELECT) {
-      //----------------------------------------------------------------
-      // Fire NMI, this calls location 'L0066:' in the stock ROM.
-      // The NMI routine has bee modified to push registers and then idle in a loop forever.
-      // So when we switch over to the SNA ROM it overrides and takes over giving us back the SNA ROM's menu loop.
-      Z80Bus::unHalt_triggerZ80NMI();
-      //----------------------------------------------------------------
-      delay(5);                              // Allow time to reach the idle loop
-      digitalWriteFast(Pin::ROM_HALF, LOW);  // SNA ROM overrides idle loop with a new execution path
-      Z80Bus::waitForZ80Resume(); // needed ?
-      //----------------------------------------------------------------
-
-      delay(1);
-
-
-
-      // Ask Speccy to send its screen data
-      uint8_t len = PacketBuilder::build_Request_CommandSendData(BufferManager::packetBuffer,
-                                                                 ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
-      Z80Bus::sendBytes(BufferManager::packetBuffer, len);
-
-      // From this point the Arduino waits to recieve and will need to
-      // acknowledge each of the 0x4000 bytes requested.
-
-      //************ HACK TEST **********
-      FatFile &file = SdCardSupport::getFile();
-      FatFile &root = SdCardSupport::getRoot();
-      if (root.isOpen()) { root.close(); }
-      if (file.isOpen()) { file.close(); }
-      if (root.open("/")) {
-
-        file.open("scratch16384.SCR", O_CREAT | O_WRONLY);
-
-        // -------------------------------------------------------------
-        // Get ready to read from Latch IC (74HC574) - set Nano data pins to read
-        DDRD = 0x00;   // make them inputs
-        PORTD = 0x00;  // no pull-ups
-        // Enable Latch for reading - we can keep it on for this section
-        digitalWriteFast(PIN_A5, LOW);
-        // Timing delay: 74HC574 needs around 38ns (5V) for output enable time.
-        // The Nano can execute the next instruction before latch outputs are ready!
-        __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
-                             "nop\n\t");  // playing it safe with 124 ns (!!TIMINGS FOR NANO
-        // -------------------------------------------------------------
-
-        for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-          Z80Bus::waitHalt_syncWithZ80();
-          uint8_t byte = PIND;  // Capture latched data
-          Z80Bus::unHalt_triggerZ80NMI();
-          file.write(byte);
-        }
-        file.flush();
-        file.close();
-
-        // -------------------------------------------------------------
-        // Done with latch back disable and put Arduino back to sending mode
-        digitalWriteFast(PIN_A5, HIGH);  // Disable #OE
-        DDRD = 0xFF;                     // Set all PORTD pins as outputs
-        PORTD = 0x00;                    // outputs start LOW
-        // -------------------------------------------------------------
-      }
-
-      // TEST CODE - MAKE SURE WE CAN STILL DO USEFUL THINGS !!!
-      // (we are running inside an NMI handler that itself uses NMI!)
-      for (uint8_t i = 80; i < 80 + 64; i += 8) {
-        Draw::text_P(16 + (i / 4), i, F("THIS IS A TEST"));
-        delay(100);
-      }
-
-      //----------------------------------------------------------------
-      // Send JMP to Z80 - This will progress into a forever loop in the SNA ROM.
-      // When swithcing back the stock rom, it creats a overriding path back to the game.
-      uint8_t a[2];
-      uint16_t val = 0x04AD;  // jp here - restore EI flag and idle loop
-      a[0] = (uint8_t)(val >> 8);
-      a[1] = (uint8_t)(val & 0xFF);
-      Z80Bus::sendBytes(a, 2);
-      //----------------------------------------------------------------
-      // Allow the Z80 time to restore EI (if it was previously enabled)
-      // and then start the idle loop.
-      delay(10);  // 5);
-      //----------------------------------------------------------------
-      // Switch back to stock ROM. This ROM does not have the idle loop.
-      // It will POP the game registers and use "RET" to exit the NMI
-      // (not "RETN"), because we must control the restoration of interrupts.
-      // We’ve been doing non-standard things with NMIs inside NMI!
-      digitalWriteFast(Pin::ROM_HALF, HIGH);  // STOCK 48K ROM
-      //     break;
+      storeZ80StateExitToMenu();
+      Utils::clearScreen(0);
+      Draw::text_P(80, 90, F("IN-GAME PAUSE MENU"));
+      Draw::text_P(80, 120, F("TO-DO"));
+      delay(2000);
+      restoreZ80StateBackToGame();
+      break;
     }
-  } while (true);  //} while ((Utils::readJoystick() & JOYSTICK_SELECT) == 0);
-
-  while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {
   }
+  while ((Utils::readJoystick() & JOYSTICK_SELECT)) { }  // wait for button let go
+
 }
 
 // ---------------------
@@ -269,6 +229,14 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
   }
   return i;
 }
+
+
+
+
+
+
+
+// =============================
 
 
 // ======================

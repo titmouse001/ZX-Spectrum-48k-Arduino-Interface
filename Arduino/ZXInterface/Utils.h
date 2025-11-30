@@ -20,6 +20,9 @@ void frameDelay(unsigned long start);
 void setupJoystick();
 void waitForUserExit();
 
+void storeZ80StateExitToMenu();
+void restoreZ80StateBackToGame();
+
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
