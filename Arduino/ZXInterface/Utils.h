@@ -23,6 +23,9 @@ void waitForUserExit();
 void storeZ80StateExitToMenu();
 void restoreZ80StateBackToGame();
 
+void saveScreen(const char* filename);
+void restoreScreen(const char* filename);
+
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 

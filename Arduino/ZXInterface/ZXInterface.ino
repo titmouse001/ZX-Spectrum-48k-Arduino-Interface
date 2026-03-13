@@ -8,10 +8,21 @@
 // C:\Users\Admin\AppData\Local\Arduino15\packages\arduino\hardware\avr\1.8.6\platform.txt
 // -------------------------------------------------------------------------------------
 
+// Upload using programmer rather than directly from USB (saves some memory)
+//see https://www.youtube.com/watch?v=ToKerwRR-70
+//https://zadig.akeo.ie/  (for drivers - I used winusb )
+
 // Board detection - will cause compile error if wrong board selected
 //#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
 //#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
 //#endif
+
+
+//TODO's
+// 1. Find some way to restore/hide the currupted 3 bytes of screen memory at/after game launch ?!?!?!
+
+
+
 
 #if F_CPU != 16000000L
 #warning "This sketch expects 16MHz clock speed."
@@ -29,6 +40,7 @@
 #include "PacketTypes.h"
 #include "BufferManager.h"
 #include "Z80Bus.h"
+#include "pin.h"
 
 #define VERSION ("0.24")  // Arduino firmware
 #define DEBUG_OLED 0
@@ -78,45 +90,43 @@ void setup() {
 #endif
 
 // SdCardSupport::init(PIN_A4);
-//   uint16_t  a = SdCardSupport::countSnapshotFiles() ;
+//  uint16_t  a = SdCardSupport::countSnapshotFiles() ;
 //  Serial.print("count =");
 //  Serial.println(a);
 
-  Z80Bus::setupPins();     // Configures Arduino pins for Z80 bus interface.
-  Utils::setupJoystick();  // Initializes joystick input pins.
+  Z80Bus::setupPins(); 
+  Utils::setupJoystick();  
+
 #if (DEBUG_OLED == 1)
   setupOled();           // For debugging
 #endif
+
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
   if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
-    digitalWriteFast(Pin::ROM_HALF, HIGH);                     //Switches Spectrum to internal ROM.
+    Z80Bus::setStockRom();
     Z80Bus::resetZ80();                                        // Resets Z80 for a clean boot from internal ROM.
     while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Debounces button release.
     while (true) {
       if (Utils::readJoystick() & JOYSTICK_SELECT) {
-        digitalWriteFast(Pin::ROM_HALF, LOW);  //Switches back to Sna ROM.
-        break;                                 // Returns to Sna loader.
+        Z80Bus::setSnaRom();
+        break;                                                 // Returns to Sna loader.
       }
       delay(50);
     }
   }
 
-
   Z80Bus::resetZ80();
   CommandRegistry::initialize();
 
-  //Z80Bus::fillScreenAttributes(COL::BLACK_WHITE);
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
-  // SD Init must eat a pin for CS! We use the free OLED debug pin A4 
-  // but we dont care about this pin (SD Card's CS pin is fixed to GND).
-  while (!SdCardSupport::init(PIN_A4)) {
+  while (!SdCardSupport::init(Pin::SD_CARD_CS)) {  
     Draw::text_P(80, 90, F("INSERT SD CARD"));
     do {  
       delay(20);  
-    } while (!SdCardSupport::init(PIN_A4));  // keep looking
+    } while (!SdCardSupport::init(Pin::SD_CARD_CS));  // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);
   }
 }
@@ -157,11 +167,12 @@ void handleSnaFile(FatFile* pFile) {
     Z80Bus::transferSnaData(pFile, true);
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
-    Z80Bus::resetToSnaRom();
+    Z80Bus::setSnaRom();
+    Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
 }
-
+ 
 // ---------------------
 // .Z80 FILE 
 // ---------------------
@@ -173,7 +184,8 @@ void handleZ80File(FatFile* pFile) {
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
     Z80Bus::executeSnapshot();
     Utils::waitForUserExit();
-    Z80Bus::resetToSnaRom();
+    Z80Bus::setSnaRom();
+    Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
 }
@@ -275,10 +287,8 @@ void loop() {
   
   FatFile* pFile = Menu::handleMenu();
 
-  //if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
   if (strcasestr( SdCardSupport::getFileName(pFile) , ".scr")) {
     handleScrFile(pFile);
-//  } else if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".sna")) {
     handleSnaFile(pFile);
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".z80")) {

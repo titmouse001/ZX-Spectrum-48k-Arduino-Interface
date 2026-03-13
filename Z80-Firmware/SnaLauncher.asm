@@ -124,10 +124,9 @@ L0066:
 	; The Sna ROM will use this routine 'RETN' while in the file browser menu.
 	; The idea is to get in and out from this NMI as quickly as possible!
 	;
-	; The mirror ROM continues here
-	RETN 	; 2 bytes		MIRROR STOCK ROM - Pushes x4 registers here
-	NOP		; 1 byte			 	  	   	   
-	NOP		; 1 byte			 	            
+	RETN   ; (the mirror ROM continues with NOPS here)
+	NOP	
+	NOP	
 	;
 	; Stock ROM has instructions to ".idle: jr .idle" here
 	; These NOPs will release the mirror's idle loop and turn JR -2 into JR 0 (same as a slow NOP)
@@ -154,7 +153,7 @@ check_initial:
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
-	; Hardware Info: The game cartridge latches these OUT values using a 74HC574PW latch IC.
+	; Hardware Info: The game cartridge sends these addresses using a 74HC574PW latch IC.
 	; The hardware performs a lazy check on address lines - A7=0 enables latching (requires #IORQ + #RD).
 	; Each HALT synchronizes the Z80 with the Arduino. The Arduino enables the latch outputs for reading,
 	; then disables them (tri-state) and signals the z80 to continue (un-halts).
@@ -271,7 +270,7 @@ command_SendData:
 ; Input: Buffer end address, total fill count (byte), fill byte value (byte)
 ;
 ; WARNING: DON'T USE THIS FILL FOR THE IN_GAME PAUSE MENU
-;		   TRASHES IX AND DE - we dont save those from a running game into pause state.
+;		   TRASHES IX - NOT SAVED BEFORE PAUSE MENU
 ;------------------------------------------------------
 command_fill_mem_bytecount:  
 
@@ -429,6 +428,7 @@ command_Stack:  ; 'S'  - store or restores snapshots stack
 	OUT (C), H    		  
 	halt
  	jp mainloop    
+	
 .restore 	
 	ld sp,hl
     halt  					; synchronization with Arduino
@@ -568,7 +568,7 @@ RestoreInterruptModeComplete:
 ; RELOCATE SECTION - ROM swap code
 ; Games need the original Spectrum ROM, but we can't execute ROM code during ROM swap
 ; so we copy this small routine to screen memory before swapping ROMs.
-; This 3-byte section runs from screen memory directly after we switch back to stack rom 
+; This 3-byte section runs from screen memory after switching over to stock rom 
 ;-----------------------------------------------------------------------    
 relocate:  			; I've found ways to reduce this - now at 3 bytes.
 JumpInstruction:     
@@ -693,17 +693,19 @@ ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 ; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
 
 L04AA:
-
+	;----------------------------------------------------------------
 	JR .restoreInGameState
-.restoreInGameStateCompleted:  ; avoid stack usage
-
+.restoreInGameStateCompletedWithEI:  ; jp return point - avoid stack usage
 .ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
-
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
+	NOP ; 2nd rom -> 'EI'
+	NOP ; 2nd rom -> 'RET'
+	;----------------------------------------------------------------
+L04B0:
+	;----------------------------------------------------------------
+.restoreInGameStateCompletedWithDI: 
+.ContinueGameIdle2: jr .ContinueGameIdle2   ; ROM sync, swapping back to stock
+	NOP ; 2nd rom -> 'RET'
+	;----------------------------------------------------------------
 	NOP
 	NOP
 	NOP
@@ -721,61 +723,66 @@ L04AA:
 	nop
 
 ;------------------------------------------------------------------------
-; Ingame NMI hook
+; Ingame NMI hook - save game state
 .IngameHook:
-		; We use OUT's to avoiding PUSHing to stack as the stack is not ours!
-        ; However we cannot send AF directly, using OUT requires HALT + NMI to synchronize 
-		; with the Arduino - that would overwrite the games IFF2 state so we need to save
-		; IFF2 manualy first. We also can't use RETN as IFF2 would be lost while in the pause menu.
-        ; Because we have no guarantee about how much stack space the game left us,
-        ; we must avoid pushing extra registers.
-		; Note: Push AF takes us to 2 deep (NMI return address takes one already)
-		; 		The Halts in this method bump the stack to 3 deep.
 
-        PUSH AF              	; minimal stack usage - push AF onto games stack
-								
-        ; capture IFF2 and send it to Arduino
-        ld   a,i                ; IFF2 state is copied to the parity flag
-        jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
+; STACK PROTECTION HACK:
+    ; Prevents stack misuse during in-game pause menu transitions.
+    ; The game's stack is fragile so we relocate the SP to a safer area near start of screen memory.
+
+	LD (16384+31),SP  ; TEST!!!
+	LD SP,16384+29  ; TEST!!!
+
+	; We use OUTs to avoid PUSHing as the stack isn't ours.
+	; Synchronizing with the Arduino requires HALT + NMI. Because internal menus 
+	; use multiple recursive NMIs to sync, the original IFF2 state gets overwritten.
+	; We must save IFF2 manually first; RETN would lose it while in the pause menu.
+
+	; Note: NMI to get here and 'PUSH AF' already use 4 bytes of stack.
+	PUSH AF              	; minimal stack usage - push AF onto games stack				
+
+	ld   a,i                ; IFF2 state is copied to the parity flag
+
+	; capture IFF2 
+	jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
 .WasOn:
-        or   128                ; set bit7
-        out  (0x1F), a          ;
-		halt					; Sync with Arduino
-        di                      ; just incase - interrupts are disabled anyway
-        jr   .SendRegs
+	or  %10000000 ; 128                ; set bit7
+	out  (0x1F), a          ;
+	halt					; Sync with Arduino
+	di                      ; Disable interrupts (Explicit intent, NMI does handle it)
+	jr   .SendRegs
 .WasOff:
-        and  127                ; clear bit7
-        out  (0x1F), a          ;
-		halt					; Sync
+	and  %01111111 ; 127                ; clear bit7
+	out  (0x1F), a          ;
+	halt					; Sync
 
 .SendRegs:
+	ld   a,d				; D
+	out  (0x1F), a
+	halt
+	ld   a,e				; E
+	out  (0x1F), a
+	halt
+	ld   a,b				; B
+	out  (0x1F), a
+	halt
+	ld   a,c				; C
+	out  (0x1F), a
+	halt
+	ld   a,h				; H
+	out  (0x1F), a
+	halt
+	ld   a,l				; L
+	out  (0x1F), a
+	halt
 
-        ld   a,d				; D
-        out  (0x1F), a
-        halt
-		ld   a,e				; E
-        out  (0x1F), a
-        halt
-        ld   a,b				; B
-        out  (0x1F), a
-        halt
-        ld   a,c				; C
-        out  (0x1F), a
-        halt
-        ld   a,h				; H
-        out  (0x1F), a
-        halt
-        ld   a,l				; L
-        out  (0x1F), a
-        halt
-
-        jp mainloop         
-
+    jp mainloop         
 
 ;------------------------------------------------------------------------
-.restoreInGameState
+
+.restoreInGameState: 
  
-	halt 
+ 	halt 
     in a, ($1f) 
 	ld d,a			; D
 	halt 
@@ -793,6 +800,7 @@ L04AA:
 	halt 
     in a, ($1f) 
 	ld l,a			; L
+
 	halt 
     in a, ($1f)   	
 	bit 7,a			; IFF2
@@ -800,13 +808,15 @@ L04AA:
 
 .ExitEnabled:
 	POP AF 
-    EI 		; Enable Interrupts manually
-	jp .restoreInGameStateCompleted
+	LD SP,(16384+31)  ; TEST!!!
+;;;    EI 		; Enable Interrupts manually
+	jp .restoreInGameStateCompletedWithEI
 
 .ExitDisabled:
 	POP AF 
+	LD SP,(16384+31)  ; TEST!!!
 	DI      ; redundant but safe
-	jp .restoreInGameStateCompleted
+	jp .restoreInGameStateCompletedWithDI
 ;------------------------------------------------------------------------
 
 
@@ -827,12 +837,12 @@ L04AA:
 ;   RET (not RETN) to exit the NMI so we control interrupt restoration.
 ;
 ; Note:
-; In the stock ROM patches address L16D4 to execute "JP $3FFF".
+; The other stock ROM patches address L16D4 to execute "JP $3FFF".
 ; ROM byte ($3FFF) which is 0x3C (INC A). After INC A the CPU continues into 
 ; RAM at $4000 where our game launch code (JP <GAME_START_ADDR>) is.
 ; -------------------------------------------------------------------------
 
-ORG $16D4       ; Must use all 7 bytes here (this code will be swapped out)
+ORG $16D4       ; Must match stock ROM's 7 bytes here (this code will be swapped out)
 L16D4:  
 	; --------------------------------------------------------------------
 	; **** idel loop - mirrow rom will break us out of this with nops ****

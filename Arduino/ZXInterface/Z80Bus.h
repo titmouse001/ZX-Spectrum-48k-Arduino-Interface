@@ -22,13 +22,16 @@ extern uint8_t get_IO_Byte();
 extern void rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect);
 extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
 extern void executeSnapshot();
-extern boolean bootFromSnapshot(FatFile* pFile);
+//extern boolean bootFromSnapshot(FatFile* pFile);
 
 extern void resetZ80();
-extern void resetToSnaRom();
+//extern void resetToSnaRom();
+extern void setSnaRom();
+extern void setStockRom();
+
 extern void waitHalt_syncWithZ80();
 extern void triggerZ80NMI();
-extern void waitForZ80Resume();
+extern void hasZ80Resumed();
 extern void waitRelease_NMI();
 
 }

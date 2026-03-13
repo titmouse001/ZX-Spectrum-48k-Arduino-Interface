@@ -21,8 +21,10 @@ void Z80Bus::setupPins() {
  
   pinModeFast(Pin::ROM_HALF, OUTPUT);  // set ROM_HALF first
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
-  pinModeFast(PIN_A5, OUTPUT);
-  digitalWriteFast(PIN_A5,HIGH); 
+ 
+  pinModeFast(Pin::OE_LATCH, OUTPUT);
+  digitalWriteFast(Pin::OE_LATCH,HIGH);   //74HC574PW , #OE_LATCH
+
   pinModeFast(Pin::Z80_HALT, INPUT);
   pinModeFast(Pin::Z80_NMI, OUTPUT);
   pinModeFast(Pin::Z80_REST, OUTPUT);
@@ -39,6 +41,7 @@ void Z80Bus::setupPins() {
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
 
+// TODO - reset timing for 128k machines
 __attribute__((optimize("-Os")))
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
@@ -50,10 +53,12 @@ void Z80Bus::resetZ80() {
   delay(10);
 }
 
-__attribute__((optimize("-Os")))
-void Z80Bus::resetToSnaRom() {
-  digitalWriteFast(Pin::ROM_HALF, LOW);  // LOW = Custom ROM
-  resetZ80();
+void Z80Bus::setSnaRom() {
+  digitalWriteFast(Pin::ROM_HALF, LOW);  // LOW = Snaploader Custom ROM
+}
+
+void Z80Bus::setStockRom() {
+  digitalWriteFast(Pin::ROM_HALF, HIGH);  // HIGH = Stock ROM
 }
 
 __attribute__((optimize("-Ofast")))
@@ -61,14 +66,13 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   // cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
     waitHalt_syncWithZ80();
-    PORTD = data[i];  // Send to Z80 data lines
+    PORTD = data[i];  // data on lines ready for Z80s 'IN'
     triggerZ80NMI();
- ////////////   waitForZ80Resume();
   }
   //  sei();
 }
 
-// PUT THIS IN Snapshot.cpp  (rename snapZ80 - allow for all sna,z80 ...)
+//TODO - PUT THIS IN Snapshot.cpp  (rename snapZ80 - allow for all sna,z80 ...)
 
 __attribute__((optimize("-Os")))
 void Z80Bus::sendSnaHeader(uint8_t* header) {
@@ -97,6 +101,9 @@ void Z80Bus::sendWaitVBLCommand() {
   Z80Bus::sendBytes(BufferManager::packetBuffer, packetLen);
 }
 
+
+//TODO - check this HALT is really needed 
+
 // sendStackCommand:
 //   action = 0 -> Read SP
 //   action = 1 -> Write SP
@@ -110,24 +117,26 @@ void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
 
-__attribute__((optimize("-Os"))) 
+//__attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::get_IO_Byte() {
+  DDRD = 0x00;                    // All Nano data pins to input
 
-  DDRD = 0x00;  // Reading from port - all Nano data pins to input
+  waitHalt_syncWithZ80();         // Wait for OUT cycle
+  digitalWriteFast(Pin::OE_LATCH, LOW);  // Drive bus with latch data
 
-  waitHalt_syncWithZ80();  // wait for Z80 to HALT - once hit indicates an OUT instruction ran
-  digitalWriteFast(PIN_A5, LOW);    // Enable output on the latch (74HC574)
-                                    // Capture time for latch  - spec says around 38ns.
+  // Capture time for latch - spec says around 38ns.
   __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
-                      "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
+                       "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
 
-  uint8_t byte = PIND;             // read the Z80:OUT data fed in from the latch
-  digitalWriteFast(PIN_A5, HIGH);  // Disable #OE on latch (tri-state)
-  triggerZ80NMI();  // we have data captured - safe to continue
-  DDRD = 0xFF;  // Set PORTD pins back to output
+  uint8_t byte = PIND;  
+
+  digitalWriteFast(Pin::OE_LATCH, HIGH);   // IC to tri-state
+  triggerZ80NMI();                  // Z80 handshake
+  DDRD = 0xFF;                      // default - rest of code expects active bus driving
   return byte;
+}
 
-// optimised runs can do this with #OE pin set once at start and end ....
+// Reminder ... optimised runs can do this with #OE pin set once at start and end ....
   //       for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
   //         Z80Bus::waitHalt_syncWithZ80();
   //         uint8_t byte = PIND;  // Capture latched data
@@ -136,19 +145,6 @@ uint8_t Z80Bus::get_IO_Byte() {
   //       }
 
 
-  // DDRD = 0x00;                      // Reading from port - all Nano data pins to input
-  // waitHalt_syncWithZ80();           // indicates an OUT instruction ran
-  // triggerZ80NMI();                  // Unhalt Z80 - latch has data Z80 can continue
-
-  // digitalWriteFast(PIN_A5, LOW);    // Enable output on the latch (74HC574)
-  // // Capture time for latch  - spec says around 38ns.
-  // __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
-  //                      "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
-  // uint8_t byte = PIND;              //  read the Z80:OUT data fed in from the latch
-  // digitalWriteFast(PIN_A5, HIGH);   // Disable #OE on latch (tri-state)
-  // DDRD = 0xFF;                      // Set PORTD pins back to output
-  // return byte;
-}
 
 __attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::getKeyboard() {
@@ -259,7 +255,6 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
  __attribute__((optimize("-Os"))) 
 void Z80Bus::executeSnapshot() {
 
-  // -----------------------------------
   // For a short while we will re-enable the Spectrum's 50 Hz maskable interrupt (IM 1).
   // This provides a safety gap before the next interrupt so the game's ISR won't corrupt the stack
   // when the launch code is in the last stages of resuming the game. The Arduino needs to synchronize via NMI 
@@ -269,39 +264,38 @@ void Z80Bus::executeSnapshot() {
 
   sendWaitVBLCommand();    // Ask Speccy to start 50Hz interrupt and halt itself.
   waitHalt_syncWithZ80();  // Halt line has gone is active low (Arduino sync point)
-  waitForZ80Resume();      // Wait for HALT to clear (50Hz interrupt occurred, Z80 running again)
-
-  // -----------------------------------
+  hasZ80Resumed();         // Wait for HALT to clear (50Hz interrupt occurred, Z80 running again)
 
   PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
   sendSnaHeader(BufferManager::head27_Execute);
-  delay(1);  // allow 'L16D4' time to reach idle loop
-  digitalWriteFast(Pin::ROM_HALF, HIGH);
+  delay(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
+
+   Z80Bus::setStockRom();
 }
 
-__attribute__((optimize("-Os"))) 
-boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
+// // // // __attribute__((optimize("-Os"))) 
+// // // // boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
 
-  // // // Utils::clearScreen(0);
+// // // //   // // // Utils::clearScreen(0);
 
-  // // // // Navigating away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
-  // // // // We need to put the Z80 stack somewhere it will do less damage.
-  // // // // Temporary working stack in screen memory is 99.9% ok.
-  // // // // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
-  // // // // +3 as we can borrow that addr for push/pops until it's set near end of SNA restore.
-  // // // sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
+// // // //   // // // // Navigating away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
+// // // //   // // // // We need to put the Z80 stack somewhere it will do less damage.
+// // // //   // // // // Temporary working stack in screen memory is 99.9% ok.
+// // // //   // // // // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
+// // // //   // // // // +3 bytes as we can borrow that addr for push/pops until it's set near end of SNA restore.
+// // // //   // // // sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
 
- ///////////////// waitHalt_syncWithZ80();   // Synchronize with Z80 Halt from the last Command
-  //////////////////////unHalt_triggerZ80NMI();   // Un-Halt Z80
+// // // //  ///////////////// waitHalt_syncWithZ80();   // Synchronize with Z80 Halt from the last Command
+// // // //   //////////////////////unHalt_triggerZ80NMI();   // Un-Halt Z80
 
-  //////////////////////////////////////////Utils::clearScreen(0);
+// // // //   //////////////////////////////////////////Utils::clearScreen(0);
 
-  transferSnaData(pFile, true);
- ////////// executeSnapshot();
+// // // //   transferSnaData(pFile, true);
+// // // //  ////////// executeSnapshot();
 
-  // At this point the Z80's game has been fuly restored including it's stack and registers.
-  return true;
-}
+// // // //   // At this point the Z80's game has been fuly restored including it's stack and registers.
+// // // //   return true;
+// // // // }
 
 // bool Z80Bus::waitHalt_syncWithZ80(uint32_t timeoutMs) {
 //     uint32_t start = millis();
@@ -322,16 +316,14 @@ __attribute__((optimize("-Os")))
 
 __attribute__((optimize("-Os"))) 
 void Z80Bus::triggerZ80NMI() {
-  // Pulse the Z80’s /NMI line: LOW -> HIGH to un-halt the CPU.
   digitalWriteFast(Pin::Z80_NMI, LOW);
- // delayMicroseconds(1);     // other Arduino platforms may need a pause
+  // delayMicroseconds(1);     // other Arduino platforms may need a pause
   digitalWriteFast(Pin::Z80_NMI, HIGH);
-
-  waitForZ80Resume();
+  hasZ80Resumed();
 }
 
 __attribute__((optimize("-Os"))) 
-void Z80Bus::waitForZ80Resume(){
+void Z80Bus::hasZ80Resumed(){
   // wait until HALT goes HIGH (Z80 resumes)
    while (digitalReadFast(Pin::Z80_HALT) == 0) {};  
 }

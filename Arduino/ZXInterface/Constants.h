@@ -42,7 +42,7 @@ namespace COL {
 // BUTTON INPUTS
 constexpr uint8_t JOYSTICK_MASK = 0b00111111;
 constexpr uint8_t JOYSTICK_FIRE = 0b00100000;
-constexpr uint8_t JOYSTICK_DOWN = 0b00000100;
+//constexpr uint8_t JOYSTICK_DOWN = 0b00000100;
 constexpr uint8_t JOYSTICK_SELECT = 0b01000000;
 constexpr uint8_t MAX_BUTTON_READ_MILLISECONDS  = 1000 / 50;  // 50 FPS
 

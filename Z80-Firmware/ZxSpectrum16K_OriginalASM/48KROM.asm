@@ -273,8 +273,11 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ; *** Method has no 'RETN' exit path, meaning the maskable interrupt is kept disabled ***
 ; ***************************************************************************************
 L0066:  ; /NMI line fired   (method length must be 14 bytes)
-        NOP
-        NOP
+
+ ;;;;  RETN  ;  this works a simple concept test - just using the NMI and it's stack for keeping the ret value 
+
+       NOP
+       NOP
         NOP
         NOP
         ; Bank switching happens here and the SNA ROM takes over with NOPs.
@@ -1515,15 +1518,20 @@ L04AA:
         nop  ; 
         ; The SNA ROM has an idle loop here.
         nop  ; (mirror uses jr -2 here)
-        nop  ; (we take over with this coe)
+        nop  ; (we take over with this code)
+        ; THE ABOVE TO 'NOP' BYTES ARE SAFE TO TAKE OVER THE JR -2
+        ; AT THIS POINT WE ARE SAFE AND BACK IN THIS ROM
+        EI
+        RET ; from 'restoreInGameStateCompletedWithEI' rom swap path
+
+L04B0:
+      ;  nop 
+        nop 
+        nop
+        RET  ; from 'restoreInGameStateCompletedWithDI' rom swap path
 
         nop
         nop
-        nop 
-        nop 
-        nop
-        nop
-        nop
         nop
         nop
         nop
@@ -1535,9 +1543,10 @@ L04AA:
         NOP
         NOP
         NOP
-        ret    ; normal RET (not a RETN as IFF restore was hand rolled)
+        nop
         nop
 
+ 
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------
@@ -6520,6 +6529,9 @@ L16C5:  LD      HL,($5C63)      ; fetch STKBOT value
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
+; ********************************************
+; **** THIS SECTION MODIFIES THE STOCK ROM ***
+; ********************************************
 ; L16D4: is unused and has been repurposed. 
 ; It's job is to continue on (breaks the mirror ROM idel loop) and jumps to the last location in ROM.
 ; This last location is a INC A.  See SNA rom for more info about whats going on here.
@@ -6527,7 +6539,7 @@ L16D4:  ; section must use up 7 bytes exactly.
 
        	nop ;  mirror rom = "dec a"
         ; -----------------------------------------------------------
-        ; This mirror rom now coninues as the other rom was locked in a idel loop
+        ; This rom now coninues as the other rom was locked in a idel loop
 	nop ;  mirror rom  2bytes for ".idleGameStart: jr .idleGameStart" 
 	nop ;  mirror rom  
         ;------------------------------------------------------------
