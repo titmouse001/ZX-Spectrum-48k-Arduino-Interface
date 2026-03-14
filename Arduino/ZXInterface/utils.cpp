@@ -10,6 +10,8 @@
 #include "PacketBuilder.h"
 #include "menu.h"
 
+static uint8_t REG_A;
+static uint8_t REG_F;
 static uint8_t REG_D;
 static uint8_t REG_E;
 static uint8_t REG_B;
@@ -83,11 +85,19 @@ void Utils::storeZ80States() {
   delay(1);             // wait for Z80 to hit SNA ROM's '.IngameHook'
 
   // note: for each get_IO_Byte the Z80 will 'OUT' then 'HALT'
-  REG_IFF2 = Z80Bus::get_IO_Byte();     
-  REG_D = Z80Bus::get_IO_Byte();
-  REG_E = Z80Bus::get_IO_Byte();
+  // ORDER OF Z80 OUT CODE IS: A, B, C, F, IFF, D, E, H, L
+  REG_A = Z80Bus::get_IO_Byte();
+
   REG_B = Z80Bus::get_IO_Byte();
   REG_C = Z80Bus::get_IO_Byte();
+
+  REG_F = Z80Bus::get_IO_Byte();
+
+  REG_IFF2 = Z80Bus::get_IO_Byte();     
+
+  REG_D = Z80Bus::get_IO_Byte();
+  REG_E = Z80Bus::get_IO_Byte();
+
   REG_H = Z80Bus::get_IO_Byte();
   REG_L = Z80Bus::get_IO_Byte();
 }
@@ -99,13 +109,21 @@ void Utils::restoreZ80States() {
   uint8_t addr0x04AA[] = { 0x04, 0xAA }; 
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
-  Z80Bus::sendBytes(&REG_D, 1); // Z80 will 'HALT' then 'IN'
+  // ORDER OF Z80 IN CODE IS : A, B, C, F, IFF, D, E, H, L
+
+  Z80Bus::sendBytes(&REG_D, 1); 
   Z80Bus::sendBytes(&REG_E, 1);
+
   Z80Bus::sendBytes(&REG_B, 1);
   Z80Bus::sendBytes(&REG_C, 1);
+
   Z80Bus::sendBytes(&REG_H, 1);
   Z80Bus::sendBytes(&REG_L, 1);
+
   Z80Bus::sendBytes(&REG_IFF2, 1); 
+
+  Z80Bus::sendBytes(&REG_F, 1); 
+  Z80Bus::sendBytes(&REG_A, 1); 
 
   delay(1); // allow Z80 time to reach the next idle loop for the stock rom to take control.
   Z80Bus::setStockRom();  // Stock rom escapes out of idle loop via it's NOP's

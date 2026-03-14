@@ -737,12 +737,21 @@ L04B0:
 	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
 	; We must keep IFF2 and manually restore IFF (call EI or DI) to resume the game.
 
-	; 16413 A Register (from PUSH AF)
-	; 16412 F Flags (from PUSH AF)
-	PUSH AF              	; minimal stack usage - push AF onto temp screen stack!!!
+	out  (0x1F), a			; A
+	halt
+	ld   a,b				; B
+	out  (0x1F), a
+	halt
+	ld   a,c				; C
+	out  (0x1F), a
+	halt
+	push af
+	pop bc
+	ld   a,c				; F
+	out  (0x1F), a
+	halt
 
 	ld   a,i                ; IFF2 state is copied to the parity flag
-
 	; capture IFF2 
 	jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
 .WasOn:
@@ -761,12 +770,6 @@ L04B0:
 	out  (0x1F), a
 	halt
 	ld   a,e				; E
-	out  (0x1F), a
-	halt
-	ld   a,b				; B
-	out  (0x1F), a
-	halt
-	ld   a,c				; C
 	out  (0x1F), a
 	halt
 	ld   a,h				; H
@@ -804,17 +807,38 @@ L04B0:
 	halt 
     in a, ($1f)   	
 	bit 7,a			; IFF2
+
 	jr  z,.ExitDisabled
 
 .ExitEnabled:
-	POP AF  ; from screen stack
-	LD SP,(16384+30) ; restore game stack
+	halt 
+    in a, ($1f)   ; F
+
+	push af                  ; get F onto stack!
+	inc sp                   ; Align SP to F
+	pop af                   ; F now good (ignoring A holding junk)
+	dec sp                   ; re-align SP 
+
+	halt 
+    in a, ($1f)   			 ; A - now we have 'AF'
+
+	LD SP,(16384+30)		 ; restore game stack
 	jp .restoreInGameStateCompletedWithEI
 
 .ExitDisabled:
-	POP AF  ; from screen stack
+
+	halt 
+    in a, ($1f)   ; F
+
+	push af                  ; get F onto stack!
+	inc sp                   ; Align SP to F
+	pop af                   ; F now good (ignoring A holding junk)
+	dec sp                   ; re-align SP 
+
+	halt 
+    in a, ($1f)   			 ; A - now we have 'AF'
+
 	LD SP,(16384+30)   ; restore game stack
-;;;	DI      ; redundant but safe
 	jp .restoreInGameStateCompletedWithDI
 ;------------------------------------------------------------------------
 
