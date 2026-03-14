@@ -2,17 +2,13 @@
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
 
-## UPDATE: For latest PCB revision see: Documents/Gerbers/V2.20
-    A 74HC574 latch has been added to allow the Z80 to pass data to the Arduino, 
-    replacing the previous 1-bit pulse halt protocol. While adequate for reading 
-    keyboard input, it was too slow for reading large blocks of data I'll be needing 
-    for future plans like an in-game pause menu (with pokes and such). 
-    
-    Currently Arduino code is setup for developing the in-game menu. While in a game, 
-    the PCB button takes you to a test page and then returns you back to the game 
-    rather than returning you to the main game selection menu. My plan is to bring up 
-    a sub menu in-game, and from there you can select options like POKE, Exit for a 
-    new game, or Continue game.
+## March 2026 Update
+
+    Mini update 13th March 2026 - I'm in the middle of developing the in-game menu.
+    Pressing the PCB button while in-game takes you to a new menu screen; currently, only
+    Resume and Exit are functional. My plan is to have a feature-rich in-game sub-menu where
+    you can select options like Poke, Slow-Mo, Remap Joystick (Fire to Jump), Take Screenshot,
+    Continue, or Exit.   
 
 #### Version 0.21 - with 90° cartridge design
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
@@ -35,6 +31,11 @@ The browser can also open **.scr** Spectrum screen files and **.txt** text files
 
 For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu button during power-up.
 
+    A 74HC574 latch has been added to allow the Z80 to pass data to the Arduino,
+    replacing the previous 1-bit pulse halt protocol.  While adequate for reading 
+    keyboard input, it was too slow for reading large blocks of data.
+
+   
 ### Hardware Design (Ver 0.21)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
 
