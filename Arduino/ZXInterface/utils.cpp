@@ -76,14 +76,9 @@ void Utils::setupJoystick() {
 }
 
 __attribute__((optimize("-Os"))) 
-void Utils::storeZ80StateExitToMenu() {
+void Utils::storeZ80States() {
   
-  //Triggering NMI to land in safe location (the modified stock ROM's idle loop around 0x0066)
-  Z80Bus::triggerZ80NMI();            
- // digitalWriteFast(Pin::Z80_NMI, LOW);
-//  digitalWriteFast(Pin::Z80_NMI, HIGH);
-  delay(1);             // Allow time to reach NMI idle loop (will be way more than needed)
-
+  delay(1);             // Allow NMI time to do it's idle loop (will be way more than needed)
   Z80Bus::setSnaRom();  // swap out stock ROM 
   delay(1);             // wait for Z80 to hit SNA ROM's '.IngameHook'
 
@@ -97,7 +92,7 @@ void Utils::storeZ80StateExitToMenu() {
   REG_L = Z80Bus::get_IO_Byte();
 }
 
-void Utils::restoreZ80StateBackToGame() {  
+void Utils::restoreZ80States() {  
   
   // 0x04AA:  Z80 code jumps to '.restoreInGameState' then idle loops. This allow time 
   // for the ROM to swap back to the stock ROM and start the restore process at 0x04AA.
@@ -193,7 +188,7 @@ void Utils::restoreScreen(const char* filename) {
 
 
 // TODO - this section of code is mostly prototype-grade. Fix me soon.
-__attribute__((optimize("-Ofast")))
+__attribute__((optimize("-Ofast"))) 
 void Utils::waitForUserExit() {
 
   // Dummy flush read - SNA ROM also uses port 0x1F (KEMPSTONE PORT) for send/receiving
@@ -207,17 +202,17 @@ void Utils::waitForUserExit() {
     b = Utils::readJoystick();
     PORTD = b & JOYSTICK_MASK;  // Kempston joystick interface
 
-   if (b & JOYSTICK_SELECT) {
-    
+    if (b & JOYSTICK_SELECT) {
+
       nmi = false;
       pinModeFast(Pin::ShiftRegClockPin, INPUT);
 
 
-// PCB UPDATE: Added 10k resistor between NANO A2 and Z80 /RD.
-// UPDATE: Tried /IORQ and it is actually better!
-// Why? While Z80 specs suggest they are similar, one timing graph shows /IORQ has a sharper edge.
-// Anyway, using /IORQ gives better results when timing the /NMI fire.
-// I still use the stack (one deep), hopefully most games aren't doing anything crazy with the stack at that point
+      // PCB UPDATE: Added 10k resistor between NANO A2 and Z80 /RD.
+      // UPDATE: Tried /IORQ and it is actually better!
+      // Why? While Z80 specs suggest they are similar, one timing graph shows /IORQ has a sharper edge.
+      // Anyway, using /IORQ gives better results when timing the /NMI fire.
+      // I still use the stack (one deep), hopefully most games aren't doing anything crazy with the stack at that point
 
       // do {
       //   // Note : ShiftRegClockPin A2 does double duty reading the z80 /RD line
@@ -230,23 +225,27 @@ void Utils::waitForUserExit() {
 
       // while(digitalReadFast(Pin::ShiftRegClockPin) && digitalReadFast(Pin::Z80_HALT)); // both nope - worth a try incase something odd was going on !!!
 
+      // -----------------------------------------------
       // Trying to get this NMI watch section as responsive as possible!
-      // I need to fire the NMI ASAP, hopefully around an OUT instruction. My reasoning is that this will be a safe spot in the code where the stack isn't being manipulated.
+      // I need to fire the NMI ASAP, hopefully around an OUT instruction. My reasoning is that this 
+      // will be a safe spot in the code where the stack isn't being manipulated.
       // Most games I've tested survive having one push/pop (the NMI return address) placed on their stack.
       // Outliers like Zynaps will show yellow on the starfield (1-byte attribute memory gets buggered), and the game sometimes crashes.
       // It's really hard trying to jump into a running game that abuses the stack!
-       while( digitalReadFast(Pin::ShiftRegClockPin) ); 
-       digitalWriteFast(Pin::Z80_NMI, LOW);      // trigger rom swap
-       digitalWriteFast(Pin::Z80_NMI, HIGH);
-       storeZ80StateExitToMenu();
-       nmi = true;
-       pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
+      while (digitalReadFast(Pin::ShiftRegClockPin)); // wait for safer code 
+      digitalWriteFast(Pin::Z80_NMI, LOW);  // jumps to ROM's idle loop at 0x0066
+      digitalWriteFast(Pin::Z80_NMI, HIGH);
+      // -----------------------------------------------
+
+      storeZ80States();
+      nmi = true;
+      pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
     }
-  
-    if (nmi) { 
+
+    if (nmi) {
       saveScreen("scratch16384.SCR");  // WORKS FINE
       while ((Utils::readJoystick() & JOYSTICK_SELECT)) {}
-  
+
       nmi = false;
 
       Utils::clearScreen(COL::BLACK_WHITE);
@@ -271,21 +270,20 @@ void Utils::waitForUserExit() {
         }
 
         if (button == Menu::BUTTON_MENU) {
-          if (index == 0) { break; } // Resume
-          if (index == 6) { break; } // exit
+          if (index == 0) { break; }  // Resume
+          if (index == 6) { break; }  // exit
         }
 
         highlightSelection(index + 6, 0, oldHighlightAddress);
         delay(80);
       }
 
-       while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
-      restoreScreen("scratch16384.SCR");  
-       restoreZ80StateBackToGame();
+      while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
+      restoreScreen("scratch16384.SCR");
+      restoreZ80States();
     }
     if (index == 6) { break; }
   }
-
 }
 
 // ---------------------

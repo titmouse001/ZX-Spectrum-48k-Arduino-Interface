@@ -20,8 +20,8 @@ void frameDelay(unsigned long start);
 void setupJoystick();
 void waitForUserExit();
 
-void storeZ80StateExitToMenu();
-void restoreZ80StateBackToGame();
+void storeZ80States();
+void restoreZ80States();
 
 void saveScreen(const char* filename);
 void restoreScreen(const char* filename);

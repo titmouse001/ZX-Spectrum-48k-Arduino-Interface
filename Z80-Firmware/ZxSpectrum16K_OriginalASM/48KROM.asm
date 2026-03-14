@@ -269,6 +269,7 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ; --------------------------------------------------------------------
 
 ; ***************************************************************************************
+; **** THIS SECTION MODIFIES L0066 (14bytes) FOR THE SNA LOADER                       ***
 ; *** NMI has been repurposed to break into games and display an in game menu         ***
 ; *** Method has no 'RETN' exit path, meaning the maskable interrupt is kept disabled ***
 ; ***************************************************************************************
@@ -1502,6 +1503,11 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ; ----------------------------------------------------------------
 ; ----------------------------------------------------------------
 
+; *****************************************************************
+; **** THIS SECTION MODIFIES L04AA (24bytes) FOR THE SNA LOADER ***
+; *****************************************************************
+; NOTE: L04AA is unused by the stock speccy rom and has been repurposed. 
+
 ; Path back to the game - when the stock ROM is swapped back in, it overrides
 ; the idle loop, restores the registers, and returns execution to the game.
 ; Technically, from the game's perspective we are still inside the first NMI
@@ -1509,7 +1515,7 @@ L046E:  DEFB    $89, $02, $D0, $12, $86;  261.625565290         C
 ; INFO: The SNA ROM "JR -2" gets overriden by running this mirror ROM with NOPs.
 ; Safeguards: The CPU may fetch in the middle of an instruction during the ROM
 ; swap. If the displacement byte comes from the new ROM (which contains NOPs),
-; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
+; a "JR -2" becomes "JR 0" (effectively a safe two-cycle slow NOP).
 
 ; This section must use 24 bytes
 RESTORE_PAUSED_GAME:
@@ -6529,22 +6535,26 @@ L16C5:  LD      HL,($5C63)      ; fetch STKBOT value
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
-; ********************************************
-; **** THIS SECTION MODIFIES THE STOCK ROM ***
-; ********************************************
-; L16D4: is unused and has been repurposed. 
-; It's job is to continue on (breaks the mirror ROM idel loop) and jumps to the last location in ROM.
-; This last location is a INC A.  See SNA rom for more info about whats going on here.
-L16D4:  ; section must use up 7 bytes exactly.
 
-       	nop ;  mirror rom = "dec a"
-        ; -----------------------------------------------------------
-        ; This rom now coninues as the other rom was locked in a idel loop
-	nop ;  mirror rom  2bytes for ".idleGameStart: jr .idleGameStart" 
-	nop ;  mirror rom  
-        ;------------------------------------------------------------
-	JP $3fff     ; stock rom has "inc a" here (so we can continue path into ram)
-        nop
+; ****************************************************************
+; **** THIS SECTION MODIFIES L16D4 (7bytes) FOR THE SNA LOADER ***
+; ****************************************************************
+; NOTE: L16D4 is unused by the stock speccy rom and has been repurposed. 
+; Its new job is to break the SNA ROM's idle loop and jump to the last location in the ROM. 
+; This location contains the last byte of the Copyright character (c), which happens 
+; to be an "INC A" instruction that transitions execution from ROM into RAM.
+; Refer to the same location in the SNA ROM for further details.
+L16D4:  
+        nop             ; Other mirror SNA ROM has a "dec a" instruction here
+        ; we ROM swap here breaking out of the idle loop with NOPs
+        nop             ; / Mirror 2 bytes for 
+        nop             ; \ ".idleGameStart: jr .idleGameStart"
+        JP $3fff        ; Execute end ROM instruction "inc a" and onto screen RAM 0x4000 :-)
+        nop             ; This point will never be reached
+; ****************************************************************
+; *** L16D4 - END OF MODIFIED SECTION                          ***
+; ****************************************************************
+
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
 ;----------------------------------------------------------------------------
@@ -20417,6 +20427,11 @@ L3D00:  DEFB    %00000000
         DEFB    %10100001
         DEFB    %10011001
         DEFB    %01000010
+
+
+; **************************************************
+; **** THIS LAST BYTE USEFUL FOR THE SNA LOADER ***
+; **************************************************
         DEFB    %00111100  ; 0x3C
         ; This last byte works out to be a "INC A" (0x3C) 
         ; we can make use this to run code from ram from stock rom!

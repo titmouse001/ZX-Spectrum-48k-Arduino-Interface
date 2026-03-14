@@ -263,50 +263,13 @@ void Z80Bus::executeSnapshot() {
   // (IM 1) at vector 0x0038. This means IM 1 interrupts remain disabled when the ISR returns.
 
   sendWaitVBLCommand();    // Ask Speccy to start 50Hz interrupt and halt itself.
-  waitHalt_syncWithZ80();  // Halt line has gone is active low (Arduino sync point)
+  waitHalt_syncWithZ80();  // Halt line has gone it's active low (Arduino sync point)
   hasZ80Resumed();         // Wait for HALT to clear (50Hz interrupt occurred, Z80 running again)
-
   PacketBuilder::buildExecuteCommand(BufferManager::head27_Execute);
   sendSnaHeader(BufferManager::head27_Execute);
   delay(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
-
-   Z80Bus::setStockRom();
+  Z80Bus::setStockRom();
 }
-
-// // // // __attribute__((optimize("-Os"))) 
-// // // // boolean Z80Bus::bootFromSnapshot(FatFile* pFile) {
-
-// // // //   // // // Utils::clearScreen(0);
-
-// // // //   // // // // Navigating away from menu. Restoring snap - so can't leave menu's stack (0xFFFF) in place.
-// // // //   // // // // We need to put the Z80 stack somewhere it will do less damage.
-// // // //   // // // // Temporary working stack in screen memory is 99.9% ok.
-// // // //   // // // // 0x4000 will infact also have the z80 jp <patched-start-addr> launch code.
-// // // //   // // // // +3 bytes as we can borrow that addr for push/pops until it's set near end of SNA restore.
-// // // //   // // // sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
-
-// // // //  ///////////////// waitHalt_syncWithZ80();   // Synchronize with Z80 Halt from the last Command
-// // // //   //////////////////////unHalt_triggerZ80NMI();   // Un-Halt Z80
-
-// // // //   //////////////////////////////////////////Utils::clearScreen(0);
-
-// // // //   transferSnaData(pFile, true);
-// // // //  ////////// executeSnapshot();
-
-// // // //   // At this point the Z80's game has been fuly restored including it's stack and registers.
-// // // //   return true;
-// // // // }
-
-// bool Z80Bus::waitHalt_syncWithZ80(uint32_t timeoutMs) {
-//     uint32_t start = millis();
-//     // Wait until the Z80 enters the HALT state (active low).
-//     while (digitalReadFast(Pin::Z80_HALT) != 0) {
-//         if ((millis() - start) >= timeoutMs) {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
 
 __attribute__((optimize("-Os"))) 
  void Z80Bus::waitHalt_syncWithZ80() {
@@ -328,12 +291,3 @@ void Z80Bus::hasZ80Resumed(){
    while (digitalReadFast(Pin::Z80_HALT) == 0) {};  
 }
 
-// __attribute__((optimize("-Os")))
-// uint8_t Z80Bus::GetKeyPulses_NO_LONGER_USED() {
-//   //constexpr uint8_t DELAY_ITERATIONS_PARAM = 20;  // 20 loops of 25 t-states
-//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_TransmitKey) >> 8);
-//   BufferManager::packetBuffer[static_cast<uint8_t>(ReceiveKeyboardPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_TransmitKey)&0xFF);
-//  // BufferManager::packetBuffer[static_cast<uint8_t>(TransmitKeyPacket::CMD_DELAY)] = DELAY_ITERATIONS_PARAM;  // delay use as end marker
-//   Z80Bus::sendBytes(BufferManager::packetBuffer, static_cast<uint8_t>(ReceiveKeyboardPacket::PACKET_LEN));
-//   return Utils::get8bitPulseValue();
-// }
