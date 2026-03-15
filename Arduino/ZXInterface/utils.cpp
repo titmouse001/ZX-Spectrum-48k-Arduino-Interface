@@ -215,20 +215,23 @@ void Utils::waitForUserExit() {
     PORTD = buttonData & JOYSTICK_MASK;  // Kempston joystick interface
 
     if (buttonData & JOYSTICK_SELECT) {
-      pinModeFast(Pin::ShiftRegClockPin, INPUT);
-      // delay(1); not needed - Zynaps shows yellow with or without
+      pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
-      // PCB UPDATE: Added 10k resistor between NANO A2 and Z80 /RD.  UPDATE: Tried /IORQ and it is actually better!
-      // Why? While Z80 specs suggest they are similar, one timing graph shows /IORQ has a sharper edge.
-      // Anyway, using /IORQ gives better results when timing the /NMI fire.
-      // I still use the stack (one deep), hopefully most games aren't doing anything crazy with the stack at that point
-      // -----------------------------------------------
-      // Find a safer spot in the game code where we can maybe break in wihout hitting a manipulated stack.
-  //    while (digitalReadFast(Pin::ShiftRegClockPin)); // wait for safer code 
-    //  digitalWriteFast(Pin::Z80_NMI, LOW);  // jumps to ROM's idle loop at 0x0066
-   //   digitalWriteFast(Pin::Z80_NMI, HIGH);
-      // -----------------------------------------------
+      // ----------------------------------------------------------------------------------------------
+      // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
+      // ----------------------------------------------------------------------------------------------
+      // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
+      // This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
+      // Z80 lines are active, pinpointing the I/O Read cycle.
+      //
+      // WHY: Most games poll for input (IN) once the game logic is stable. Firing the NMI here ensures the 
+      // stack is unlikely to be hijacked, preventing the corruption from a interrupted stack-based memory move.
+      // ----------------------------------------------------------------------------------------------
 
+      // Using Inline ASM for cycle-accurate timing.
+      // Equivalent to the following logic:
+      //   while (digitalRead(A2) == HIGH); // Wait for I/O Read cycle
+      //   NMI_LOW(); NMI_HIGH();           // Pulse NMI immediately
       asm volatile (
           "1: sbic %[pin],2   \n\t"   // skip if LOW
           "rjmp 1b            \n\t"   // loop while HIGH
@@ -238,8 +241,6 @@ void Utils::waitForUserExit() {
           : [pin]  "I" (_SFR_IO_ADDR(PINC)),
             [port] "I" (_SFR_IO_ADDR(PORTC))
       );
-
-
 
       storeZ80States();
       pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
