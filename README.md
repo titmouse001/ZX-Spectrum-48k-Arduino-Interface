@@ -2,7 +2,17 @@
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
 
-## March 2026 Update
+## 15 March 2026 Update
+    // ----------------------------------------------------------------------------------------------
+    // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
+    // ----------------------------------------------------------------------------------------------
+    // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
+    // This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
+    // Z80 lines are active, pinpointing the I/O Read cycle.
+    //
+    // WHY: Most games poll for input (IN) once the game logic is stable. Firing the NMI here ensures the 
+    // stack is unlikely to be hijacked, preventing the corruption from a interrupted stack-based memory move.
+    // ----------------------------------------------------------------------------------------------
 
     Mini update 13th March 2026 - I'm in the middle of developing the in-game menu.
     Pressing the PCB button while in-game takes you to a new menu screen; currently, only
