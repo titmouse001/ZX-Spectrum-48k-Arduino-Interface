@@ -36,6 +36,7 @@ namespace COL {
     constexpr uint8_t Paper0Ink0  = 0b00000000;
     constexpr uint8_t BLACK_WHITE = Paper0Ink7;  
     constexpr uint8_t CYAN_BLACK  = Paper5Ink0; 
+    constexpr uint8_t BLACK_BLACK = Paper0Ink0;  
 }
 
 //-----------------------------------------

@@ -268,9 +268,6 @@ command_SendData:
 ;------------------------------------------------------
 ; Fast memory fill 
 ; Input: Buffer end address, total fill count (byte), fill byte value (byte)
-;
-; WARNING: DON'T USE THIS FILL FOR THE IN_GAME PAUSE MENU
-;		   TRASHES IX - NOT SAVED BEFORE PAUSE MENU
 ;------------------------------------------------------
 command_fill_mem_bytecount:  
 
@@ -561,6 +558,18 @@ RestoreInterruptModeComplete:
 	dec sp                   ; Restore SP to its original position
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) - AF is now fully restored
 
+
+; Change to use RET with 2 bytes in screen memory (ret addr keep safe, while using temp tiny stack)
+; To launch game, rather than 3 bytes for jp <addr> in screen memory ????
+; So screen would just keep 2 bytes <addr>, to be place back into the stack for the return.
+;??????????????
+
+;	PUSH HL          ; Save original HL to stack
+;    LD HL, (16385)   ; Load the new value into HL
+;    EX (SP), HL      ; HL is now original again, stack has the new value
+; above lets me use RET in the L16D4 mirror ROM  ????  NOT TESTED  ????
+
+
 	JP L16D4	; path to start game!
 ;-----------------------------------------------------------------------	
 
@@ -737,6 +746,8 @@ L04B0:
 	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
 	; We must keep IFF2 and manually restore IFF (call EI or DI) to resume the game.
 
+	; This section only grow the temp stack 2 deep (4bytes of screen corruption)
+
 	out  (0x1F), a			; A
 	halt
 	ld   a,b				; B
@@ -745,7 +756,8 @@ L04B0:
 	ld   a,c				; C
 	out  (0x1F), a
 	halt
-	push af
+	; OK to grow/Strink stack in one go - we just need to avoid multiple pushes
+	push af		
 	pop bc
 	ld   a,c				; F
 	out  (0x1F), a
@@ -779,6 +791,13 @@ L04B0:
 	out  (0x1F), a
 	halt
 
+	ld   a,ixh				; IXH
+	out  (0x1F), a
+	halt
+	ld   a,ixl				; IXL
+	out  (0x1F), a
+	halt
+
     jp mainloop         
 
 ;------------------------------------------------------------------------
@@ -803,6 +822,13 @@ L04B0:
 	halt 
     in a, ($1f) 
 	ld l,a			; L
+
+	halt 
+    in a, ($1f) 	
+	ld ixh,a			; IXH
+	halt 
+    in a, ($1f) 
+	ld ixl,a			; IXL
 
 	halt 
     in a, ($1f)   	

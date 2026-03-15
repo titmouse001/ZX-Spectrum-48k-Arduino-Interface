@@ -25,6 +25,7 @@ void restoreZ80States();
 
 void saveScreen(const char* filename);
 void restoreScreen(const char* filename);
+uint8_t pauseMenu();
 
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);

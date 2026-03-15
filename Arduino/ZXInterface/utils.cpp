@@ -19,6 +19,10 @@ static uint8_t REG_C;
 static uint8_t REG_H;
 static uint8_t REG_L;
 static uint8_t REG_IFF2;
+static uint8_t REG_IXL;
+static uint8_t REG_IXH;
+
+static const char* SCRATCH_FILE = "scratch16384.SCR";
 
 __attribute__((optimize("-Os")))
 void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
@@ -85,7 +89,6 @@ void Utils::storeZ80States() {
   delay(1);             // wait for Z80 to hit SNA ROM's '.IngameHook'
 
   // note: for each get_IO_Byte the Z80 will 'OUT' then 'HALT'
-  // ORDER OF Z80 OUT CODE IS: A, B, C, F, IFF, D, E, H, L
   REG_A = Z80Bus::get_IO_Byte();
 
   REG_B = Z80Bus::get_IO_Byte();
@@ -100,6 +103,9 @@ void Utils::storeZ80States() {
 
   REG_H = Z80Bus::get_IO_Byte();
   REG_L = Z80Bus::get_IO_Byte();
+
+  REG_IXH = Z80Bus::get_IO_Byte();
+  REG_IXL = Z80Bus::get_IO_Byte();
 }
 
 void Utils::restoreZ80States() {  
@@ -109,8 +115,6 @@ void Utils::restoreZ80States() {
   uint8_t addr0x04AA[] = { 0x04, 0xAA }; 
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
-  // ORDER OF Z80 IN CODE IS : A, B, C, F, IFF, D, E, H, L
-
   Z80Bus::sendBytes(&REG_D, 1); 
   Z80Bus::sendBytes(&REG_E, 1);
 
@@ -119,6 +123,9 @@ void Utils::restoreZ80States() {
 
   Z80Bus::sendBytes(&REG_H, 1);
   Z80Bus::sendBytes(&REG_L, 1);
+
+  Z80Bus::sendBytes(&REG_IXH, 1);
+  Z80Bus::sendBytes(&REG_IXL, 1);
 
   Z80Bus::sendBytes(&REG_IFF2, 1); 
 
@@ -174,30 +181,21 @@ void Utils::saveScreen(const char* filename) {
 }
 
 
-// TODO... optimise restoreScreen -  maybe use the rleOptimisedTransfer 
 __attribute__((optimize("-Os"))) 
-void Utils::restoreScreen(const char* filename) {  
+void Utils::restoreScreen(const char *filename) {
   FatFile &file = SdCardSupport::getFile();
   if (file.isOpen()) file.close();
-  
   FatFile &root = SdCardSupport::getRoot();
   if (root.isOpen()) { root.close(); }
-
   if (root.open("/")) {
     if (file.open(filename, O_READ)) {
-
-      uint16_t currentAddress = 0x4000; 
-      uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; // 6912 bytes
-      uint8_t* buffer =  &BufferManager::packetBuffer[ E(CopyPacket::PACKET_LEN) ];
+      uint16_t currentAddress = 0x4000;
+      uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
       while (totalRemaining > 0) {
-        uint8_t chunkSize = (totalRemaining > 64) ? 64 : (uint8_t)totalRemaining;
-        if (file.read(buffer, chunkSize) != chunkSize)  { 
-          break;
-        }
-        uint8_t packetLen = PacketBuilder::buildCopyCommand(&BufferManager::packetBuffer[0], currentAddress, chunkSize);
-        Z80Bus::sendBytes(&BufferManager::packetBuffer[0] , packetLen + chunkSize);
-        currentAddress += chunkSize;
-        totalRemaining -= chunkSize;
+        uint16_t bytesRead = file.read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
+        Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, false);
+        currentAddress += bytesRead;
+        totalRemaining -= bytesRead;
       }
       file.close();
     }
@@ -209,99 +207,121 @@ void Utils::restoreScreen(const char* filename) {
 __attribute__((optimize("-Ofast"))) 
 void Utils::waitForUserExit() {
 
-  // Dummy flush read - SNA ROM also uses port 0x1F (KEMPSTONE PORT) for send/receiving
-  readJoystick();
+  readJoystick(); // flush junk (Z80 rd/wr port 0x1f shared)
 
-  uint16_t oldHighlightAddress = 0;
-  uint8_t index = 0;
-  bool nmi = false;
-  uint8_t b;
+  uint8_t buttonData;
   while (true) {
-    b = Utils::readJoystick();
-    PORTD = b & JOYSTICK_MASK;  // Kempston joystick interface
+    buttonData = Utils::readJoystick();
+    PORTD = buttonData & JOYSTICK_MASK;  // Kempston joystick interface
 
-    if (b & JOYSTICK_SELECT) {
-
-      nmi = false;
+    if (buttonData & JOYSTICK_SELECT) {
       pinModeFast(Pin::ShiftRegClockPin, INPUT);
+      // delay(1); not needed - Zynaps shows yellow with or without
 
-
-      // PCB UPDATE: Added 10k resistor between NANO A2 and Z80 /RD.
-      // UPDATE: Tried /IORQ and it is actually better!
+      // PCB UPDATE: Added 10k resistor between NANO A2 and Z80 /RD.  UPDATE: Tried /IORQ and it is actually better!
       // Why? While Z80 specs suggest they are similar, one timing graph shows /IORQ has a sharper edge.
       // Anyway, using /IORQ gives better results when timing the /NMI fire.
       // I still use the stack (one deep), hopefully most games aren't doing anything crazy with the stack at that point
-
-      // do {
-      //   // Note : ShiftRegClockPin A2 does double duty reading the z80 /RD line
-      //   if (digitalReadFast(Pin::ShiftRegClockPin) == LOW) {
-      //     storeZ80StateExitToMenu();
-      //     nmi = true;
-      //     break;
-      //   }
-      // } while (1);
-
-      // while(digitalReadFast(Pin::ShiftRegClockPin) && digitalReadFast(Pin::Z80_HALT)); // both nope - worth a try incase something odd was going on !!!
-
       // -----------------------------------------------
-      // Trying to get this NMI watch section as responsive as possible!
-      // I need to fire the NMI ASAP, hopefully around an OUT instruction. My reasoning is that this 
-      // will be a safe spot in the code where the stack isn't being manipulated.
-      // Most games I've tested survive having one push/pop (the NMI return address) placed on their stack.
-      // Outliers like Zynaps will show yellow on the starfield (1-byte attribute memory gets buggered), and the game sometimes crashes.
-      // It's really hard trying to jump into a running game that abuses the stack!
-      while (digitalReadFast(Pin::ShiftRegClockPin)); // wait for safer code 
-      digitalWriteFast(Pin::Z80_NMI, LOW);  // jumps to ROM's idle loop at 0x0066
-      digitalWriteFast(Pin::Z80_NMI, HIGH);
+      // Find a safer spot in the game code where we can maybe break in wihout hitting a manipulated stack.
+  //    while (digitalReadFast(Pin::ShiftRegClockPin)); // wait for safer code 
+    //  digitalWriteFast(Pin::Z80_NMI, LOW);  // jumps to ROM's idle loop at 0x0066
+   //   digitalWriteFast(Pin::Z80_NMI, HIGH);
       // -----------------------------------------------
+
+      asm volatile (
+          "1: sbic %[pin],2   \n\t"   // skip if LOW
+          "rjmp 1b            \n\t"   // loop while HIGH
+          "cbi  %[port],0     \n\t"   // NMI low
+          "sbi  %[port],0     \n\t"   // NMI high
+          :
+          : [pin]  "I" (_SFR_IO_ADDR(PINC)),
+            [port] "I" (_SFR_IO_ADDR(PORTC))
+      );
+
+
 
       storeZ80States();
-      nmi = true;
       pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
-    }
-
-    if (nmi) {
-      saveScreen("scratch16384.SCR");  // WORKS FINE
+      saveScreen(SCRATCH_FILE); 
       while ((Utils::readJoystick() & JOYSTICK_SELECT)) {}
+      
+      uint8_t result = pauseMenu();
+   
+      // For a clean transition we clear colour attributes first before restoring screen
+      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
 
-      nmi = false;
+      if (result == 6 ) { break; }  // back to main menu
+      while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
+      restoreScreen(SCRATCH_FILE);
+      restoreZ80States();
+      readJoystick(); // flush junk
+    }
+  }
+}
 
-      Utils::clearScreen(COL::BLACK_WHITE);
-      Draw::text_P(80, 8 * 4, F("PAUSE MENU"));
+uint8_t Utils::pauseMenu() {
+  uint8_t index = 0;
+  uint16_t oldHighlightAddress = 0;
+  
+  const uint16_t INITIAL_DELAY = 380; 
+  const uint16_t REPEAT_RATE = 120;
+  
+  unsigned long lastActionTime = 0;
+  bool isRepeating = false;
+  Menu::Button_t lastButton = Menu::BUTTON_NONE;
 
-      Draw::text_P(80, 8 * 6, F("Resume"));
-      Draw::text_P(80, 8 * 7, F("Save SNA"));
-      Draw::text_P(80, 8 * 8, F("SlowMo [normal]"));
-      Draw::text_P(80, 8 * 9, F("Cheats"));
-      Draw::text_P(80, 8 * 10, F("Screenshot"));
-      Draw::text_P(80, 8 * 11, F("Mem View"));
-      Draw::text_P(80, 8 * 12, F("Exit"));
+  Utils::clearScreen(COL::BLACK_WHITE);
+  Draw::text_P(80, 8 * 4, F("PAUSE MENU"));
+  Draw::text_P(80, 8 * 6, F("Resume"));           // 1
+  Draw::text_P(80, 8 * 7, F("Save SNA"));
+  Draw::text_P(80, 8 * 8, F("SlowMo [normal]"));
+  Draw::text_P(80, 8 * 9, F("Cheats"));
+  Draw::text_P(80, 8 * 10, F("Screenshot"));
+  Draw::text_P(80, 8 * 11, F("Mem View"));
+  Draw::text_P(80, 8 * 12, F("Exit"));           // 6
 
-      Menu::Button_t button;
-      while (true) {
-        button = Menu::getButton();
-        if (button == Menu::BUTTON_ADVANCE) {
-          if (index < 6) { index++; }
+  while (true) {
+    highlightSelection(index + 6, 0, oldHighlightAddress);
+    Menu::Button_t currentButton = Menu::getButton();
+
+    if (currentButton == Menu::BUTTON_NONE) {
+      lastActionTime = 0;
+      isRepeating = false;
+      lastButton = Menu::BUTTON_NONE;
+    } 
+    else {
+      unsigned long now = millis();     
+      bool shouldTrigger = false;
+
+      if (currentButton != lastButton) {
+        shouldTrigger = true;
+        lastActionTime = now;
+        isRepeating = false;
+      } 
+      else {
+        uint16_t threshold = isRepeating ? REPEAT_RATE : INITIAL_DELAY;
+        if (now - lastActionTime >= threshold) {
+          shouldTrigger = true;
+          lastActionTime = now;
+          isRepeating = true;
         }
-        if (button == Menu::BUTTON_BACK) {
-          if (index > 0) { index--; }
-        }
-
-        if (button == Menu::BUTTON_MENU) {
-          if (index == 0) { break; }  // Resume
-          if (index == 6) { break; }  // exit
-        }
-
-        highlightSelection(index + 6, 0, oldHighlightAddress);
-        delay(80);
       }
 
-      while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
-      restoreScreen("scratch16384.SCR");
-      restoreZ80States();
+      if (shouldTrigger) {
+        if (currentButton == Menu::BUTTON_ADVANCE && index < 6) index++;
+        else if (currentButton == Menu::BUTTON_BACK && index > 0) index--;
+        else if (currentButton == Menu::BUTTON_MENU) {
+          if (index == 0 || index == 6) break;
+        }
+      }
+      
+      lastButton = currentButton;
     }
-    if (index == 6) { break; }
+    
+    delay(1); 
   }
+  return index;
 }
 
 // ---------------------

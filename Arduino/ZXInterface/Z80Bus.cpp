@@ -161,12 +161,12 @@ uint8_t Z80Bus::getKeyboard() {
 // for using RLE is found, the data is encoded and the RLE-compressed block is sent to the Z80 using fast
 // fill commands. We do things this way as the Z80 can use PUSH instructions to fill 2 bytes per
 // instruction. When no compression is found raw bytes are sent instead.
+// NOTE: The transfer assumes memory to fill is zeroed
 //
 __attribute__((optimize("-Ofast")))
 void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect) {
   // {
   //  DEBUG FOR TESTING WITHOUT RLE (RLE JUST HELPS SPEEDUP TRANSFER)
-  //  (!!all the code bellow is really doing this - but it's using the Z80 in a more efficient way!!!)
   //   uint8_t* pTransfer = &BufferManager::packetBuffer[0];
   //   uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, input_len);
   //   Z80Bus::sendBytes(pTransfer, packetLen + input_len);
@@ -192,14 +192,15 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool border
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      if (value != 0) {               // ignore zero as we cleared memory at start
+    // Filling for zero's now to make this more general purpuse so we can do things like restore screens after leaving menus.
+   ///////   if (value != 0) {               // ignore zero as we cleared memory at start
         // --- Send as SmallFillPacket ---
         // Using offset after input header and data so we don't touch the lower part of
         // packetBuffer as it still holds input to be processed
         uint8_t* pFill = &BufferManager::packetBuffer[COMMAND_PAYLOAD_SECTION_SIZE + GLOBAL_MAX_PACKET_LEN];
         uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pFill, addr + run_len, run_len, value);
 	      Z80Bus::sendBytes(pFill, packetLen);
-      }
+  ////////    }
       addr += run_len;
       i += run_len;
     } else {
