@@ -12,6 +12,14 @@ SCREEN_ATTRIBUTES_START		EQU $5800  ; [768 bytes]
 SCREEN_ATTRIBUTES_END		EQU $5AFF  
 LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 
+; PRESERVE_MENU_STACK: Prevents the pause menu from overusing the game's stack 
+; at the cost of 4 bytes of screen corruption. Using /RD + /IORQ prior to 
+; triggering the NMI appears to help prevent stack overflow in tested games.
+;
+; 0 = OFF: Uses game stack (Uses 4 bytes / 2 deep)
+; 1 = ON:  Uses screen as temp stack (Reduces game stack usage to 2 bytes / 1 deep)
+PRESERVE_MENU_STACK             EQU 0
+
 ;******************************************************************************
 ;   MACRO SECTION
 ;******************************************************************************
@@ -735,19 +743,19 @@ L04B0:
 ; Ingame NMI hook - save game state
 .IngameHook:
 
+IF PRESERVE_MENU_STACK=1
     ; Keep stack safe, we will relocate to screen memory!
 	; 16415 Original SP High Byte (screens top far right)
 	; 16414 Original SP Low Byte
 	LD (16384+30),SP  
 	LD SP,16384+30 ; next push goes down (sp:=sp-2)
-	
-	; We use OUTs to save registers and minimize stack depth in screen memory.
+ENDIF
+
 	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
 	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
 	; We must keep IFF2 and manually restore IFF (call EI or DI) to resume the game.
 
-	; This section only grow the temp stack 2 deep (4bytes of screen corruption)
-
+	; Here we use OUTs to save registers and minimize stack usage.
 	out  (0x1F), a			; A
 	halt
 	ld   a,b				; B
@@ -847,8 +855,9 @@ L04B0:
 
 	halt 
     in a, ($1f)   			 ; A - now we have 'AF'
-
+IF PRESERVE_MENU_STACK = 1
 	LD SP,(16384+30)		 ; restore game stack
+ENDIF
 	jp .restoreInGameStateCompletedWithEI
 
 .ExitDisabled:
@@ -864,7 +873,9 @@ L04B0:
 	halt 
     in a, ($1f)   			 ; A - now we have 'AF'
 
+IF PRESERVE_MENU_STACK = 1
 	LD SP,(16384+30)   ; restore game stack
+ENDIF
 	jp .restoreInGameStateCompletedWithDI
 ;------------------------------------------------------------------------
 
