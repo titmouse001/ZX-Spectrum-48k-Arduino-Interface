@@ -3,22 +3,32 @@
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
 
 ## 15 March 2026 Update
-    // ----------------------------------------------------------------------------------------------
-    // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
-    // ----------------------------------------------------------------------------------------------
-    // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
-    // This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
-    // Z80 lines are active, pinpointing the I/O Read cycle.
-    //
-    // WHY: Most games poll for input (IN) once the game logic is stable. Firing the NMI here ensures the 
-    // stack is unlikely to be hijacked, preventing the corruption from a interrupted stack-based memory move.
-    // ----------------------------------------------------------------------------------------------
 
-    Mini update 13th March 2026 - I'm in the middle of developing the in-game menu.
-    Pressing the PCB button while in-game takes you to a new menu screen; currently, only
-    Resume and Exit are functional. My plan is to have a feature-rich in-game sub-menu where
-    you can select options like Poke, Slow-Mo, Remap Joystick (Fire to Jump), Take Screenshot,
-    Continue, or Exit.   
+<img align="right" src="/Documents/Pictures0.22/HardwarePatch.png" width="35%">
+
+    // -----------------------------------------------------------------------------
+    // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
+    // -----------------------------------------------------------------------------
+    // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate
+    // (4.7K per line). This acts as a hardware AND gate for active-low signals: A2
+    // only hits a Logic LOW when both Z80 lines are active, pinpointing the I/O
+    // Read cycle.
+    //
+    // WHY: Most games poll for input (IN) once the game logic is stable. Firing the
+    // NMI here ensures the stack is unlikely to be hijacked, preventing corruption
+    // and crashes from an interrupted stack-based memory move.
+    // -----------------------------------------------------------------------------
+    
+<div style="float:left;margin:0 10px 10px 0" markdown="1">
+<img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="25%">
+<img align="right" src="/Documents/Pictures0.22/IngamePausedMenu.png" width="25%">
+<div>
+
+Mini update 13th March 2026 - I'm in the middle of developing the in-game menu.
+Pressing the PCB button while in-game takes you to a new menu screen; currently, only
+Resume and Exit are functional. My plan is to have a feature-rich in-game sub-menu where
+you can select options like Poke, Slow-Mo, Remap Joystick (Fire to Jump), Take Screenshot,
+Continue, or Exit.   
 
 #### Version 0.21 - with 90° cartridge design
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
