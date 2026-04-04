@@ -179,22 +179,82 @@ uint16_t Menu::scanFolder(bool reset) {
   return totalFiles;
 }
 
+
 __attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
 
-  Utils::clearScreen(COL::BLACK_WHITE); 
+  // pinMode(A7, INPUT); // voltage reading -  DELETE ME no longer done this way
+  //uint16_t adc_accumulator = 0;  // starts at zero, will climb
 
+  Utils::clearScreen(COL::BLACK_WHITE);
   uint16_t totalFiles = scanFolder();
   while (true) {
+
+   // ---------------------------------------------------------------------------------------------
+  // USING A7 for analogRead is SCRAPPED - reading can't be trusted !!!!
+  // This looks OK at first, but after testing on different clone Nanos, I was seeing voltages off by around 1 volt!
+  //
+  // #if 1
+//constexpr uint16_t VREF_MV = 5110;            
+//constexpr uint32_t NUMERATOR = static_cast<uint32_t>(VREF_MV) * 57;  // 10+47
+//constexpr uint32_t DENOMINATOR = 1023UL * 47;    
+//constexpr uint8_t FILTER_SHIFT = 6; 
+
+  //   // monitor main 5v line (just because I had alanogue a6,a7 spare - shame to waste!)
+  //   adc_accumulator = adc_accumulator - (adc_accumulator >> FILTER_SHIFT) + analogRead(A7);
+  //   uint32_t temp = static_cast<uint32_t>(adc_accumulator >> FILTER_SHIFT) * NUMERATOR + (DENOMINATOR * 5);  // x5 for rounding
+  //   uint16_t hundredths = temp / (DENOMINATOR * 10);
+  //   uint8_t int_part = hundredths / 100;
+  //   uint8_t frac_part = hundredths % 100;
+
+  //   char voltageStr[6];
+  //   voltageStr[0] = '0' + int_part;
+  //   voltageStr[1] = '.';  
+  //   voltageStr[2] = '0' + (frac_part / 10);
+  //   voltageStr[3] = '0' + (frac_part % 10);
+  //   voltageStr[4] = 'V';
+  //   voltageStr[5] = '\0';
+  //   Draw::text(200, 0, voltageStr);
+  // #endif
+  // ---------------------------------------------------------------------------------------------
+
+
+#if 1  
+
+    // TODO: Maybe get this voltage reading to drop down into view and pop back up for menu use.
+    //       Add text colour... GREEN=VOLTAGE OK/YELLOW=VOLTAGE WARNINHG/RED=VOLTAGE TO HIGH
+
+    // !!! Measure VCC voltage using Nano's internal reference !!!
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);  // ADC - internal 1.1V reference
+    ADCSRA |= _BV(ADSC); while (bit_is_set(ADCSRA, ADSC));
+    uint32_t raw_adc = ADCW;
+    uint32_t raw_vcc = 1126400L / raw_adc;  // 1.1v x 1024 x 1000 = 1126400
+    // sample off very tiny amounts - avoiding read jitter
+    static uint32_t filtered_vcc = 1000;  
+    filtered_vcc = filtered_vcc - (filtered_vcc >> 6) + (raw_vcc >> 6); 
+    uint8_t int_part = filtered_vcc / 1000;
+    uint8_t frac_part = (filtered_vcc % 1000) / 10;
+    char voltageStr[6];
+    voltageStr[0] = '0' + int_part;
+    voltageStr[1] = '.';
+    voltageStr[2] = '0' + (frac_part / 10);
+    voltageStr[3] = '0' + (frac_part % 10);
+    voltageStr[4] = 'V';
+    voltageStr[5] = '\0';
+    Draw::text(224, 0, voltageStr);
+#endif
+
+
+
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
     if (action != ACTION_NONE) {
       Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-    } 
+    }
     if (action == ACTION_SELECT_FILE) {
-       FatFile& root = SdCardSupport::getRoot();
+      FatFile& root = SdCardSupport::getRoot();
 
-      if (inSubFolder && currentFileIndex == 0) { // Go back to root
+      if (inSubFolder && currentFileIndex == 0) {  // Go back to root
         root.close();
         if (root.open("/")) {  // navagating back simply resets to root
           inSubFolder = false;
@@ -205,8 +265,8 @@ FatFile* Menu::handleMenu() {
       uint16_t actualFileIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
       SdCardSupport::openFileByIndex(actualFileIndex);
 
-      FatFile& file = SdCardSupport::getFile(); 
- 
+      FatFile& file = SdCardSupport::getFile();
+
       if (file.isDir()) {
         char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file);
         root.close();
