@@ -5,6 +5,7 @@
 #include "BufferManager.h"
 #include "draw.h"
 #include "Z80Bus.h"
+#include <string.h>  
 
 
 uint32_t Menu::lastButtonPressTime = 0;
@@ -180,6 +181,64 @@ uint16_t Menu::scanFolder(bool reset) {
 }
 
 
+
+constexpr uint16_t VOLTAGE_OK_MIN  = 4850;   // 4.85V
+constexpr uint16_t VOLTAGE_OK_MAX  = 5150;   // 5.15V
+constexpr uint16_t VOLTAGE_WARN_MIN = 4750;  // 4.75V 
+constexpr uint16_t VOLTAGE_WARN_MAX = 5250;  // 5.25V 
+
+constexpr uint16_t HIDE_DURATION = 150;      // 50 * 3 frames
+static uint16_t hideTimer = 0;               // >0 means hide
+static uint32_t filtered_vcc = 5000;         // 5.00V
+
+void show5VoltRailStatus(Menu::MenuAction_t action) {
+    if (action != Menu::ACTION_NONE) {
+        hideTimer = HIDE_DURATION;
+    }
+
+    if (hideTimer > 0) {
+        // Clear the voltage display area *once* when hiding starts
+        if (hideTimer == HIDE_DURATION) {
+            char clearBuf[6];               // 5 chars + null
+            memset(clearBuf, ' ', 5);
+            clearBuf[5] = '\0';
+            Draw::text(224, 0, clearBuf);
+        }
+        hideTimer--;
+        return;
+    }
+
+    // --- Measure voltage - Nano's internal reference is around 1.1V ---
+    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+    ADCSRA |= _BV(ADSC);
+    while (bit_is_set(ADCSRA, ADSC));
+    uint32_t raw_adc = ADCW;
+    uint32_t raw_vcc = 1105920 / raw_adc;    // (ref:1.1V) using -> 1.08V * 1024 * 1000  (5.11V'ish on speccy matching multimeter on my setup!)
+    filtered_vcc = filtered_vcc - (filtered_vcc >> 6) + (raw_vcc >> 6); 
+
+    char voltageStr[6];
+    uint8_t int_part   = filtered_vcc / 1000;
+    uint8_t frac_part  = (filtered_vcc % 1000) / 10;   // hundredths
+    voltageStr[0] = '0' + int_part;
+    voltageStr[1] = '.';
+    voltageStr[2] = '0' + (frac_part / 10);
+    voltageStr[3] = '0' + (frac_part % 10);
+    voltageStr[4] = 'V';
+    voltageStr[5] = '\0';
+
+    // Optional colour (if Draw::text supports it)
+    // uint8_t color;
+    // if (filtered_vcc >= VOLTAGE_OK_MIN && filtered_vcc <= VOLTAGE_OK_MAX)
+    //     color = COL::BLACK_WHITE;
+    // else if (filtered_vcc >= VOLTAGE_WARN_MIN && filtered_vcc <= VOLTAGE_WARN_MAX)
+    //     color = COL::BLACK_YELLOW;
+    // else
+    //     color = COL::BLACK_RED;
+    // Draw::text(224, 0, voltageStr, color);
+
+    Draw::text(224, 0, voltageStr);
+}
+
 __attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
 
@@ -193,6 +252,7 @@ FatFile* Menu::handleMenu() {
    // ---------------------------------------------------------------------------------------------
   // USING A7 for analogRead is SCRAPPED - reading can't be trusted !!!!
   // This looks OK at first, but after testing on different clone Nanos, I was seeing voltages off by around 1 volt!
+  // Next time I read this ... remove x2 resisters + tracks to a7 from the PCB.
   //
   // #if 1
 //constexpr uint16_t VREF_MV = 5110;            
@@ -219,38 +279,16 @@ FatFile* Menu::handleMenu() {
   // ---------------------------------------------------------------------------------------------
 
 
-#if 1  
-
-    // TODO: Maybe get this voltage reading to drop down into view and pop back up for menu use.
-    //       Add text colour... GREEN=VOLTAGE OK/YELLOW=VOLTAGE WARNINHG/RED=VOLTAGE TO HIGH
-
-    // !!! Measure VCC voltage using Nano's internal reference !!!
-    ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);  // ADC - internal 1.1V reference
-    ADCSRA |= _BV(ADSC); while (bit_is_set(ADCSRA, ADSC));
-    uint32_t raw_adc = ADCW;
-    uint32_t raw_vcc = 1126400L / raw_adc;  // 1.1v x 1024 x 1000 = 1126400
-    // sample off very tiny amounts - avoiding read jitter
-    static uint32_t filtered_vcc = 1000;  
-    filtered_vcc = filtered_vcc - (filtered_vcc >> 6) + (raw_vcc >> 6); 
-    uint8_t int_part = filtered_vcc / 1000;
-    uint8_t frac_part = (filtered_vcc % 1000) / 10;
-    char voltageStr[6];
-    voltageStr[0] = '0' + int_part;
-    voltageStr[1] = '.';
-    voltageStr[2] = '0' + (frac_part / 10);
-    voltageStr[3] = '0' + (frac_part % 10);
-    voltageStr[4] = 'V';
-    voltageStr[5] = '\0';
-    Draw::text(224, 0, voltageStr);
-#endif
-
-
 
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
+
     if (action != ACTION_NONE) {
       Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
+    } else {
+
     }
+
     if (action == ACTION_SELECT_FILE) {
       FatFile& root = SdCardSupport::getRoot();
 
@@ -277,12 +315,20 @@ FatFile* Menu::handleMenu() {
           root.open("/");  // something failed!
         }
         totalFiles = scanFolder(true);
+ 
+        // Jump into folder - don't continue with select down!
+        while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  
+
       } else {
         return &file;  // actualFileIndex;
       }
     } else if (action == ACTION_REFRESH_LIST) {
       displayItemList(startFileIndex);
     }
+
+
+    show5VoltRailStatus(action);
+
     Utils::frameDelay(start);
   }
 }

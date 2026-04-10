@@ -30,6 +30,8 @@ uint8_t pauseMenu();
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
+void exportScreenshot();
+
 __attribute__((optimize("-Ofast"))) 
 inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
   uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
@@ -59,7 +61,6 @@ inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
   output[byteIndex] |= aligned >> 8;
   if (aligned) { output[byteIndex + 1] |= aligned; }
 }
-
 
 
 /* unused so far...

@@ -247,21 +247,40 @@ void Utils::waitForUserExit() {
       saveScreen(SCRATCH_FILE); 
       while ((Utils::readJoystick() & JOYSTICK_SELECT)) {}
       
-      uint8_t result = pauseMenu();
+      // uint8_t result = pauseMenu();
    
-      // For a clean transition we clear colour attributes first before restoring screen
+      // // For a clean transition we clear colour attributes first before restoring screen
+      // Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
+
+      // if (result == 6 ) { break; }  // back to main menu
+      // while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
+      // restoreScreen(SCRATCH_FILE);
+      // restoreZ80States();
+      // readJoystick(); // flush junk
+
+
+      uint8_t result = pauseMenu();
+
+      if (result == 4) {  // Screenshot
+        exportScreenshot();
+        while ((Menu::getButton() != Menu::BUTTON_NONE)) {}
+      }
+   
       Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
 
       if (result == 6 ) { break; }  // back to main menu
       while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
+      
       restoreScreen(SCRATCH_FILE);
       restoreZ80States();
       readJoystick(); // flush junk
+
+
     }
   }
 }
 
-uint8_t Utils::pauseMenu() {
+uint8_t Utils:: pauseMenu() {
   uint8_t index = 0;
   uint16_t oldHighlightAddress = 0;
   
@@ -274,7 +293,7 @@ uint8_t Utils::pauseMenu() {
 
   Utils::clearScreen(COL::BLACK_WHITE);
   Draw::text_P(80, 8 * 4, F("PAUSE MENU"));
-  Draw::text_P(80, 8 * 6, F("Resume"));           // 1
+  Draw::text_P(80, 8 * 6, F("Resume"));           // 0
   Draw::text_P(80, 8 * 7, F("Save SNA"));
   Draw::text_P(80, 8 * 8, F("SlowMo [normal]"));
   Draw::text_P(80, 8 * 9, F("Cheats"));
@@ -313,7 +332,7 @@ uint8_t Utils::pauseMenu() {
         if (currentButton == Menu::BUTTON_ADVANCE && index < 6) index++;
         else if (currentButton == Menu::BUTTON_BACK && index > 0) index--;
         else if (currentButton == Menu::BUTTON_MENU) {
-          if (index == 0 || index == 6) break;
+          if (index == 0 || index == 4 || index == 6) break;  
         }
       }
       
@@ -352,9 +371,56 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
 }
 
 
+constexpr char SHOTS[]   = "SHOTS";  // Does both folder [5] & filename [4]
+constexpr char SCR_EXT[] = ".SCR";  // note: sizeof includes null
 
+__attribute__((optimize("-Os"))) 
+void Utils::exportScreenshot() {
+  FatFile &root = SdCardSupport::getRoot();
+  if (!root.isOpen()) {
+    if (!root.open("/")) return;
+  }
 
+  FatFile dir;
+  if (!dir.open(&root, SHOTS, O_READ)) {
+    if (!dir.mkdir(&root, SHOTS)) return;
+    if (!dir.open(&root, SHOTS, O_READ)) return;
+  }
 
+  char filename[13];
+  filename[12] = '\0';
+  memcpy(filename, SHOTS, sizeof(SHOTS)-2);          // "SHOT" 
+  memcpy(filename + 8, SCR_EXT, sizeof(SCR_EXT)-1);    // ".SCR"
+
+  FatFile file;
+  for (uint16_t i = 1; i <= 9999; i++) {
+    // avoiding sprintf as it eats Flash mem!!! 
+    filename[4] = '0' + (i / 1000) % 10;
+    filename[5] = '0' + (i / 100) % 10;
+    filename[6] = '0' + (i / 10) % 10;
+    filename[7] = '0' + i % 10;
+
+    if (!file.open(&dir, filename, O_READ)) {
+      break;  // no file so we have found next
+    }
+    file.close();
+  }
+
+  // place working scratch file -> screenshot file
+  if (file.open(&root, SCRATCH_FILE, O_READ)) {
+    FatFile destFile;
+    if (destFile.open(&dir, filename, O_CREAT | O_WRONLY)) {
+      uint8_t* buffer = BufferManager::packetBuffer;
+      int bytesRead;
+      while ((bytesRead = file.read(buffer, 64)) > 0) { 
+        destFile.write(buffer, bytesRead);
+      }
+      destFile.close();
+    }
+    file.close();
+  }
+  dir.close();
+}
 
 
 // =============================

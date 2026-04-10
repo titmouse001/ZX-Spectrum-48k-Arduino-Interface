@@ -49,6 +49,7 @@ private:
   static void displayItemList(uint16_t startFileIndex);
   static uint16_t scanFolder(bool reset = false);
 
+
 };
 
 #endif
