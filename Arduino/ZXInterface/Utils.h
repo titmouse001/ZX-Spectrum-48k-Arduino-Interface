@@ -31,6 +31,8 @@ void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
 void exportScreenshot();
+void viewSpeccyMemory();
+void displayHexDump(uint16_t startAddr, uint16_t length);
 
 __attribute__((optimize("-Ofast"))) 
 inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {

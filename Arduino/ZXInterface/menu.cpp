@@ -242,43 +242,9 @@ void show5VoltRailStatus(Menu::MenuAction_t action) {
 __attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
 
-  // pinMode(A7, INPUT); // voltage reading -  DELETE ME no longer done this way
-  //uint16_t adc_accumulator = 0;  // starts at zero, will climb
-
   Utils::clearScreen(COL::BLACK_WHITE);
   uint16_t totalFiles = scanFolder();
   while (true) {
-
-   // ---------------------------------------------------------------------------------------------
-  // USING A7 for analogRead is SCRAPPED - reading can't be trusted !!!!
-  // This looks OK at first, but after testing on different clone Nanos, I was seeing voltages off by around 1 volt!
-  // Next time I read this ... remove x2 resisters + tracks to a7 from the PCB.
-  //
-  // #if 1
-//constexpr uint16_t VREF_MV = 5110;            
-//constexpr uint32_t NUMERATOR = static_cast<uint32_t>(VREF_MV) * 57;  // 10+47
-//constexpr uint32_t DENOMINATOR = 1023UL * 47;    
-//constexpr uint8_t FILTER_SHIFT = 6; 
-
-  //   // monitor main 5v line (just because I had alanogue a6,a7 spare - shame to waste!)
-  //   adc_accumulator = adc_accumulator - (adc_accumulator >> FILTER_SHIFT) + analogRead(A7);
-  //   uint32_t temp = static_cast<uint32_t>(adc_accumulator >> FILTER_SHIFT) * NUMERATOR + (DENOMINATOR * 5);  // x5 for rounding
-  //   uint16_t hundredths = temp / (DENOMINATOR * 10);
-  //   uint8_t int_part = hundredths / 100;
-  //   uint8_t frac_part = hundredths % 100;
-
-  //   char voltageStr[6];
-  //   voltageStr[0] = '0' + int_part;
-  //   voltageStr[1] = '.';  
-  //   voltageStr[2] = '0' + (frac_part / 10);
-  //   voltageStr[3] = '0' + (frac_part % 10);
-  //   voltageStr[4] = 'V';
-  //   voltageStr[5] = '\0';
-  //   Draw::text(200, 0, voltageStr);
-  // #endif
-  // ---------------------------------------------------------------------------------------------
-
-
 
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);

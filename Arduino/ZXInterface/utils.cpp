@@ -203,8 +203,8 @@ void Utils::restoreScreen(const char *filename) {
 }
 
 
-// TODO - this section of code is mostly prototype-grade. Fix me soon.
-__attribute__((optimize("-Ofast"))) 
+
+__attribute__((optimize("-Os"))) 
 void Utils::waitForUserExit() {
 
   readJoystick(); // flush junk (Z80 rd/wr port 0x1f shared)
@@ -247,25 +247,22 @@ void Utils::waitForUserExit() {
       saveScreen(SCRATCH_FILE); 
       while ((Utils::readJoystick() & JOYSTICK_SELECT)) {}
       
-      // uint8_t result = pauseMenu();
-   
-      // // For a clean transition we clear colour attributes first before restoring screen
-      // Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
-
-      // if (result == 6 ) { break; }  // back to main menu
-      // while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
-      // restoreScreen(SCRATCH_FILE);
-      // restoreZ80States();
-      // readJoystick(); // flush junk
-
-
       uint8_t result = pauseMenu();
+     
+      if (result == 5) {
+        Utils::clearScreen(COL::BLACK_WHITE); 
+       viewSpeccyMemory();
+      }
+
 
       if (result == 4) {  // Screenshot
+    
+        Utils::clearScreen(COL::BLACK_WHITE); 
+        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS/2)-((6*17)/2), (ZX_SCREEN_HEIGHT_PIXELS/2)-4, F("Saving Screenshot"));
+      
         exportScreenshot();
         while ((Menu::getButton() != Menu::BUTTON_NONE)) {}
       }
-   
       Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
 
       if (result == 6 ) { break; }  // back to main menu
@@ -280,6 +277,7 @@ void Utils::waitForUserExit() {
   }
 }
 
+__attribute__((optimize("-Os"))) 
 uint8_t Utils:: pauseMenu() {
   uint8_t index = 0;
   uint16_t oldHighlightAddress = 0;
@@ -332,7 +330,7 @@ uint8_t Utils:: pauseMenu() {
         if (currentButton == Menu::BUTTON_ADVANCE && index < 6) index++;
         else if (currentButton == Menu::BUTTON_BACK && index > 0) index--;
         else if (currentButton == Menu::BUTTON_MENU) {
-          if (index == 0 || index == 4 || index == 6) break;  
+          if (index == 0 || index == 4|| index == 5 || index == 6) break;  
         }
       }
       
@@ -368,6 +366,97 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
     }
   }
   return i;
+}
+
+
+static inline char hexChar(uint8_t nibble) {
+    nibble &= 0x0F;
+    return nibble < 10 ? '0' + nibble : 'A' + (nibble - 10);
+}
+
+__attribute__((optimize("-Os"))) 
+void Utils::viewSpeccyMemory() {
+  constexpr uint16_t START_ADDR = 0xB000;
+  constexpr uint16_t LENGTH = (8*(192/8))/2;  // total bytes to read
+  constexpr uint8_t BYTES_PER_LINE = 8;
+  constexpr uint8_t LINE_WIDTH = 42;
+  constexpr uint8_t LINES_PER_PAGE = LENGTH/8;  
+
+  //uint8_t memDumpBuffer[LENGTH];
+  uint16_t currentBaseAddr = START_ADDR;
+
+ //static char lineBuffer[LINE_WIDTH + 1];
+
+  while (true) {
+      uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(
+                     BufferManager::packetBuffer, LENGTH, currentBaseAddr);
+
+    Z80Bus::sendBytes(BufferManager::packetBuffer, cmdLen);
+
+   uint8_t* ptr =  &BufferManager::packetBuffer[ GLOBAL_MAX_PACKET_LEN+(7*32) ]; // hacked for now ... need to add light weight memory allocator
+
+   //// TO FAR !!! char* lineBuffer =  &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN+(7*32) + LENGTH ]; //[cmdLen + LENGTH];
+
+    for (uint16_t i = 0; i < LENGTH; ++i) {
+    //  memDumpBuffer[i] = Z80Bus::get_IO_Byte();
+        ptr[i] = Z80Bus::get_IO_Byte();
+    }
+
+    Utils::clearScreen(COL::BLACK_WHITE);
+
+    uint8_t y = 0;
+    for (uint16_t offset = 0; offset < LENGTH; offset += BYTES_PER_LINE) {
+
+      // for now look into the whole shared buffer thing!!! need to find a better way !!!
+      char lineBuffer[LINE_WIDTH + 1];
+
+      memset(lineBuffer, ' ', LINE_WIDTH);
+      uint8_t pos = 0;
+
+      uint16_t addr = currentBaseAddr + offset;
+      lineBuffer[pos++] = hexChar(addr >> 12);
+      lineBuffer[pos++] = hexChar(addr >> 8);
+      lineBuffer[pos++] = hexChar(addr >> 4);
+      lineBuffer[pos++] = hexChar(addr);
+      lineBuffer[pos++] = ':';
+      lineBuffer[pos++] = ' ';
+
+      for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
+        uint8_t b = ptr[offset + i];
+        lineBuffer[pos++] = hexChar(b >> 4);
+        lineBuffer[pos++] = hexChar(b & 0x0F);
+        lineBuffer[pos++] = ' ';
+      }
+
+      for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
+        uint8_t c = ptr[offset + i];
+        lineBuffer[pos++] = (c >= 32 && c <= 126) ? c : '.';
+      }
+
+      lineBuffer[LINE_WIDTH] = '\0';
+      Draw::textLine(y, lineBuffer);
+      y += 8; 
+    }
+
+    while (true) {
+      Menu::Button_t btn = Menu::getButton();
+
+      if (btn == Menu::BUTTON_ADVANCE) {
+        currentBaseAddr += (LINES_PER_PAGE * BYTES_PER_LINE);
+        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }  
+        break;   // Redraw                                                       
+      } else if (btn == Menu::BUTTON_BACK) {
+        if (currentBaseAddr >= (LINES_PER_PAGE * BYTES_PER_LINE)) {
+          currentBaseAddr -= (LINES_PER_PAGE * BYTES_PER_LINE);
+        }
+        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }
+        break;  // Redraw
+      } else if (btn == Menu::BUTTON_MENU) {
+        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }
+        return; // Exit
+      }
+    }
+  }
 }
 
 
@@ -422,8 +511,6 @@ void Utils::exportScreenshot() {
   dir.close();
 }
 
-
-// =============================
 
 
 // ======================

@@ -21,13 +21,14 @@ void Draw::textLine(int ypos, const char *message) {
   constexpr uint8_t packet_data_size = E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE;
   constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
   
-  RenderFont::prepareTextGraphics(BufferManager::TextBuffer, message);  // Pre-render text into TextBuffer
+  // SOME ROOM HERE FOR FETURE OPTIMISING - prepareTextGraphics used for this part looks for null (could just loop 32)
+  RenderFont::prepareTextGraphics(BufferManager::renderBuffer, message);  // Pre-render text into renderBuffer
   uint8_t *const packetBase = BufferManager::packetBuffer;
   packetBase[E(Copy32Packet::CMD_HIGH)] = (uint8_t)(CommandRegistry::command_Copy32 >> 8);
   packetBase[E(Copy32Packet::CMD_LOW)] = (uint8_t)(CommandRegistry::command_Copy32 & 0xFF);
   
   uint16_t destAddr = Utils::zx_spectrum_screen_address(ypos);
-  const uint8_t *outputLine = BufferManager::TextBuffer; 
+  const uint8_t *outputLine = BufferManager::renderBuffer; 
 
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
     uint8_t *packet = &packetBase[SKIP_CMD_ADDR];  // reset
@@ -55,20 +56,20 @@ void Draw::textLine(int ypos, const char *message) {
 
 // text_P - text in flash memory: Draws only the required part of the screen buffer.
 void Draw::text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {
-  const uint8_t charCount = RenderFont::prepareTextGraphics_P(BufferManager::TextBuffer, flashStr);
+  const uint8_t charCount = RenderFont::prepareTextGraphics_P(BufferManager::renderBuffer, flashStr);
   drawTextInternal(xpos, ypos, charCount);
 }
 
 // text: Draws only the required part of the screen buffer.
 void Draw::text(int xpos, int ypos, const char *message) {
-  const uint8_t charCount = RenderFont::prepareTextGraphics(BufferManager::TextBuffer, message);
+  const uint8_t charCount = RenderFont::prepareTextGraphics(BufferManager::renderBuffer, message);
   drawTextInternal(xpos, ypos, charCount);
 }
 
 __attribute__((optimize("-Os")))
 void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount) {
   const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
-  uint8_t *outputLine = BufferManager::TextBuffer;
+  uint8_t *outputLine = BufferManager::renderBuffer;
   
   BufferManager::packetBuffer[E(CopyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_Copy) >> 8); 
   BufferManager::packetBuffer[E(CopyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_Copy) & 0xFF); 
