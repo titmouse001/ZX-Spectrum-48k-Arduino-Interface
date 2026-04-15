@@ -26,7 +26,9 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
-  char* nameBuffer = (char*)&BufferManager::packetBuffer[E(Copy32Packet::PACKET_LEN) + SmallFont::FNT_BUFFER_SIZE];
+  uint16_t mark = BufferManager::getMark();
+  char* nameBuffer = (char*)BufferManager::allocate(MAX_FILENAME_LEN);
+
   uint16_t linesDrawn = 0;
   uint16_t filesSkipped = 0;
 
@@ -80,6 +82,8 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   for (uint8_t i = linesDrawn; i < SCREEN_TEXT_ROWS; i++) {
     Draw::textLine(i * FONT_HEIGHT_WITH_GAP, nameBuffer);
   }
+
+  BufferManager::freeToMark(mark);
 }
 
 __attribute__((optimize("-Os")))

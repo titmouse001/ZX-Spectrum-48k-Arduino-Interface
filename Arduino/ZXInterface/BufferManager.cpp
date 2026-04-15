@@ -1,7 +1,30 @@
-#include <stdint.h>
 #include "BufferManager.h"
 
-uint8_t BufferManager::packetBuffer[TOTAL_PACKET_BUFFER_SIZE];
-uint8_t BufferManager::head27_Execute[SNA_TOTAL_ITEMS + E(ExecutePacket::PACKET_LEN)];
-uint8_t BufferManager::renderBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT] = { 0 };
+namespace BufferManager {
 
+  static uint8_t pool[POOL_SIZE];
+  uint16_t poolOffset = 0;
+
+  uint8_t* allocate(size_t size) {
+ //   if (poolOffset + size > POOL_SIZE) {
+  //    return nullptr; 
+  //  }
+    // TODO - WARN ... LOCK OUT AND FLASH NANO LED
+
+    uint8_t* ptr = &pool[poolOffset];
+    poolOffset += size;
+    return ptr;
+  }
+
+  uint16_t getMark() {
+    return poolOffset;
+  }
+
+  void freeToMark(uint16_t mark) {
+    poolOffset = mark;
+  }
+
+  void resetPool() {
+    poolOffset = 0;
+  }
+}

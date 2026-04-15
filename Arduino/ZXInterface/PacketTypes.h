@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 #define E(e) static_cast<uint8_t>(e)
-constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;
+
+// ARE YOU ABOUT TO ADD MORE TO THIS FILE?
+constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;  // ... THEN CHECK I'M STILL OK!
 
 enum class ReceiveKeyboardPacket : uint8_t {
   CMD_HIGH = 0,

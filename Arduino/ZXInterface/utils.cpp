@@ -140,10 +140,12 @@ void Utils::restoreZ80States() {
 __attribute__((optimize("-Os"))) 
 void Utils::saveScreen(const char* filename) {
 
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+
   // Speccy to send its screen data
-  uint8_t len = PacketBuilder::build_Request_CommandSendData(BufferManager::packetBuffer,
-                                                             ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
-  Z80Bus::sendBytes(BufferManager::packetBuffer, len);
+  uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+  Z80Bus::sendBytes(buf, len); // Sending z80 request to send bytes
 
 // TODO - ******* replace me with optimised code please ********
 // ...... This version of the code is for testing the get_IO_Byte by hammering it with this task.
@@ -160,6 +162,8 @@ void Utils::saveScreen(const char* filename) {
     }
     file.close();
   }
+
+  BufferManager::freeToMark(mark);
 
   // if (root.open("/")) {
   //   file.open(filename, O_CREAT | O_WRONLY);
@@ -189,20 +193,29 @@ void Utils::restoreScreen(const char *filename) {
   if (root.isOpen()) { root.close(); }
   if (root.open("/")) {
     if (file.open(filename, O_READ)) {
+
+      uint16_t mark = BufferManager::getMark();
+
+  // TODO ... what buffer size to use here ???
+      uint8_t *buf = BufferManager::allocate(128);
+
       uint16_t currentAddress = 0x4000;
       uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
       while (totalRemaining > 0) {
-        uint16_t bytesRead = file.read(&BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN], COMMAND_PAYLOAD_SECTION_SIZE);
-        Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, false);
+        uint16_t bytesRead = file.read(buf, 128);
+        Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, false);
         currentAddress += bytesRead;
         totalRemaining -= bytesRead;
       }
       file.close();
+
+      BufferManager::freeToMark(mark);
     }
   }
 }
 
 
+// TODO ... things beond this point are in need of a refactor!!!!
 
 __attribute__((optimize("-Os"))) 
 void Utils::waitForUserExit() {
@@ -269,9 +282,9 @@ void Utils::waitForUserExit() {
       while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
       
       restoreScreen(SCRATCH_FILE);
+
       restoreZ80States();
       readJoystick(); // flush junk
-
 
     }
   }
@@ -377,38 +390,28 @@ static inline char hexChar(uint8_t nibble) {
 __attribute__((optimize("-Os"))) 
 void Utils::viewSpeccyMemory() {
   constexpr uint16_t START_ADDR = 0xB000;
-  constexpr uint16_t LENGTH = (8*(192/8))/2;  // total bytes to read
   constexpr uint8_t BYTES_PER_LINE = 8;
+  constexpr uint16_t LENGTH = BYTES_PER_LINE*12;  // 24 total bytes to read
   constexpr uint8_t LINE_WIDTH = 42;
-  constexpr uint8_t LINES_PER_PAGE = LENGTH/8;  
+  constexpr uint8_t LINES_PER_PAGE = LENGTH/BYTES_PER_LINE;  
 
-  //uint8_t memDumpBuffer[LENGTH];
+
   uint16_t currentBaseAddr = START_ADDR;
-
- //static char lineBuffer[LINE_WIDTH + 1];
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* buf = BufferManager::allocate(LENGTH);
 
   while (true) {
-      uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(
-                     BufferManager::packetBuffer, LENGTH, currentBaseAddr);
-
-    Z80Bus::sendBytes(BufferManager::packetBuffer, cmdLen);
-
-   uint8_t* ptr =  &BufferManager::packetBuffer[ GLOBAL_MAX_PACKET_LEN+(7*32) ]; // hacked for now ... need to add light weight memory allocator
-
-   //// TO FAR !!! char* lineBuffer =  &BufferManager::packetBuffer[GLOBAL_MAX_PACKET_LEN+(7*32) + LENGTH ]; //[cmdLen + LENGTH];
+    uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(buf, LENGTH, currentBaseAddr);
+    Z80Bus::sendBytes(buf, cmdLen);
 
     for (uint16_t i = 0; i < LENGTH; ++i) {
-    //  memDumpBuffer[i] = Z80Bus::get_IO_Byte();
-        ptr[i] = Z80Bus::get_IO_Byte();
+        buf[i] = Z80Bus::get_IO_Byte();
     }
-
-    Utils::clearScreen(COL::BLACK_WHITE);
 
     uint8_t y = 0;
     for (uint16_t offset = 0; offset < LENGTH; offset += BYTES_PER_LINE) {
 
-      // for now look into the whole shared buffer thing!!! need to find a better way !!!
-      char lineBuffer[LINE_WIDTH + 1];
+      char lineBuffer[LINE_WIDTH + 1];  //  FIX ME !!!!!!!!!!!!!!!!!!
 
       memset(lineBuffer, ' ', LINE_WIDTH);
       uint8_t pos = 0;
@@ -417,26 +420,27 @@ void Utils::viewSpeccyMemory() {
       lineBuffer[pos++] = hexChar(addr >> 12);
       lineBuffer[pos++] = hexChar(addr >> 8);
       lineBuffer[pos++] = hexChar(addr >> 4);
-      lineBuffer[pos++] = hexChar(addr);
+      lineBuffer[pos++] = hexChar(addr& 0x0F);
       lineBuffer[pos++] = ':';
       lineBuffer[pos++] = ' ';
 
       for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
-        uint8_t b = ptr[offset + i];
+        uint8_t b = buf[offset + i];
         lineBuffer[pos++] = hexChar(b >> 4);
         lineBuffer[pos++] = hexChar(b & 0x0F);
         lineBuffer[pos++] = ' ';
       }
 
       for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
-        uint8_t c = ptr[offset + i];
+        uint8_t c = buf[offset + i];
         lineBuffer[pos++] = (c >= 32 && c <= 126) ? c : '.';
       }
 
-      lineBuffer[LINE_WIDTH] = '\0';
+      lineBuffer[pos] = '\0';
       Draw::textLine(y, lineBuffer);
       y += 8; 
     }
+
 
     while (true) {
       Menu::Button_t btn = Menu::getButton();
@@ -453,10 +457,13 @@ void Utils::viewSpeccyMemory() {
         break;  // Redraw
       } else if (btn == Menu::BUTTON_MENU) {
         while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }
+        BufferManager::freeToMark(mark);
         return; // Exit
       }
     }
+
   }
+  
 }
 
 
@@ -495,20 +502,27 @@ void Utils::exportScreenshot() {
     file.close();
   }
 
+
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* buf = BufferManager::allocate(64);
+
   // place working scratch file -> screenshot file
   if (file.open(&root, SCRATCH_FILE, O_READ)) {
     FatFile destFile;
     if (destFile.open(&dir, filename, O_CREAT | O_WRONLY)) {
-      uint8_t* buffer = BufferManager::packetBuffer;
+     // uint8_t* buffer = BufferManager::packetBuffer;
       int bytesRead;
-      while ((bytesRead = file.read(buffer, 64)) > 0) { 
-        destFile.write(buffer, bytesRead);
+      while ((bytesRead = file.read(buf, 64)) > 0) { 
+        destFile.write(buf, bytesRead);
       }
       destFile.close();
     }
     file.close();
   }
   dir.close();
+
+  BufferManager::freeToMark(mark);
+
 }
 
 

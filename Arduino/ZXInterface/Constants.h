@@ -2,14 +2,10 @@
 
 #include <stdint.h>
 
+
+// todo ... these need checking... COMMAND_PAYLOAD_SECTION_SIZE does not really have a job now
 constexpr uint16_t COMMAND_PAYLOAD_SECTION_SIZE = 255;
 constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
-constexpr uint16_t FILE_READ_BUFFER_OFFSET = 5 + COMMAND_PAYLOAD_SECTION_SIZE;
-constexpr uint16_t TOTAL_PACKET_BUFFER_SIZE = 5 + COMMAND_PAYLOAD_SECTION_SIZE + FILE_READ_BUFFER_SIZE;
-
-// ???? 5  should this be using GLOBAL_MAX_PACKET_LEN ???? Look into - What was I doing here!!
-
-
 constexpr uint8_t MAX_FILENAME_LEN = 64; 
 
 namespace SmallFont {
@@ -150,29 +146,11 @@ constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL
 
 //-----------------------------------------
 
-// New enum for Z80 file validity check results
-// enum Z80CheckResult {
-//     Z80_CHECK_SUCCESS = 0,
-//     Z80_CHECK_ERROR_OPEN_FILE = -1,
-//     Z80_CHECK_ERROR_READ_HEADER = -2,
-//     Z80_CHECK_ERROR_V1_MARKER_NOT_FOUND = -3,
-//     Z80_CHECK_ERROR_BLOCK_STRUCTURE = -4, // For V2/V3 block read issues
-//     Z80_CHECK_ERROR_UNEXPECTED_EOF = -5, // For general file truncation
-//     Z80_CHECK_ERROR_UNSUPPORTED_TYPE = -6, // For machine type check
-//     Z80_CHECK_ERROR_EOF = -7,
-//     Z80_CHECK_ERROR_SEEK = -8   
-// };
-
 enum BlockReadResult {
     BLOCK_SUCCESS = 0,
     BLOCK_END_OF_FILE = 1,
     BLOCK_UNSUPPORTED_PAGE = 2,
     BLOCK_ERROR = 13
-//    BLOCK_ERROR_READ_LENGTH = -21,
-//    BLOCK_ERROR_READ_PAGE = -22,
-//    BLOCK_ERROR_READ_DATA = -23,
-//    BLOCK_ERROR_VERSION = -24,
-//    BLOCK_ERROR_NO_V1_MARKER = -25
 };
 
 enum MachineType {

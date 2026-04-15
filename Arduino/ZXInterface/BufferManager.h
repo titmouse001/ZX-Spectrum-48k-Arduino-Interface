@@ -2,15 +2,22 @@
 #define BUFFER_MANAGER_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "PacketTypes.h"
 #include "Constants.h"
 
 namespace BufferManager {
 
-extern uint8_t packetBuffer[TOTAL_PACKET_BUFFER_SIZE];
-extern uint8_t head27_Execute[SNA_TOTAL_ITEMS + E(ExecutePacket::PACKET_LEN)];
-extern uint8_t renderBuffer[SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT];
+  constexpr uint16_t POOL_SIZE = 255+128+7+128; //(32*7)+7+255; 
 
+  // TODO ... find best value for above ... go deep capture max value of mark
+
+
+  uint8_t* allocate(size_t size);
+  uint16_t getMark();
+  void freeToMark(uint16_t mark);
+  void resetPool();
 }
 
 #endif
+

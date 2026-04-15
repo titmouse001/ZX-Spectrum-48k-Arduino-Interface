@@ -93,23 +93,7 @@ uint16_t SdCardSupport::countSnapshotFiles() {
 }
 
 
-// __attribute__((optimize("-Ofast")))
-// uint16_t SdCardSupport::countSnapshotFiles() {
-
-//   if (file.isOpen()) {
-//     file.close();
-//   }
-
-//   uint16_t totalFiles = 0;
-//   root.rewind();
-//   while (file.openNext(&root, O_RDONLY)) {
-//     if (!file.isHidden() && (file.isFile() || file.isDir()) ) {
-//       totalFiles++;
-//     }
-//     file.close();
-//   }
-//   return totalFiles;
-// }
+static char temp[MAX_FILENAME_LEN];
 
 __attribute__((optimize("-Os")))
 uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
@@ -122,14 +106,16 @@ uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
 
 __attribute__((optimize("-Os")))
 char* SdCardSupport::getFileName(FatFile* pFile) {
-  char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  //char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  char* buffer = temp;
   getFileName(pFile,buffer);
   return buffer;
 }
 
 __attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
-  char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+ // char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+ char* buffer = temp;
   getFileName(pFile,&buffer[1]);
   buffer[0]='/';
   return buffer;

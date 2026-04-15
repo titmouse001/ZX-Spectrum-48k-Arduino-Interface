@@ -19,13 +19,11 @@ extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileInde
 extern uint8_t getKeyboard();
 extern uint8_t get_IO_Byte();
 
-extern void rleOptimisedTransfer(uint16_t input_len, uint16_t addr, bool borderLoadingEffect);
+extern void rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* buf, bool borderLoadingEffect);
 extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
-extern void executeSnapshot();
-//extern boolean bootFromSnapshot(FatFile* pFile);
+extern void executeSnapshot(uint8_t* snaHeaderPacket);
 
 extern void resetZ80();
-//extern void resetToSnaRom();
 extern void setSnaRom();
 extern void setStockRom();
 

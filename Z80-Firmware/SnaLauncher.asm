@@ -420,7 +420,7 @@ command_Stack:  ; 'S'  - store or restores snapshots stack
 ;-----------------------------------------------------
 
 	READ_PAIR_WITH_HALT h,l 
-  	READ_ACC_WITH_HALT       ; A = Save:0 or Resotre:1
+  	READ_ACC_WITH_HALT       ; A = Save:0 or Restore:1
 
 	or a    
     jr nz, .restore 
@@ -447,7 +447,7 @@ command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH
 	;-------------------------------------------------------------------------------------------
 	; Setup - Copy code to screen memory, as we'll be switching ROMs later.
 	; After the ROM swap, we lose this sna ROM code in exchange for the stock ROM,
-	; so the launch code will run from screen RAM.
+	; so the launch code must now run from screen RAM.
 
 	; TODO - THIS RELOCATED CODE USED TO DO FAR MORE - NOW THIS COPY IS OVERKILL)
 

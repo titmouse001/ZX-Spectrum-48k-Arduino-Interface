@@ -13,7 +13,6 @@ namespace PacketBuilder {
   uint8_t buildExecuteCommand(uint8_t* buf);
   uint8_t build_command_fill_mem_bytecount(uint8_t* buf, uint16_t address,  uint8_t amount, uint8_t value);
   uint8_t build_Request_CommandSendData(uint8_t* buf, uint16_t amount, uint16_t address);
-
 }
 
 #endif

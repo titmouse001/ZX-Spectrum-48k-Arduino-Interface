@@ -22,8 +22,6 @@
 // 1. Find some way to restore/hide the currupted 3 bytes of screen memory at/after game launch ?!?!?!
 
 
-
-
 #if F_CPU != 16000000L
 #warning "This sketch expects 16MHz clock speed."
 #endif
@@ -135,22 +133,21 @@ void setup() {
 // .SCR FILE 
 // ---------------------
 void handleScrFile(FatFile* pFile) {
-    Utils::clearScreen(0);
-    if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) { 
+  Utils::clearScreen(0);
+  if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
     Z80Bus::transferSnaData(pFile, false);  // No loading effects.
-    while (Menu::getButton() == Menu::BUTTON_NONE) { delay(1000/50); }
+    while (Menu::getButton() == Menu::BUTTON_NONE) { delay(1000 / 50); }
     Utils::clearScreen(0);
   }
 }
 
 // -----------------------------------------------------------------------------------------------
-// NOTES: Leaving the menu and restoring the snapshot. Before continuing, we must relocate 
-// the Z80 stack to a safer working area. The menu uses 0xFFFF which cannot be left in place.
-//
-// We use a temporary stack in screen memory (0x4000). This is effectively safe:
-//  - 0x4000 also contains the Z80 "jp <patched-start-addr>" bootstrap, we can reuse the location
-//    at 0x4003 for temporary 1 deep push/pops, which land at 0x4001/0x4002 due to the SP–2 push behavior.
-// This temporary SP is only used until the SNA restore positions the final stack.
+// NOTES: Exiting the menu and restoring the snapshot. Before doing that we must relocate 
+// the Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is no good later on.
+// We set a temporary stack in screen memory (0x4000). This is safe because:
+// - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap. 
+// - We reuse 0x4003 for temporary 1-deep push/pops (targeting 0x4001/02) due to SP-2 behavior.
+// This temporary SP is active only until the game restore sets the final stack.
 // -----------------------------------------------------------------------------------------------
 
 // ---------------------
@@ -160,34 +157,54 @@ void handleSnaFile(FatFile* pFile) {
 
   Utils::clearScreen(0);
 
+  uint8_t mark = BufferManager::getMark();
+  uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
+
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
-    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // 1=set
-    // Header information stored globaly in head27_Execute[] for later - will need it for executing the snapshot
-    pFile->read((void*)&BufferManager::head27_Execute[E(ExecutePacket::PACKET_LEN)], (size_t)SNA_TOTAL_ITEMS);
+
+    // Here we place the Z80's SP at the start of screen RAM.
+    // Overwriting this with screen data is acceptable; it is only used for the return 
+    // address during a HALT state. Because the CPU is physically halted, the NMI 
+    // push/pop cycle is protected from being corrupted by ongoing RAM writes.
+    // Basically we can set the SP now at this location without a care!
+    constexpr uint8_t STORE=1;  // RESTORE=0;
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
+
+    pFile->read((void*)(snaHeaderPacket), SNA_TOTAL_ITEMS);
     Z80Bus::transferSnaData(pFile, true);
-    Z80Bus::executeSnapshot();
+
+    Z80Bus::executeSnapshot(snaHeaderPacket);
     Utils::waitForUserExit();
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
+  BufferManager::freeToMark(mark);
 }
- 
+
 // ---------------------
 // .Z80 FILE 
 // ---------------------
 
 void handleZ80File(FatFile* pFile) {
+
   Utils::clearScreen(0);
 
-  if (SnapZ80::convertZ80toSNA(pFile)) {  //  == BLOCK_SUCCESS) {
-    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1 );  // 1=set 
-    Z80Bus::executeSnapshot();
+  uint8_t mark = BufferManager::getMark();
+  uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
+
+  constexpr uint8_t STORE=1;  // RESTORE=0;
+  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
+  if (SnapZ80::convertZ80toSNA(pFile, snaHeaderPacket)) {
+
+    Z80Bus::executeSnapshot(snaHeaderPacket);
     Utils::waitForUserExit();
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
+
+  BufferManager::freeToMark(mark);
 }
 
 // ---------------------
@@ -199,7 +216,10 @@ void handleTxtFile(FatFile* pFile) {
   constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
   constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
   constexpr uint16_t maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
-  char* lineBuffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
+  
+  uint16_t mark = BufferManager::getMark();
+  char* lineBuffer = (char*)BufferManager::allocate(maxCharsPerLine);
+
   uint16_t currentPageIndex = 0;
   uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
   uint16_t lastPageIndex = 0;  // index of that page
@@ -280,6 +300,9 @@ void handleTxtFile(FatFile* pFile) {
     }
   }
   while (Menu::getButton() != Menu::BUTTON_NONE) { delay(20); }
+
+  BufferManager::freeToMark(mark);
+  
 }
 
 
