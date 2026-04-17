@@ -62,6 +62,9 @@ I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyED
 <img src="/Documents/Pictures0.21/PCB_Back_v0.21.png" alt="Back" width="28%" >
 <img src="/Documents/Pictures0.21/PCB_Front_v0.21.png" alt="Photo view" width="26%" >
 
+### Hardware Design (Ver 2.30)
+<img src="Documents/Schematic/Schematic-v2.30_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-04-17.png" alt="Circuit Diagram" >
+
 ### Hardware Design (Ver 0.21)
 <img align="right" src="Documents/Schematic/Schematic-v0.21_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2025-07-27.png" alt="Circuit Diagram" width="50%" height="50%">
 
