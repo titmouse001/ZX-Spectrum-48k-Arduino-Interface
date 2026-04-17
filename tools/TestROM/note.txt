@@ -1,0 +1,3 @@
+Note: Burn TMS27C256_DIP28.BIN to a 256k ROM to test the PCB before final wiring. 
+This checks the link between the ROM and the edge connector. 
+If the Judge Dredd image appears on screen, the ROM-to-Speccy connections are good.
