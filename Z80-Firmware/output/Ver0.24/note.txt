@@ -1,0 +1,7 @@
+Ver0.24-27C256.BIN is a binary file ready to burn to a 27C256-type EPROM.
+
+This supports the Arduino side running v0.24.
+To get the Arduino code, go to GitHub Tags and download the version called 'TAG-8BitPulseVersionFor0.xxPCBs'.
+Compile and upload it to your Arduino, and you should be good to go!
+
+If you like, you can compile the above firmware for the ROM or just use the one supplied here.
