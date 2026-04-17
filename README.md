@@ -2,6 +2,8 @@
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
 
+[TAG: Older Software Support for Legacy Circuit Designs (v0.xx)](https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/releases/tag/TAG-8BitPulseVersionFor0.xxPCBs)
+
 ### Lastest Update
 PCB Gerbers V2.30: [Download Gerber Files](/Documents/Gerbers/V2.30/Gerber_ZX-Spectrum-48k-Arduino-Interface-Game-Loader-V2_3_PCB_ZX-Spectrum-Interface_2026-03-21.zip)
 
