@@ -34,8 +34,8 @@ void Draw::textLine(int ypos, const char *message) {
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
     outputLine1st[E(Copy32Packet::CMD_DEST_ADDR_HIGH)] = (uint8_t)(destAddr >> 8);
     outputLine1st[E(Copy32Packet::CMD_DEST_ADDR_LOW)] =  (uint8_t)(destAddr & 0xFF);
-    Z80Bus::sendBytes(outputLine1st, E(Copy32Packet::PACKET_LEN) );
-    Z80Bus::sendBytes(renderBuffer, SmallFont::FNT_BUFFER_SIZE);
+    Z80Bus::sendBytes(outputLine1st, E(Copy32Packet::PACKET_LEN) ); // expects 32 bytes
+    Z80Bus::sendBytes(renderBuffer, SmallFont::FNT_BUFFER_SIZE); // must be x32 bytes
 
     renderBuffer += SmallFont::FNT_BUFFER_SIZE;
 

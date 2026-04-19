@@ -389,81 +389,66 @@ static inline char hexChar(uint8_t nibble) {
 
 __attribute__((optimize("-Os"))) 
 void Utils::viewSpeccyMemory() {
-  constexpr uint16_t START_ADDR = 0xB000;
-  constexpr uint8_t BYTES_PER_LINE = 8;
-  constexpr uint16_t LENGTH = BYTES_PER_LINE*12;  // 24 total bytes to read
-  constexpr uint8_t LINE_WIDTH = 42;
-  constexpr uint8_t LINES_PER_PAGE = LENGTH/BYTES_PER_LINE;  
-
-
-  uint16_t currentBaseAddr = START_ADDR;
+  constexpr uint8_t MAX_CHARS_PER_LINE = 42;  // (256pixels/6)
+  constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
+  int32_t currentBaseAddr = 0x5B00; // start of program mem
   uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(LENGTH);
+  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE+1);
+
+ // lineBuffer[6 + (3 * 8)+8] = '\0';
+  memset(lineBuffer, '\0', MAX_CHARS_PER_LINE+1);
 
   while (true) {
-    uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(buf, LENGTH, currentBaseAddr);
-    Z80Bus::sendBytes(buf, cmdLen);
+    uint16_t tempBaseAddr = currentBaseAddr;
+    for (uint16_t i = 0; i < 24; i++) {
 
-    for (uint16_t i = 0; i < LENGTH; ++i) {
-        buf[i] = Z80Bus::get_IO_Byte();
-    }
-
-    uint8_t y = 0;
-    for (uint16_t offset = 0; offset < LENGTH; offset += BYTES_PER_LINE) {
-
-      char lineBuffer[LINE_WIDTH + 1];  //  FIX ME !!!!!!!!!!!!!!!!!!
-
-      memset(lineBuffer, ' ', LINE_WIDTH);
       uint8_t pos = 0;
-
-      uint16_t addr = currentBaseAddr + offset;
-      lineBuffer[pos++] = hexChar(addr >> 12);
-      lineBuffer[pos++] = hexChar(addr >> 8);
-      lineBuffer[pos++] = hexChar(addr >> 4);
-      lineBuffer[pos++] = hexChar(addr& 0x0F);
+      // Use 6 chars for formatting address
+      lineBuffer[pos++] = hexChar(tempBaseAddr >> 12);
+      lineBuffer[pos++] = hexChar(tempBaseAddr >> 8);
+      lineBuffer[pos++] = hexChar(tempBaseAddr >> 4);
+      lineBuffer[pos++] = hexChar(tempBaseAddr & 0x0F);
       lineBuffer[pos++] = ':';
       lineBuffer[pos++] = ' ';
 
-      for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
-        uint8_t b = buf[offset + i];
+      uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(buf, BYTES_TO_SHOW_PER_LINE, tempBaseAddr);
+      Z80Bus::sendBytes(buf, cmdLen);
+
+      for (uint8_t i = 0; i < 8; ++i) {
+        uint8_t b = Z80Bus::get_IO_Byte();
+        // Use 3 chars for formatting byte data
         lineBuffer[pos++] = hexChar(b >> 4);
         lineBuffer[pos++] = hexChar(b & 0x0F);
         lineBuffer[pos++] = ' ';
+        lineBuffer[6 + (3 * 8) + i] = (b >= 32 && b <= 126) ? b : '.';
       }
-
-      for (uint8_t i = 0; i < BYTES_PER_LINE; ++i) {
-        uint8_t c = buf[offset + i];
-        lineBuffer[pos++] = (c >= 32 && c <= 126) ? c : '.';
-      }
-
-      lineBuffer[pos] = '\0';
-      Draw::textLine(y, lineBuffer);
-      y += 8; 
+      
+      Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels 
+      tempBaseAddr += BYTES_TO_SHOW_PER_LINE;
     }
-
 
     while (true) {
       Menu::Button_t btn = Menu::getButton();
-
       if (btn == Menu::BUTTON_ADVANCE) {
-        currentBaseAddr += (LINES_PER_PAGE * BYTES_PER_LINE);
-        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }  
-        break;   // Redraw                                                       
-      } else if (btn == Menu::BUTTON_BACK) {
-        if (currentBaseAddr >= (LINES_PER_PAGE * BYTES_PER_LINE)) {
-          currentBaseAddr -= (LINES_PER_PAGE * BYTES_PER_LINE);
+        currentBaseAddr += 8 * 24;
+        if (currentBaseAddr > 0xFF40 ) {
+          currentBaseAddr =  0xFF40;
         }
-        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }
+        break;  // Redraw
+      } else if (btn == Menu::BUTTON_BACK) {
+        currentBaseAddr -= 8 * 24;
+        if (currentBaseAddr<0) {
+          currentBaseAddr=0;
+        }
         break;  // Redraw
       } else if (btn == Menu::BUTTON_MENU) {
-        while (Menu::getButton() != Menu::BUTTON_NONE) { delay(10); }
-        BufferManager::freeToMark(mark);
-        return; // Exit
+        while (Menu::getButton() != Menu::BUTTON_NONE);
+        BufferManager::freeToMark(mark);  // frees both allocs
+        return; 
       }
     }
-
   }
-  
 }
 
 
