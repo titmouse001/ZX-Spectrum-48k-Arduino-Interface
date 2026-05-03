@@ -9,7 +9,7 @@
 #include "PacketTypes.h"
 #include "BufferManager.h"
 
-constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT) + GLOBAL_MAX_PACKET_LEN;
+constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT) + E(Copy32Packet::PACKET_LEN);
 
 // textLine:  Draws a full-width line of text (32 bytes per line).
 // Optimised to draw menu text row-by-row to the screen memory.
@@ -81,11 +81,11 @@ void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount, uint8_t *rend
   const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;  // byte alignment
 
   uint16_t mark = BufferManager::getMark();
-  uint8_t *packet = BufferManager::allocate(E(CopyPacket::CMD_LEN));
+  uint8_t *packet = BufferManager::allocate(E(CopyPacket::PACKET_LEN));
 
   packet[E(CopyPacket::CMD_HIGH)] = (uint8_t)((CommandRegistry::command_Copy) >> 8);
   packet[E(CopyPacket::CMD_LOW)] = (uint8_t)((CommandRegistry::command_Copy)&0xFF);
-  packet[E(CopyPacket::CMD_LEN)] = (uint8_t)byteWidth;
+  packet[E(CopyPacket::CMD_AMOUNT)] = (uint8_t)byteWidth;
 
   for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; y++, renderBuffer += SmallFont::FNT_BUFFER_SIZE) {
     const uint16_t destAddr = Utils::zx_spectrum_screen_address(xpos, ypos + y);

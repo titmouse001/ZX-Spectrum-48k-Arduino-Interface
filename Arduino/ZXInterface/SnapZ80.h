@@ -25,6 +25,8 @@ MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE);
 bool checkZ80FileValidity(FatFile* pFile,const Z80HeaderInfo* headerInfo);
 
 Z80HeaderVersion readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
+Z80HeaderVersion readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* headerInfo,  uint8_t* buf);
+
 bool findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& rle_data_length);
 BlockReadResult z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out);
 

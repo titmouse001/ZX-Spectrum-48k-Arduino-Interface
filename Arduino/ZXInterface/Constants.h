@@ -2,9 +2,6 @@
 
 #include <stdint.h>
 
-
-// todo ... these need checking... COMMAND_PAYLOAD_SECTION_SIZE does not really have a job now
-constexpr uint16_t COMMAND_PAYLOAD_SECTION_SIZE = 255;
 constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
 constexpr uint8_t MAX_FILENAME_LEN = 64; 
 

@@ -27,6 +27,7 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   root.rewind();
 
   uint16_t mark = BufferManager::getMark();
+  //TODO... ZX_FILENAME_MAX_DISPLAY_LEN + 3 
   char* nameBuffer = (char*)BufferManager::allocate(MAX_FILENAME_LEN);
 
   uint16_t linesDrawn = 0;

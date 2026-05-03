@@ -67,15 +67,20 @@ MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_M
 	return MACHINE_UNKNOWN;
 }
 
-__attribute__((optimize("-Os")))
 Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
-
 	uint16_t mark = BufferManager::getMark();
 	uint8_t* buf = BufferManager::allocate(Z80_V1_HEADERLENGTH);
-	uint8_t* v1_header = buf;
+	Z80HeaderVersion ver = readZ80HeaderInternal(pFile, headerInfo, buf);
+	BufferManager::freeToMark(mark);
+	return ver;
+}
 
+
+__attribute__((optimize("-Os")))
+Z80HeaderVersion SnapZ80::readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* buf) {
+
+	uint8_t* v1_header = buf;
 	if (pFile->read(buf, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
-		BufferManager::freeToMark(mark);
 		return Z80_VERSION_UNKNOWN;  // Error reading header
 	}
 
@@ -88,14 +93,10 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
 		headerInfo->hw_mode = 0;
 		headerInfo->isV1Compressed = (v1_header[Z80_V1_FLAGS1] & 0x20) >> 5;
 		headerInfo->version = Z80_VERSION_1;
-
-		BufferManager::freeToMark(mark);
-
 		return Z80_VERSION_1;  // ... here we know PC must hold a valid address
 
 	} else {  // (PC==0) check for a valid V2/V3
 		if (pFile->read(buf, 2) != 2) {
-			BufferManager::freeToMark(mark);
 			return Z80_VERSION_UNKNOWN;
 		}
 		uint8_t len_lo = buf[0];
@@ -113,7 +114,6 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
 		while (bytes_read_so_far < bytes_to_read_ext_header) {
 			uint16_t chunk_size = min(30, (uint16_t)(bytes_to_read_ext_header - bytes_read_so_far));
 			if (pFile->read(buf, chunk_size) != (int16_t)chunk_size) {
-				BufferManager::freeToMark(mark);
 				return Z80_VERSION_UNKNOWN;  // Error reading extended header
 			}
 
@@ -133,7 +133,6 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
 
 		headerInfo->isV1Compressed = false;  // V2/V3 don't use this flag
 		headerInfo->version = (ext_len == Z80_V2_HEADERLENGTH) ? Z80_VERSION_2 : Z80_VERSION_3;
-		BufferManager::freeToMark(mark);
 		return headerInfo->version;
 	}
 }
@@ -229,77 +228,78 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerIn
   return result;
 }
 
+// Z80 format - Block decompression support for it's "ED ED [count] [value]" format
 __attribute__((optimize("-Ofast"))) 
 void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress) {
-  const uint16_t HEADER_SIZE = E(TransferPacket::PACKET_LEN);
-  const uint16_t PAYLOAD_SIZE = COMMAND_PAYLOAD_SECTION_SIZE;
-
+  const uint16_t PAYLOAD_SIZE = 255;
   uint16_t mark = BufferManager::getMark();
   uint8_t* fileReadBufferPtr = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
-  uint8_t* txBuffer = BufferManager::allocate(HEADER_SIZE + PAYLOAD_SIZE);
-  uint8_t* commandPayloadPtr = &txBuffer[HEADER_SIZE];
+  uint8_t* txBuffer = BufferManager::allocate( PAYLOAD_SIZE);
+	uint8_t* header = BufferManager::allocate( E(TransferPacket::PACKET_LEN));
 
   uint16_t commandPayloadPos = 0;
   uint16_t fileReadBufferCurrentPos = 0;
   uint16_t fileReadBufferBytesAvailable = 0;
   uint32_t bytesReadFromSource = 0;
 
+// Cache SD card reads
   auto getNextByteFromFile = [&]() -> uint8_t {
     if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
-      // PREVENT UNDERFLOW: If we exceed the limit while reading an ED sequence, safely clamp it
       uint32_t remaining = (sourceLengthLimit > bytesReadFromSource) ? (sourceLengthLimit - bytesReadFromSource) : 0;
       uint16_t bytesToRead = min((uint32_t)FILE_READ_BUFFER_SIZE, remaining);
-      
-   //   if (bytesToRead > 0) {
-        fileReadBufferBytesAvailable = pFile->read(fileReadBufferPtr, bytesToRead);
-   //   } else {
-   //     fileReadBufferBytesAvailable = 0; // Hit limit safely
-    //  }
+      fileReadBufferBytesAvailable = pFile->read(fileReadBufferPtr, bytesToRead);
       fileReadBufferCurrentPos = 0;
-      
-    //  if (fileReadBufferBytesAvailable == 0) return 0; // Safe fallback for EOF/Limit
     }
     bytesReadFromSource++;
     return fileReadBufferPtr[fileReadBufferCurrentPos++];
   };
 
+	// Send uncompressed to Z80
   auto flushCommandPayloadBuffer = [&]() {
     if (commandPayloadPos > 0) {
-      PacketBuilder::buildTransferCommand(txBuffer, currentAddress, commandPayloadPos);
-      Z80Bus::sendBytes(txBuffer, HEADER_SIZE + commandPayloadPos);
+      uint8_t headerLen = PacketBuilder::buildTransferCommand(header, currentAddress, commandPayloadPos);
+    	Z80Bus::sendBytes(header, headerLen );
+      Z80Bus::sendBytes(txBuffer, commandPayloadPos);
       currentAddress += commandPayloadPos;
       commandPayloadPos = 0;
     }
   };
 
+	// Queue up uncompressed sending when buffer full
   auto addByteToCommandPayloadBuffer = [&](uint8_t byte) {
-    commandPayloadPtr[commandPayloadPos++] = byte;
+    txBuffer[commandPayloadPos++] = byte;
     if (commandPayloadPos >= PAYLOAD_SIZE) {
       flushCommandPayloadBuffer();
     }
   };
 
+	// Z80 RLE DECODING LOOP
   while (bytesReadFromSource < sourceLengthLimit) {
     uint8_t b1 = getNextByteFromFile();
-    if (b1 == 0xED) {
+    if (b1 == 0xED) { // maybe the start of compressed sequence
       uint8_t b2 = getNextByteFromFile();
-      if (b2 == 0xED) {
-        flushCommandPayloadBuffer();
-        uint8_t runAmount = getNextByteFromFile();
-        uint8_t value = getNextByteFromFile();
-        uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(txBuffer, currentAddress + runAmount, runAmount, value);
-        Z80Bus::sendBytes(txBuffer, packetLen);
+      if (b2 == 0xED) {  // double ED then it's compressed data to follow
+				// We are officially in a compressed block!  (Format: ED ED [count] [value])
+        flushCommandPayloadBuffer(); // Flush uncompressed bytes
+        uint8_t runAmount = getNextByteFromFile(); 	// repeat count
+        uint8_t value = getNextByteFromFile();  		// byte to repeat
+			
+			  uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(txBuffer, currentAddress , runAmount, value);
+        Z80Bus::sendBytes(txBuffer, packetLen);   	// Ok to reuse and build with txBuffer here to send fill
         currentAddress += runAmount;
       } else {
+				// We found a 'ED' followed by something that is NOT 'ED'. The format says that the byte immediately following a literal 'ED' 
+				// is NOT part of a compression block. So, we treat both b1 ('ED') and b2 as normal, uncompressed data.
         addByteToCommandPayloadBuffer(b1);
         addByteToCommandPayloadBuffer(b2);
       }
     } else {
-      addByteToCommandPayloadBuffer(b1);
+      addByteToCommandPayloadBuffer(b1);  // Not 'ED' so just uncompressed data.
     }
   }
-  flushCommandPayloadBuffer();
-  BufferManager::freeToMark(mark);
+	
+  flushCommandPayloadBuffer(); 		// Send any leftover uncompressed bytes
+  BufferManager::freeToMark(mark); // release all mallocs in this method
 }
 
 __attribute__((optimize("-Ofast")))
@@ -336,7 +336,7 @@ BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_num
 
 bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader) {
 	uint16_t stackAddrForPushingPC = 0;
-uint8_t* v1_header = headerInfo->headerData;
+	uint8_t* v1_header = headerInfo->headerData;
 
 	if (headerInfo->version >= 2) {  // V2 or V3 format
 		// V2/V3 save states store PC as zero in the main header

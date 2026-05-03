@@ -489,7 +489,8 @@ void Utils::exportScreenshot() {
 
 
   uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(64);
+//TODO
+  uint8_t* buf = BufferManager::allocate(64); 
 
   // place working scratch file -> screenshot file
   if (file.open(&root, SCRATCH_FILE, O_READ)) {

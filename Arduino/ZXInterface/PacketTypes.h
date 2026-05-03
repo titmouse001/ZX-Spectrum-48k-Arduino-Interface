@@ -23,7 +23,7 @@ enum class ExecutePacket : uint8_t {
 enum class TransferPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
-  CMD_LEN = 2,
+  CMD_AMOUNT = 2,
   CMD_DEST_ADDR_HIGH = 3,
   CMD_DEST_ADDR_LOW = 4,
   PACKET_LEN
@@ -62,7 +62,7 @@ enum class StackPacket : uint8_t {
 enum class CopyPacket : uint8_t {
   CMD_HIGH = 0,
   CMD_LOW = 1,
-  CMD_LEN = 2,
+  CMD_AMOUNT = 2,
   CMD_DEST_ADDR_HIGH = 3,
   CMD_DEST_ADDR_LOW = 4,
   PACKET_LEN
