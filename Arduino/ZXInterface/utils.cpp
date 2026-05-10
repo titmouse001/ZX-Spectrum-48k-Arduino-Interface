@@ -141,7 +141,9 @@ __attribute__((optimize("-Os")))
 void Utils::saveScreen(const char* filename) {
 
   uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+//  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+  uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
+
 
   // Speccy to send its screen data
   uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
@@ -393,7 +395,8 @@ void Utils::viewSpeccyMemory() {
   constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
   int32_t currentBaseAddr = 0x5B00; // start of program mem
   uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+  //uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
+  uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
   char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE+1);
 
  // lineBuffer[6 + (3 * 8)+8] = '\0';

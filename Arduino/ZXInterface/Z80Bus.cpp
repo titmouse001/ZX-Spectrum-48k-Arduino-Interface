@@ -93,7 +93,8 @@ void Z80Bus::sendSnaHeader(uint8_t* header) {
 
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
 	uint16_t mark = BufferManager::getMark();
-	uint8_t* buf = BufferManager::allocate(  E(FillPacket::PACKET_LEN) );
+	//uint8_t* buf = BufferManager::allocate(  E(FillPacket::PACKET_LEN) );
+  uint8_t* buf = BufferManager::allocate(  sizeof(FillPacket) );
   uint8_t packetLen = PacketBuilder::buildFillCommand(buf, amount, address, color);
   Z80Bus::sendBytes(buf, packetLen);
   BufferManager::freeToMark(mark);
@@ -102,7 +103,8 @@ void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
 __attribute__((optimize("-Os"))) 
 void Z80Bus::sendWaitVBLCommand() {
 	uint16_t mark = BufferManager::getMark();
-	uint8_t* buf = BufferManager::allocate(E(WaitVBLPacket::PACKET_LEN));
+	//uint8_t* buf = BufferManager::allocate(E(WaitVBLPacket::PACKET_LEN));
+ 	uint8_t* buf = BufferManager::allocate(sizeof(WaitVBLPacket));
   uint8_t packetLen = PacketBuilder::buildWaitVBLCommand(buf);
   Z80Bus::sendBytes(buf, packetLen);
   BufferManager::freeToMark(mark);
@@ -117,7 +119,8 @@ void Z80Bus::sendWaitVBLCommand() {
 __attribute__((optimize("-Os"))) 
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
 	uint16_t mark = BufferManager::getMark();
-	uint8_t* buf = BufferManager::allocate(  E(StackPacket::PACKET_LEN) );
+	//uint8_t* buf = BufferManager::allocate(  E(StackPacket::PACKET_LEN) );
+  uint8_t* buf = BufferManager::allocate(  sizeof(StackPacket) );
   uint8_t packetLen = PacketBuilder::buildStackCommand( buf, addr, action);
   Z80Bus::sendBytes( buf, packetLen);
   BufferManager::freeToMark(mark);
@@ -152,16 +155,26 @@ uint8_t Z80Bus::get_IO_Byte() {
   //         file.write(byte);
   //       }
 
-__attribute__((optimize("-Os"))) 
-uint8_t Z80Bus::getKeyboard() {
+// __attribute__((optimize("-Os"))) 
+// uint8_t Z80Bus::getKeyboard() {
 
-  uint8_t buf[E(ReceiveKeyboardPacket::PACKET_LEN)];
-  // Send command packet to the Z80 asking it to send back a byte with the OUT instruction (TransmitKey) 
-  buf[E(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)(CommandRegistry::command_TransmitKey >> 8);
-  buf[E(ReceiveKeyboardPacket::CMD_LOW)] =  (uint8_t)(CommandRegistry::command_TransmitKey & 0xFF);
-  Z80Bus::sendBytes(buf, (uint8_t)ReceiveKeyboardPacket::PACKET_LEN);
-  return get_IO_Byte();
+//   uint8_t buf[E(ReceiveKeyboardPacket::PACKET_LEN)];
+//   // Send command packet to the Z80 asking it to send back a byte with the OUT instruction (TransmitKey) 
+//   buf[E(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)(CommandRegistry::command_TransmitKey >> 8);
+//   buf[E(ReceiveKeyboardPacket::CMD_LOW)] =  (uint8_t)(CommandRegistry::command_TransmitKey & 0xFF);
+//   Z80Bus::sendBytes(buf, (uint8_t)ReceiveKeyboardPacket::PACKET_LEN);
+//   return get_IO_Byte();
+// }
+
+ __attribute__((optimize("-Os"))) 
+uint8_t Z80Bus::getKeyboard() {
+    ReceiveKeyboardPacket pkt;
+    pkt.cmd_high = static_cast<uint8_t>(CommandRegistry::command_TransmitKey >> 8);
+    pkt.cmd_low  = static_cast<uint8_t>(CommandRegistry::command_TransmitKey & 0xFF);
+    Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
+    return get_IO_Byte();
 }
+
 
 //------------------------------------------------------------------------------------------
 // This transfer has a simple look ahead to see if data can be RLE-compressed.  When a performance payoff 
@@ -184,7 +197,9 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
   constexpr uint8_t MIN_RUN_LENGTH = 3;  // about where RLE pays off over raw
 
   uint8_t mark = BufferManager::getMark();
-  uint8_t* pHeader = BufferManager::allocate(E(FillPacket::PACKET_LEN));
+  //uint8_t* pHeader = BufferManager::allocate(E(FillPacket::PACKET_LEN));
+  uint8_t* pHeader = BufferManager::allocate(sizeof(FillPacket));
+
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -250,7 +265,6 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   }
   BufferManager::freeToMark(mark);
 }
-
 
 /* executeSnapshot:
  * See Z80 code around L16D4. It will idle-loop to allow bankswitching into the 

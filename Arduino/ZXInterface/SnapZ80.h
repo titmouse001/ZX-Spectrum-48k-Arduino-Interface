@@ -21,14 +21,16 @@ struct Z80HeaderInfo {
 
 MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE);
 
-//Z80CheckResult checkZ80FileValidity(FatFile* pFile,const Z80HeaderInfo* headerInfo);
 bool checkZ80FileValidity(FatFile* pFile,const Z80HeaderInfo* headerInfo);
 
 Z80HeaderVersion readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
 Z80HeaderVersion readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* headerInfo,  uint8_t* buf);
 
-bool findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& rle_data_length);
-BlockReadResult z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out);
+bool locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length);
+bool locateV1TerminatorInternal(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length, uint8_t* search_buffer);
+
+//BlockReadResult z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out);
+BlockReadResult z80_readAndWriteBlock(FatFile* pFile);
 
 bool convertZ80toSNA(FatFile* pFile,  uint8_t* snaHeader);
 bool convertZ80toSNA_impl(FatFile* pFile,Z80HeaderInfo* headerInfo,  uint8_t* snaHeader );

@@ -3,94 +3,103 @@
 
 #include <stdint.h>
 
-#define E(e) static_cast<uint8_t>(e)
+// NOTE: The static_asserts are a safe gard to make sure these packet structs have the 
+// same size as the Z80 assembly code running on the ZX Inerface.
 
-// ARE YOU ABOUT TO ADD MORE TO THIS FILE?
-constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;  // ... THEN CHECK I'M STILL OK!
+#pragma pack(push, 1)
 
-enum class ReceiveKeyboardPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  PACKET_LEN
+struct ReceiveKeyboardPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
 };
+static_assert(sizeof(ReceiveKeyboardPacket) == 2, "Wrong packet size");
 
-enum class ExecutePacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  PACKET_LEN
+struct ExecutePacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
 };
+static_assert(sizeof(ExecutePacket) == 2, "Wrong packet size");
 
-enum class TransferPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_AMOUNT = 2,
-  CMD_DEST_ADDR_HIGH = 3,
-  CMD_DEST_ADDR_LOW = 4,
-  PACKET_LEN
+struct TransferPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t cmd_amount;
+    uint8_t dest_addr_high;
+    uint8_t dest_addr_low;
 };
+static_assert(sizeof(TransferPacket) == 5, "Wrong packet size");
 
-enum class FillPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_AMOUNT_HIGH = 2,
-  CMD_AMOUNT_LOW = 3,
-  CMD_START_ADDR_HIGH = 4,
-  CMD_START_ADDR_LOW = 5,
-  CMD_FILL_VALUE = 6,
-  PACKET_LEN
+struct FillPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t amount_high;
+    uint8_t amount_low;
+    uint8_t start_addr_high;
+    uint8_t start_addr_low;
+    uint8_t fill_value;
 };
+static_assert(sizeof(FillPacket) == 7, "Wrong packet size");
 
-enum class Fill8Packet : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_ADDR_HIGH = 2,
-  CMD_ADDR_LOW = 3,
-  CMD_AMOUNT = 4,
-  CMD_FILL_VALUE = 5,
-  PACKET_LEN
+struct Fill8Packet {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t addr_high;
+    uint8_t addr_low;
+    uint8_t amount;
+    uint8_t fill_value;
 };
+static_assert(sizeof(Fill8Packet) == 6, "Wrong packet size");
 
-enum class StackPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_SP_ADDR_HIGH = 2,
-  CMD_SP_ADDR_LOW = 3,
-  CMD_ACTION = 4,
-  PACKET_LEN
+struct StackPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t sp_addr_high;
+    uint8_t sp_addr_low;
+    uint8_t action;
 };
+static_assert(sizeof(StackPacket) == 5, "Wrong packet size");
 
-enum class CopyPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_AMOUNT = 2,
-  CMD_DEST_ADDR_HIGH = 3,
-  CMD_DEST_ADDR_LOW = 4,
-  PACKET_LEN
+struct CopyPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t amount;
+    uint8_t dest_addr_high;
+    uint8_t dest_addr_low;
 };
+static_assert(sizeof(CopyPacket) == 5, "Wrong packet size");
 
-enum class Copy32Packet : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_DEST_ADDR_HIGH = 2,
-  CMD_DEST_ADDR_LOW = 3,
-  PACKET_LEN
+struct Copy32Packet {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t dest_addr_high;
+    uint8_t dest_addr_low;
 };
+static_assert(sizeof(Copy32Packet) == 4, "Wrong packet size");
 
-enum class WaitVBLPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  PACKET_LEN
+struct WaitVBLPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
 };
+static_assert(sizeof(WaitVBLPacket) == 2, "Wrong packet size");
 
-enum class RequestSendDataPacket : uint8_t {
-  CMD_HIGH = 0,
-  CMD_LOW = 1,
-  CMD_AMOUNT_HIGH = 2,
-  CMD_AMOUNT_LOW = 3,
-  CMD_START_ADDR_HIGH = 4,
-  CMD_START_ADDR_LOW = 5,
-  PACKET_LEN
+struct RequestSendDataPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t amount_high;
+    uint8_t amount_low;
+    uint8_t start_addr_high;
+    uint8_t start_addr_low;
 };
+static_assert(sizeof(RequestSendDataPacket) == 6, "Wrong packet size");
+
+
+// check that all packets fit in a global buffer... NO LONGER USED
+//constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;  // largest packet is FillPacket (7 bytes)
+//static_assert(GLOBAL_MAX_PACKET_LEN == sizeof(FillPacket), "Update GLOBAL_MAX_PACKET_LEN if needed");
+
+#pragma pack(pop)
+
+
 
 
 #endif

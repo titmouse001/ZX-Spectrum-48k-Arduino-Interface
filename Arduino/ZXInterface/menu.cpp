@@ -242,6 +242,14 @@ void show5VoltRailStatus(Menu::MenuAction_t action) {
     // Draw::text(224, 0, voltageStr, color);
 
     Draw::text(224, 0, voltageStr);
+
+
+// ****** DEBUG ONLY *************
+char _c[8];
+sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
+Draw::text(256 - 64, 32, _c);
+// *******************************
+
 }
 
 __attribute__((optimize("-Os")))

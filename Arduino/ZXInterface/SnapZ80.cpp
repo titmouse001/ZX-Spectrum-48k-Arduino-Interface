@@ -41,6 +41,10 @@
  * https://worldofspectrum.org/faq/reference/z80format.htm
  */
 
+constexpr uint16_t SEARCH_BUFFER_SIZE = FILE_READ_BUFFER_SIZE;
+static const uint8_t END_MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
+#define MARKER_SIZE (sizeof(END_MARKER) / sizeof(END_MARKER[0]))
+
 __attribute__((optimize("-Os")))
 MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 	if (z80_version == 1) {
@@ -83,30 +87,27 @@ Z80HeaderVersion SnapZ80::readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* h
 	if (pFile->read(buf, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
 		return Z80_VERSION_UNKNOWN;  // Error reading header
 	}
-
 	memcpy(headerInfo->headerData, buf, Z80_V1_HEADERLENGTH);
 
 	if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) {  // V1: PC!=0
-
 		headerInfo->pc_low = v1_header[Z80_V1_PC_LOW];
 		headerInfo->pc_high = v1_header[Z80_V1_PC_HIGH];
 		headerInfo->hw_mode = 0;
 		headerInfo->isV1Compressed = (v1_header[Z80_V1_FLAGS1] & 0x20) >> 5;
 		headerInfo->version = Z80_VERSION_1;
-		return Z80_VERSION_1;  // ... here we know PC must hold a valid address
-
-	} else {  // (PC==0) check for a valid V2/V3
+		return Z80_VERSION_1;  // V1 ->  PC holds a valid address
+	} else {  
+		// Check V2/V3 (PC is not set for these versions) 
 		if (pFile->read(buf, 2) != 2) {
-			return Z80_VERSION_UNKNOWN;
+			return Z80_VERSION_UNKNOWN;  // Not enough data left
 		}
 		uint8_t len_lo = buf[0];
 		uint8_t len_hi = buf[1];
 		uint16_t ext_len = len_lo | ((uint16_t)len_hi << 8);
-
 		uint16_t bytes_to_read_ext_header = ext_len;
 		uint16_t bytes_read_so_far = 0;
 
-		// Initialize extended header values (v2/v3)
+		// extended header values (v2/v3)
 		headerInfo->pc_low = 0;
 		headerInfo->pc_high = 0;
 		headerInfo->hw_mode = 0;
@@ -117,11 +118,10 @@ Z80HeaderVersion SnapZ80::readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* h
 				return Z80_VERSION_UNKNOWN;  // Error reading extended header
 			}
 
-			// Find PC and Mode dor the extended/additional header part (v2/v3)
+			// Find PC and Mode for the extended/additional header part (v2/v3)
 			for (uint16_t i = 0; i < chunk_size; i++) {
 				uint16_t current_ext_byte_index = bytes_read_so_far + i;
 				uint8_t b = buf[i];
-
 				switch (current_ext_byte_index) {  // Extracting only the needed bytes from extended header
 					case Z80_EXT_PC_LOW: headerInfo->pc_low = b; break;
 					case Z80_EXT_PC_HIGH: headerInfo->pc_high = b; break;
@@ -137,44 +137,45 @@ Z80HeaderVersion SnapZ80::readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* h
 	}
 }
 
-
 __attribute__((optimize("-Os")))
-bool SnapZ80::findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& rle_data_length) {
-	static const uint8_t MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
-	constexpr uint8_t MARKER_SIZE = 4;
-	constexpr uint16_t SEARCH_BUFFER_SIZE = FILE_READ_BUFFER_SIZE;
+bool SnapZ80::locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length) {
 	uint16_t mark = BufferManager::getMark();
 	uint8_t* search_buffer = BufferManager::allocate(SEARCH_BUFFER_SIZE);
+	bool result = locateV1TerminatorInternal(pFile, start_pos, rle_data_length, search_buffer);
+	BufferManager::freeToMark(mark);
+	return result;
+}
 
+__attribute__((optimize("-Os")))
+bool SnapZ80::locateV1TerminatorInternal(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length, uint8_t* search_buffer) {
 	// Quick end-of-file check first
-	int32_t file_size = pFile->fileSize();
-	if (file_size != -1 && file_size >= (start_pos + MARKER_SIZE)) {
-		int32_t potential_marker_pos = file_size - MARKER_SIZE;
+	uint32_t file_size = pFile->fileSize();
+	if (file_size >= (start_pos + MARKER_SIZE)) { 
+		uint32_t potential_marker_pos = file_size - MARKER_SIZE;
 		if (pFile->seekSet(potential_marker_pos)) {
-			if (pFile->read(search_buffer, MARKER_SIZE) == MARKER_SIZE && memcmp(search_buffer, MARKER, MARKER_SIZE) == 0) {
-				rle_data_length = (uint32_t)(potential_marker_pos - start_pos);
+			if (pFile->read(search_buffer, MARKER_SIZE) == MARKER_SIZE && memcmp(search_buffer, END_MARKER, MARKER_SIZE) == 0) {
+				rle_data_length = potential_marker_pos - start_pos;
 				pFile->seekSet(start_pos);  // Seek back to start position for caller
-
-				BufferManager::freeToMark(mark);
-				return true;
+				return true;  // found marker
 			}
 		}
-		pFile->seekSet(start_pos);  // Always seek back to start position
+		pFile->seekSet(start_pos); // back to start to continue checking...
 	}
-	// Fallback to buffered search if marker not at end
-	int32_t current_pos = start_pos;
+	// Above check don't find end marker - search the whole file for any marker!
+	uint32_t current_pos = start_pos;
 	uint16_t overlap = 0;
 	while (pFile->available()) {
 		uint16_t bytes_to_read = SEARCH_BUFFER_SIZE - overlap;
-		int16_t bytes_read = pFile->read(search_buffer + overlap, bytes_to_read);
-		if (bytes_read == 0) break;
+		
+		int16_t bytes_read = pFile->read(search_buffer + overlap, bytes_to_read);  
+		if (bytes_read <= 0) break;  // read() error can return -1.
+
 		uint16_t search_end = overlap + bytes_read;
 		for (uint16_t i = 0; i <= search_end - MARKER_SIZE; i++) {
-			if (memcmp(search_buffer + i, MARKER, MARKER_SIZE) == 0) {  // look for '0x00EDED00'
+			if (memcmp(search_buffer + i, END_MARKER, MARKER_SIZE) == 0) {  // look for '0x00EDED00'
 				rle_data_length = (uint32_t)((current_pos + i) - start_pos);
-
-				BufferManager::freeToMark(mark);
-				return true;
+				pFile->seekSet(start_pos);
+				return true;  // found marker
 			}
 		}
 		// hold back 3 bytes for next time around as marker might span
@@ -186,8 +187,6 @@ bool SnapZ80::findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& r
 			break;  // Not enough data left
 		}
 	}
-
-	BufferManager::freeToMark(mark);
 	return false;  // Marker not found
 }
 
@@ -195,32 +194,46 @@ bool SnapZ80::findMarkerOptimized(FatFile* pFile, int32_t start_pos, uint32_t& r
 __attribute__((optimize("-Os")))
 bool SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerInfo) {
   bool result = true;
-  int32_t initial_file_pos = pFile->curPosition();
-  if (initial_file_pos == -1) return false;
+  uint32_t initial_file_pos = pFile->curPosition(); 
+//  if (initial_file_pos == -1) return false;
 
   if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {
     result = false;
   } else if (headerInfo->version >= Z80_VERSION_2) {
 
-		uint8_t tmp[3];
-    while (pFile->available()) {
-      uint32_t current_pos = pFile->curPosition();
-      if (pFile->read(tmp, 3) != 3) {
-        if (pFile->available()) result = false;
-        break;
-      }
-      uint16_t compressed_length = tmp[0] | ((uint16_t)tmp[1] << 8);
-      if (!pFile->seekSet(current_pos + 3 + compressed_length)) {
-        result = false;
-        break;
-      }
-    }
+ 	while (pFile->available()) {
+			uint8_t len_buf[3];
+			if (pFile->read(len_buf, 3) != 3) {
+				return false;
+			}
+			uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
+			if (!pFile->seekCur(compressed_len)) { 
+				return false;   // skip block data
+			}
+	 }
+	//  while (pFile->available()) {
+	// 		uint8_t tmp[3];
+  //     uint32_t current_pos = pFile->curPosition();
+  //     if (pFile->read(tmp, 3) != 3) {
+  //       if (pFile->available()) result = false;
+  //       break;
+  //     }
+  //     uint16_t compressed_length = tmp[0] | ((uint16_t)tmp[1] << 8);
+  //     if (!pFile->seekSet(current_pos + 3 + compressed_length)) {
+  //       result = false;
+  //       break;
+  //     }
+  //   }
   } else { // V1
     if (headerInfo->isV1Compressed) {
       uint32_t dummy_length;
-      if (!findMarkerOptimized(pFile, initial_file_pos, dummy_length)) result = false;
+      if (!locateV1Terminator(pFile, initial_file_pos, dummy_length)) {
+				result = false;
+			}
     } else {
-      if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) result = false;
+      if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) {   // 48k + file header
+				result = false;
+			}
     }
   }
 
@@ -235,14 +248,15 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
   uint16_t mark = BufferManager::getMark();
   uint8_t* fileReadBufferPtr = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
   uint8_t* txBuffer = BufferManager::allocate( PAYLOAD_SIZE);
-	uint8_t* header = BufferManager::allocate( E(TransferPacket::PACKET_LEN));
+	//uint8_t* header = BufferManager::allocate( E(TransferPacket::PACKET_LEN));
+	uint8_t* header = BufferManager::allocate(sizeof(TransferPacket)); 
 
   uint16_t commandPayloadPos = 0;
   uint16_t fileReadBufferCurrentPos = 0;
   uint16_t fileReadBufferBytesAvailable = 0;
   uint32_t bytesReadFromSource = 0;
 
-// Cache SD card reads
+	// Cache SD card reads
   auto getNextByteFromFile = [&]() -> uint8_t {
     if (fileReadBufferCurrentPos >= fileReadBufferBytesAvailable) {
       uint32_t remaining = (sourceLengthLimit > bytesReadFromSource) ? (sourceLengthLimit - bytesReadFromSource) : 0;
@@ -303,43 +317,72 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
 }
 
 __attribute__((optimize("-Ofast")))
-BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile, uint8_t* page_number_out) {
-    uint8_t headerBuf[2];
-
-    if (pFile->read(headerBuf, 2) != 2) {
-        *page_number_out = (uint8_t)-1;
-        return (!pFile->available()) ? BLOCK_END_OF_FILE : BLOCK_ERROR;
-    }
-    
-    uint16_t compressed_length = headerBuf[0] | ((uint16_t)headerBuf[1] << 8);
-
-    if (pFile->read(headerBuf, 1) != 1) {
-        *page_number_out = (uint8_t)-1;
-        return BLOCK_ERROR;
-    }
-    *page_number_out = headerBuf[0];
-    
-    int32_t sna_offset = -1;
-    if (*page_number_out == 8) sna_offset = 0x4000;
-    else if (*page_number_out == 4) sna_offset = 0x8000;
-    else if (*page_number_out == 5) sna_offset = 0xC000;
-
-    if (sna_offset == -1) {
-        // Use seekCur to jump over the compressed data block
-        pFile->seekCur(compressed_length);
-        return BLOCK_UNSUPPORTED_PAGE;
+BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile) {
+    uint8_t header[3];  // compressed length (2 bytes), page number (1 byte)
+    if (pFile->read(header, sizeof(header)) != sizeof(header)) {
+        return pFile->available() ? BLOCK_ERROR : BLOCK_END_OF_FILE;
     }
 
-    decodeRLE_core(pFile, compressed_length, (uint16_t)sna_offset);
+    const uint16_t compressed_len = header[0] | ((uint16_t)(header[1]) << 8);
+    const uint8_t page_number = header[2];
+    uint16_t mem_offset; // offset for 48K Z80 snapshot pages
+    switch (page_number) {
+        case 8:  mem_offset = 0x4000; break;
+        case 4:  mem_offset = 0x8000; break;
+        case 5:  mem_offset = 0xC000; break;
+        default:
+            if (!pFile->seekCur(compressed_len)) {
+                return BLOCK_ERROR;
+            }
+            return BLOCK_UNSUPPORTED_PAGE;
+    }
+
+    decodeRLE_core(pFile, compressed_len, mem_offset);
     return BLOCK_SUCCESS;
 }
+
+// __attribute__((optimize("-Ofast")))
+// BlockReadResult SnapZ80::z80_readAndWriteBlock(FatFile* pFile) {
+//     uint8_t headerBuf[2];
+
+//     if (pFile->read(headerBuf, 2) != 2) {
+//         return (!pFile->available()) ? BLOCK_END_OF_FILE : BLOCK_ERROR;
+//     }
+    
+//     uint16_t compressed_length = headerBuf[0] | ((uint16_t)headerBuf[1] << 8);
+//     if (pFile->read(headerBuf, 1) != 1) {
+//         return BLOCK_ERROR;
+//     }
+// 		uint8_t page_number_out = headerBuf[0];
+    
+//     int32_t sna_offset = -1;
+//     if (page_number_out == 8) { 
+// 			sna_offset = 0x4000;
+// 		} else if (page_number_out == 4) { 
+// 			sna_offset = 0x8000;
+// 		} else if (page_number_out == 5) { 
+// 			sna_offset = 0xC000;
+// 		}
+
+//     if (sna_offset == -1) {
+//         // Not part of a 48k snap - skip page.
+//         pFile->seekCur(compressed_length);
+//         return BLOCK_UNSUPPORTED_PAGE;
+//     }
+
+//     decodeRLE_core(pFile, compressed_length, (uint16_t)sna_offset);
+//     return BLOCK_SUCCESS;
+// }
 
 bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader) {
 	uint16_t stackAddrForPushingPC = 0;
 	uint8_t* v1_header = headerInfo->headerData;
 
-	if (headerInfo->version >= 2) {  // V2 or V3 format
-		// V2/V3 save states store PC as zero in the main header
+	if (headerInfo->version >= 2) {  
+		//
+		// V2 or V3 format
+		//
+		// V2/V3 don't store the PC (it's zero)
 		// Restore PC from extended header and convert to V1 format for processing
 		v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;
 		v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
@@ -349,26 +392,29 @@ bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, ui
 		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		while (true) {
-			uint8_t page_number;
-			BlockReadResult block_result = z80_readAndWriteBlock(pFile, &page_number);  //, &uncompressed_length);
+		//	uint8_t page_number;
+			//BlockReadResult block_result = z80_readAndWriteBlock(pFile, &page_number); 
+			BlockReadResult block_result = z80_readAndWriteBlock(pFile); 
 			if (block_result == BLOCK_END_OF_FILE) break;
 			if (block_result == BLOCK_UNSUPPORTED_PAGE) { continue; }  // Skip to the next block
 			if (block_result < 0) { return false; }                    // block_result; }             // negative critical errors
 		}
-	} else {                                                           // version 1
+	} else {      
+		//                                                     
+		// V1 Format
+		//
 		const uint32_t DEST_BUFFER_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY;  // Expected uncompressed size (48K machine)
 		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		if (headerInfo->isV1Compressed) {
 			uint32_t start_of_rle_data = pFile->curPosition();
-			//		if (start_of_rle_data == -1) return -1;
 			uint32_t rle_data_length = 0;
-			if (!findMarkerOptimized(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
+			if (!locateV1Terminator(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
 				return false;  //  BLOCK_ERROR_NO_V1_MARKER;
 			}
 			decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
 
-			// Skip past the marker (findMarkerOptimized leaves us at the start, so we need to skip past data + marker)
+			// Skip past the marker (locateV1Terminator leaves us at the start, so we need to skip past data + marker)
 			uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
 			if (pFile->curPosition() < expected_pos_after_marker) {
 				if (!pFile->seekSet(expected_pos_after_marker)) {
@@ -380,15 +426,16 @@ bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, ui
 		}
 	}
 
-
 	// Fake push 'PC' onto the stack
-	// NOTE: We are currently reusing existing ".SNA" functionaliy for loading the final Z80's CPU registers.
-
+	// NOTE: .z80 loaded files are reusing existing ".SNA" functionaliy for loading the final Z80's CPU registers.
 	constexpr uint8_t TRANSMIT_AMOUNT = 2;
-	uint8_t buf[E(TransferPacket::PACKET_LEN)];
+	//uint8_t buf[E(TransferPacket::PACKET_LEN)];
+	uint8_t buf[sizeof(TransferPacket)];
+	
 	uint8_t packetLen = PacketBuilder::buildTransferCommand(buf,stackAddrForPushingPC, TRANSMIT_AMOUNT);
 	Z80Bus::sendBytes(buf, packetLen );   // Command packate
-	buf[0] = headerInfo->pc_low;   
+
+	buf[0] = headerInfo->pc_low;   		// it's safe to reuse this buffer
 	buf[1] = headerInfo->pc_high;  
 	Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);  // send the data (Z80's PC to be next off the stack)
 
