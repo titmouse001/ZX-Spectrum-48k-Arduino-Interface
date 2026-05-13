@@ -8,6 +8,11 @@
 
 class SdCardSupport {
 
+private:
+static SdFat32 sd;
+static FatFile root;
+static FatFile file;
+
 public:
 static boolean init(uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
@@ -20,10 +25,8 @@ static char* getFileNameWithSlash(FatFile* pFile);
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }
 
-private:
-static SdFat32 sd;
-static FatFile root;
-static FatFile file;
+static FatFile& closeFile();
+static FatFile& closeRoot();
 
 };
 

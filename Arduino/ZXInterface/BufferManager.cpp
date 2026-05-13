@@ -17,19 +17,11 @@ uint8_t* allocate(size_t size) {
   poolOffset += size; 
 
 if (poolOffset > poolOffsetLastMax) { poolOffsetLastMax = poolOffset; } // BEBUG ONLY
-
   return ptr;
 }
 
-uint16_t getMark() {
-  return poolOffset;
-}
+uint16_t getMark() {  return poolOffset; }
+void freeToMark(uint16_t mark) {  poolOffset = mark; }
+void resetPool() { poolOffset = 0; }
 
-void freeToMark(uint16_t mark) {
-  poolOffset = mark;
-}
-
-void resetPool() {
-  poolOffset = 0;
-}
 }

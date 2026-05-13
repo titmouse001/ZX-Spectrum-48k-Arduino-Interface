@@ -141,9 +141,7 @@ __attribute__((optimize("-Os")))
 void Utils::saveScreen(const char* filename) {
 
   uint16_t mark = BufferManager::getMark();
-//  uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
   uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
-
 
   // Speccy to send its screen data
   uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
@@ -152,10 +150,13 @@ void Utils::saveScreen(const char* filename) {
 // TODO - ******* replace me with optimised code please ********
 // ...... This version of the code is for testing the get_IO_Byte by hammering it with this task.
 // .......By saving a screen shot we can easly verify things work OK, is free testing!
-  FatFile &file = SdCardSupport::getFile();
-  if (file.isOpen()) { file.close(); }
-  FatFile &root = SdCardSupport::getRoot();
-  if (root.isOpen()) { root.close(); }
+  // FatFile &file = SdCardSupport::getFile();
+  // if (file.isOpen()) { file.close(); }
+  // FatFile &root = SdCardSupport::getRoot();
+  // if (root.isOpen()) { root.close(); }
+
+  FatFile &file = SdCardSupport::closeFile(); 
+  FatFile &root = SdCardSupport::closeRoot();
 
   if (root.open("/")) {
     file.open(filename, O_CREAT | O_WRONLY);
@@ -189,22 +190,24 @@ void Utils::saveScreen(const char* filename) {
 
 __attribute__((optimize("-Os"))) 
 void Utils::restoreScreen(const char *filename) {
-  FatFile &file = SdCardSupport::getFile();
-  if (file.isOpen()) file.close();
-  FatFile &root = SdCardSupport::getRoot();
-  if (root.isOpen()) { root.close(); }
+  
+  // FatFile &file = SdCardSupport::getFile();
+  // if (file.isOpen()) file.close();
+  // FatFile &root = SdCardSupport::getRoot();
+  // if (root.isOpen()) { root.close(); }
+
+  FatFile &file = SdCardSupport::closeFile(); 
+  FatFile &root = SdCardSupport::closeRoot();
+
   if (root.open("/")) {
     if (file.open(filename, O_READ)) {
 
-      uint16_t mark = BufferManager::getMark();
-
-  // TODO ... what buffer size to use here ???
-      uint8_t *buf = BufferManager::allocate(128);
-
+      const uint16_t mark = BufferManager::getMark();
+      uint8_t *buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
       uint16_t currentAddress = 0x4000;
       uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
       while (totalRemaining > 0) {
-        uint16_t bytesRead = file.read(buf, 128);
+        uint16_t bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE);
         Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, false);
         currentAddress += bytesRead;
         totalRemaining -= bytesRead;
@@ -217,7 +220,21 @@ void Utils::restoreScreen(const char *filename) {
 }
 
 
-// TODO ... things beond this point are in need of a refactor!!!!
+// ----------------------------------------------------------------------------------------------
+// HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
+// ----------------------------------------------------------------------------------------------
+// PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
+// This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
+// Z80 lines are active, pinpointing the I/O Read cycle.
+// WHY: Most games poll input (IN) when the stack is stable, so using NMI directly after seeing 
+// a I/O read means the stack is unlikely to be hijacked.
+//
+// Using Inline ASM for cycle-accurate timing.
+// Equivalent to the following logic:
+//   while (digitalRead(A2) == HIGH); // Wait for I/O Read cycle
+//   NMI_LOW(); NMI_HIGH();           // Pulse NMI immediately
+//
+// ----------------------------------------------------------------------------------------------
 
 __attribute__((optimize("-Os"))) 
 void Utils::waitForUserExit() {
@@ -232,21 +249,6 @@ void Utils::waitForUserExit() {
     if (buttonData & JOYSTICK_SELECT) {
       pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
-      // ----------------------------------------------------------------------------------------------
-      // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
-      // ----------------------------------------------------------------------------------------------
-      // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
-      // This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
-      // Z80 lines are active, pinpointing the I/O Read cycle.
-      //
-      // WHY: Most games poll for input (IN) once the game logic is stable. Firing the NMI here ensures the 
-      // stack is unlikely to be hijacked, preventing the corruption from a interrupted stack-based memory move.
-      // ----------------------------------------------------------------------------------------------
-
-      // Using Inline ASM for cycle-accurate timing.
-      // Equivalent to the following logic:
-      //   while (digitalRead(A2) == HIGH); // Wait for I/O Read cycle
-      //   NMI_LOW(); NMI_HIGH();           // Pulse NMI immediately
       asm volatile (
           "1: sbic %[pin],2   \n\t"   // skip if LOW
           "rjmp 1b            \n\t"   // loop while HIGH
@@ -292,69 +294,56 @@ void Utils::waitForUserExit() {
   }
 }
 
-__attribute__((optimize("-Os"))) 
-uint8_t Utils:: pauseMenu() {
+
+constexpr uint16_t PM_INITIAL_DELAY = 380; 
+constexpr uint16_t PM_REPEAT_RATE = 120;
+constexpr uint16_t PAUSE_XPOS = 80; 
+constexpr uint8_t  PAUSE_YPOS_START = 48;
+constexpr uint8_t  HIGHLIGHT_OFFSET = PAUSE_YPOS_START / 8;  // align highlighting with the "Resume" line
+inline uint8_t getY(int8_t line) { return PAUSE_YPOS_START + (line * 8); }
+
+__attribute__((optimize("-Os")))
+uint8_t Utils::pauseMenu() {
+
+  Utils::clearScreen(COL::BLACK_WHITE);
+  Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
+  Draw::text_P(PAUSE_XPOS, getY(0), F("Resume"));                 // 0
+  Draw::text_P(PAUSE_XPOS, getY(1), F("<todo>Save SNA"));         // 1
+  Draw::text_P(PAUSE_XPOS, getY(2), F("<todo>SlowMo [normal]"));  // 2
+  Draw::text_P(PAUSE_XPOS, getY(3), F("<todo>Cheats"));           // 3
+  Draw::text_P(PAUSE_XPOS, getY(4), F("Screenshot"));             // 4
+  Draw::text_P(PAUSE_XPOS, getY(5), F("Mem View"));               // 5
+  Draw::text_P(PAUSE_XPOS, getY(6), F("Exit"));                   // 6
+
   uint8_t index = 0;
   uint16_t oldHighlightAddress = 0;
-  
-  const uint16_t INITIAL_DELAY = 380; 
-  const uint16_t REPEAT_RATE = 120;
-  
   unsigned long lastActionTime = 0;
   bool isRepeating = false;
   Menu::Button_t lastButton = Menu::BUTTON_NONE;
-
-  Utils::clearScreen(COL::BLACK_WHITE);
-  Draw::text_P(80, 8 * 4, F("PAUSE MENU"));
-  Draw::text_P(80, 8 * 6, F("Resume"));           // 0
-  Draw::text_P(80, 8 * 7, F("Save SNA"));
-  Draw::text_P(80, 8 * 8, F("SlowMo [normal]"));
-  Draw::text_P(80, 8 * 9, F("Cheats"));
-  Draw::text_P(80, 8 * 10, F("Screenshot"));
-  Draw::text_P(80, 8 * 11, F("Mem View"));
-  Draw::text_P(80, 8 * 12, F("Exit"));           // 6
-
   while (true) {
-    highlightSelection(index + 6, 0, oldHighlightAddress);
+    highlightSelection(index + HIGHLIGHT_OFFSET, 0, oldHighlightAddress); 
     Menu::Button_t currentButton = Menu::getButton();
-
     if (currentButton == Menu::BUTTON_NONE) {
-      lastActionTime = 0;
-      isRepeating = false;
       lastButton = Menu::BUTTON_NONE;
-    } 
-    else {
-      unsigned long now = millis();     
-      bool shouldTrigger = false;
-
-      if (currentButton != lastButton) {
-        shouldTrigger = true;
+      isRepeating = false;
+    } else {
+      const unsigned long now = millis();
+      const uint16_t delayThreshold = isRepeating ? PM_REPEAT_RATE : PM_INITIAL_DELAY;
+      if (currentButton != lastButton || (now - lastActionTime) >= delayThreshold) {
+        isRepeating = (currentButton == lastButton);  // Becomes true only on subsequent held triggers
         lastActionTime = now;
-        isRepeating = false;
-      } 
-      else {
-        uint16_t threshold = isRepeating ? REPEAT_RATE : INITIAL_DELAY;
-        if (now - lastActionTime >= threshold) {
-          shouldTrigger = true;
-          lastActionTime = now;
-          isRepeating = true;
+        lastButton = currentButton;
+        if (currentButton == Menu::BUTTON_ADVANCE && index < 6) {
+          index++;
+        } else if (currentButton == Menu::BUTTON_BACK && index > 0) {
+          index--;
+        } else if (currentButton == Menu::BUTTON_MENU) {
+          return index;
         }
       }
-
-      if (shouldTrigger) {
-        if (currentButton == Menu::BUTTON_ADVANCE && index < 6) index++;
-        else if (currentButton == Menu::BUTTON_BACK && index > 0) index--;
-        else if (currentButton == Menu::BUTTON_MENU) {
-          if (index == 0 || index == 4|| index == 5 || index == 6) break;  
-        }
-      }
-      
-      lastButton = currentButton;
     }
-    
-    delay(1); 
+    delay(1);
   }
-  return index;
 }
 
 // ---------------------
@@ -395,19 +384,17 @@ void Utils::viewSpeccyMemory() {
   constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
   int32_t currentBaseAddr = 0x5B00; // start of program mem
   uint16_t mark = BufferManager::getMark();
-  //uint8_t* buf = BufferManager::allocate(E(RequestSendDataPacket::PACKET_LEN));
   uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
   char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE+1);
 
- // lineBuffer[6 + (3 * 8)+8] = '\0';
   memset(lineBuffer, '\0', MAX_CHARS_PER_LINE+1);
 
   while (true) {
     uint16_t tempBaseAddr = currentBaseAddr;
-    for (uint16_t i = 0; i < 24; i++) {
+    for (uint16_t i = 0; i < ZX_SCREEN_HEIGHT_BYTES; i++) {
 
       uint8_t pos = 0;
-      // Use 6 chars for formatting address
+      // Use 6 chars for formatting address i.e. "AEFF: "
       lineBuffer[pos++] = hexChar(tempBaseAddr >> 12);
       lineBuffer[pos++] = hexChar(tempBaseAddr >> 8);
       lineBuffer[pos++] = hexChar(tempBaseAddr >> 4);
@@ -418,15 +405,15 @@ void Utils::viewSpeccyMemory() {
       uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(buf, BYTES_TO_SHOW_PER_LINE, tempBaseAddr);
       Z80Bus::sendBytes(buf, cmdLen);
 
-      for (uint8_t i = 0; i < 8; ++i) {
+      for (uint8_t k = 0; k < 8; ++k) {
         uint8_t b = Z80Bus::get_IO_Byte();
-        // Use 3 chars for formatting byte data
+        // Use 3 chars for formatting byte data i.e ("1B ")
         lineBuffer[pos++] = hexChar(b >> 4);
         lineBuffer[pos++] = hexChar(b & 0x0F);
         lineBuffer[pos++] = ' ';
-        lineBuffer[6 + (3 * 8) + i] = (b >= 32 && b <= 126) ? b : '.';
+        // ascii text far right - "." for unknown (+30 draws past previous chars)
+        lineBuffer[6 + (3 * 8) + k] = (b >= 32 && b <= 126) ? b : '.';
       }
-      
       Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels 
       tempBaseAddr += BYTES_TO_SHOW_PER_LINE;
     }
@@ -434,13 +421,13 @@ void Utils::viewSpeccyMemory() {
     while (true) {
       Menu::Button_t btn = Menu::getButton();
       if (btn == Menu::BUTTON_ADVANCE) {
-        currentBaseAddr += 8 * 24;
-        if (currentBaseAddr > 0xFF40 ) {
-          currentBaseAddr =  0xFF40;
+        currentBaseAddr += ZX_SCREEN_HEIGHT_PIXELS; // 8 * 24;
+        if (currentBaseAddr > 0xFFFF - ZX_SCREEN_HEIGHT_PIXELS ) {  
+          currentBaseAddr =  0xFFFF - (ZX_SCREEN_HEIGHT_PIXELS-1);    // = 0xFF40
         }
         break;  // Redraw
       } else if (btn == Menu::BUTTON_BACK) {
-        currentBaseAddr -= 8 * 24;
+        currentBaseAddr -= ZX_SCREEN_HEIGHT_PIXELS; // 8 * 24;
         if (currentBaseAddr<0) {
           currentBaseAddr=0;
         }
@@ -455,53 +442,52 @@ void Utils::viewSpeccyMemory() {
 }
 
 
-constexpr char SHOTS[]   = "SHOTS";  // Does both folder [5] & filename [4]
-constexpr char SCR_EXT[] = ".SCR";  // note: sizeof includes null
+constexpr char SHOTS[]   = "SHOTS";   // Folder name (5 chars) & filename prefix (4 chars)
+constexpr char SCR_EXT[] = ".SCR";    // Extension
 
 __attribute__((optimize("-Os"))) 
 void Utils::exportScreenshot() {
-  FatFile &root = SdCardSupport::getRoot();
-  if (!root.isOpen()) {
-    if (!root.open("/")) return;
+  FatFile& root = SdCardSupport::getRoot();
+  if (!root.isOpen() && !root.open("/")) {
+    return;
   }
 
+  // make sure "SHOTS" folder exists
   FatFile dir;
   if (!dir.open(&root, SHOTS, O_READ)) {
-    if (!dir.mkdir(&root, SHOTS)) return;
-    if (!dir.open(&root, SHOTS, O_READ)) return;
-  }
-
-  char filename[13];
-  filename[12] = '\0';
-  memcpy(filename, SHOTS, sizeof(SHOTS)-2);          // "SHOT" 
-  memcpy(filename + 8, SCR_EXT, sizeof(SCR_EXT)-1);    // ".SCR"
-
-  FatFile file;
-  for (uint16_t i = 1; i <= 9999; i++) {
-    // avoiding sprintf as it eats Flash mem!!! 
-    filename[4] = '0' + (i / 1000) % 10;
-    filename[5] = '0' + (i / 100) % 10;
-    filename[6] = '0' + (i / 10) % 10;
-    filename[7] = '0' + i % 10;
-
-    if (!file.open(&dir, filename, O_READ)) {
-      break;  // no file so we have found next
+    if (!dir.mkdir(&root, SHOTS) || !dir.open(&root, SHOTS, O_READ)) {
+      return;
     }
-    file.close();
   }
 
+  // Search for the first free number slot
+  FatFile file;
+  char filename[] = "SHOT0000.SCR";  // sizeof(filename) == 13, null included
+  for (uint16_t i = 0; i < 9999; i++) {
+    if (++filename[7] > '9') {
+      filename[7] = '0';
+      if (++filename[6] > '9') {
+        filename[6] = '0';
+        if (++filename[5] > '9') {
+          filename[5] = '0';
+          ++filename[4];  // thousands digit
+        }
+      }
+    }
+    if (!file.open(&dir, filename, O_READ)) {
+      break;  // name found
+    }
+    file.close();  // exists - try next
+  }
 
+  // Copy the scratch file to the new filename
   uint16_t mark = BufferManager::getMark();
-//TODO
-  uint8_t* buf = BufferManager::allocate(64); 
-
-  // place working scratch file -> screenshot file
+  uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
   if (file.open(&root, SCRATCH_FILE, O_READ)) {
     FatFile destFile;
     if (destFile.open(&dir, filename, O_CREAT | O_WRONLY)) {
-     // uint8_t* buffer = BufferManager::packetBuffer;
       int bytesRead;
-      while ((bytesRead = file.read(buf, 64)) > 0) { 
+      while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
         destFile.write(buf, bytesRead);
       }
       destFile.close();
@@ -509,9 +495,7 @@ void Utils::exportScreenshot() {
     file.close();
   }
   dir.close();
-
   BufferManager::freeToMark(mark);
-
 }
 
 

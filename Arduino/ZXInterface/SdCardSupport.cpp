@@ -7,13 +7,17 @@ SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
 
+// NOTE: For SD cards
+// SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
+
  __attribute__((optimize("-Os")))
 boolean SdCardSupport::init(uint8_t csPin) {
   if (root.isOpen()) {
     root.close();
     sd.end();
   }
-  if (!sd.begin(csPin,SPI_HALF_SPEED /*SPI_QUARTER_SPEED*/ )) {
+  
+  if (!sd.begin(csPin, SPI_HALF_SPEED)) {
     return false;
   }
   if (!root.open("/")) {
@@ -96,6 +100,7 @@ uint16_t SdCardSupport::countSnapshotFiles() {
 static char temp[MAX_FILENAME_LEN];
 
 __attribute__((optimize("-Os")))
+__attribute__((noinline)) 
 uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   uint8_t len = pFile->getName7(pFileNameBuffer, MAX_FILENAME_LEN);
   if (len == 0) {
@@ -105,8 +110,8 @@ uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
 }
 
 __attribute__((optimize("-Os")))
+__attribute__((noinline)) 
 char* SdCardSupport::getFileName(FatFile* pFile) {
-  //char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
   char* buffer = temp;
   getFileName(pFile,buffer);
   return buffer;
@@ -114,9 +119,30 @@ char* SdCardSupport::getFileName(FatFile* pFile) {
 
 __attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
- // char* buffer = (char*)&BufferManager::packetBuffer[FILE_READ_BUFFER_OFFSET];
  char* buffer = temp;
   getFileName(pFile,&buffer[1]);
   buffer[0]='/';
   return buffer;
 }
+
+__attribute__((optimize("-Os")))
+__attribute__((noinline)) 
+FatFile& SdCardSupport::closeFile() { 
+  if (file.isOpen()) {
+    file.close(); 
+  }
+  return file;
+}
+
+__attribute__((optimize("-Os")))
+__attribute__((noinline)) 
+FatFile& SdCardSupport::closeRoot() { 
+  if (root.isOpen()) {
+    root.close(); 
+  }
+  return root;
+}
+
+
+
+

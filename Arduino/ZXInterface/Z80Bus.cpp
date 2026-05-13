@@ -118,12 +118,13 @@ void Z80Bus::sendWaitVBLCommand() {
 // to confirm things have completed and release with NMI.
 __attribute__((optimize("-Os"))) 
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
-	uint16_t mark = BufferManager::getMark();
-	//uint8_t* buf = BufferManager::allocate(  E(StackPacket::PACKET_LEN) );
+	
+  uint16_t mark = BufferManager::getMark();
   uint8_t* buf = BufferManager::allocate(  sizeof(StackPacket) );
   uint8_t packetLen = PacketBuilder::buildStackCommand( buf, addr, action);
   Z80Bus::sendBytes( buf, packetLen);
   BufferManager::freeToMark(mark);
+
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
@@ -254,12 +255,12 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
 __attribute__((optimize("-Os")))
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 
-  uint16_t mark = BufferManager::getMark();
-  uint8_t* Buf = BufferManager::allocate(128);
+  const uint16_t mark = BufferManager::getMark();
+  uint8_t* Buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
   uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
   // Transfer data to Spectrum RAM
   while (pFile->available()) {
-    uint16_t bytesRead = pFile->read(Buf, 128);
+    uint16_t bytesRead = pFile->read(Buf, FILE_READ_BUFFER_SIZE);
     rleOptimisedTransfer(bytesRead, currentAddress, Buf, borderLoadingEffect);
     currentAddress += bytesRead;
   }

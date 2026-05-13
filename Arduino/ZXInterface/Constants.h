@@ -55,6 +55,7 @@ constexpr uint16_t ZX_SPECTRUM_48K_TOTAL_MEMORY = 1024UL * 48;   // 48k (above 1
 constexpr uint16_t ZX_SCREEN_WIDTH_PIXELS        = 256;
 constexpr uint16_t ZX_SCREEN_HEIGHT_PIXELS       = 192;
 constexpr uint16_t ZX_SCREEN_WIDTH_BYTES        = ZX_SCREEN_WIDTH_PIXELS/8;
+constexpr uint16_t ZX_SCREEN_HEIGHT_BYTES        = ZX_SCREEN_HEIGHT_PIXELS/8;
 //-----------------------------------------
 // .Z80 FILE FORMAT - HEADER ver1
 //-----------------------------------------

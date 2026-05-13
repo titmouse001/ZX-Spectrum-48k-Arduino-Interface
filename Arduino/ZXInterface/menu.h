@@ -33,7 +33,7 @@ public:
 
   static FatFile* handleMenu();
   static Button_t getButton();
-  static MenuAction_t getMenuAction(uint16_t totalFiles);
+
 
 private:
   static uint32_t lastButtonPressTime;
@@ -47,7 +47,8 @@ private:
 
   static void displayItemList(uint16_t startFileIndex);
   static uint16_t scanFolder(bool reset = false);
-
+  static MenuAction_t getMenuAction(uint16_t totalFiles);
+  static void show5VoltRailStatus(Menu::MenuAction_t action);
 
 };
 

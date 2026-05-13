@@ -7,7 +7,6 @@
 #include "Z80Bus.h"
 #include <string.h>  
 
-
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = Menu::MAX_REPEAT_KEY_DELAY;
@@ -20,22 +19,24 @@ bool     Menu::inSubFolder = false;
 
 __attribute__((optimize("-Ofast"))) 
 void Menu::displayItemList(uint16_t startFileIndex) {
-  // This function uses lazy evaluation to reduce slowdown.
-  // The deeper you scroll the more files are skipped avoiding extra operations.
 
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
   uint16_t mark = BufferManager::getMark();
-  //TODO... ZX_FILENAME_MAX_DISPLAY_LEN + 3 
-  char* nameBuffer = (char*)BufferManager::allocate(MAX_FILENAME_LEN);
-
+  constexpr uint8_t BRACKETS_AND_TERMINTOR = 3;
+  char* nameBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + BRACKETS_AND_TERMINTOR);
   uint16_t linesDrawn = 0;
   uint16_t filesSkipped = 0;
 
   if (inSubFolder && startFileIndex == 0) {
     Draw::textLine(0, "[/]");  // parent directory indicator
     linesDrawn = 1;
+  }
+
+  uint16_t actualFilesToSkip = startFileIndex;
+  if (inSubFolder && startFileIndex > 0) {
+    actualFilesToSkip--;
   }
 
   FatFile& file = SdCardSupport::getFile();
@@ -45,12 +46,10 @@ void Menu::displayItemList(uint16_t startFileIndex) {
       continue;
     }
 
-    if (filesSkipped < startFileIndex) {  // Skip until start index
+    if (filesSkipped < actualFilesToSkip) {  // Skip until start index
       filesSkipped++;
       file.close();
-      // Rather then reading/processing every file from the beginning each time,
-      // we fast forward through the directory.
-      continue;
+      continue;  // fast forward through the directory
     }
 
     if (linesDrawn < SCREEN_TEXT_ROWS) {
@@ -78,10 +77,8 @@ void Menu::displayItemList(uint16_t startFileIndex) {
   }
 
   // Use blank textLine to clear remaining rows
-  nameBuffer[0] = ' ';
-  nameBuffer[1] = '\0';
-  for (uint8_t i = linesDrawn; i < SCREEN_TEXT_ROWS; i++) {
-    Draw::textLine(i * FONT_HEIGHT_WITH_GAP, nameBuffer);
+  for (uint8_t i = linesDrawn * FONT_HEIGHT_WITH_GAP; i < SCREEN_TEXT_ROWS * FONT_HEIGHT_WITH_GAP; i += FONT_HEIGHT_WITH_GAP) {
+    Draw::textLine(i, " ");
   }
 
   BufferManager::freeToMark(mark);
@@ -171,21 +168,18 @@ uint16_t Menu::scanFolder(bool reset) {
     currentFileIndex = 0;
     startFileIndex = 0;
   }
-  uint16_t totalFiles = SdCardSupport::countSnapshotFiles();
-  while (totalFiles == 0) {
-    // SD card removed - retry
+  uint16_t totalFiles;
+  while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
+    // SD card removed?
     Draw::text_P(80, 90, F("NO FILES FOUND"));
     delay(100);
     SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
-    totalFiles = SdCardSupport::countSnapshotFiles();
   }
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
   displayItemList(startFileIndex);
   Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
   return totalFiles;
 }
-
-
 
 constexpr uint16_t VOLTAGE_OK_MIN  = 4850;   // 4.85V
 constexpr uint16_t VOLTAGE_OK_MAX  = 5150;   // 5.15V
@@ -196,7 +190,7 @@ constexpr uint16_t HIDE_DURATION = 150;      // 50 * 3 frames
 static uint16_t hideTimer = 0;               // >0 means hide
 static uint32_t filtered_vcc = 5000;         // 5.00V
 
-void show5VoltRailStatus(Menu::MenuAction_t action) {
+void Menu::show5VoltRailStatus(Menu::MenuAction_t action) {
     if (action != Menu::ACTION_NONE) {
         hideTimer = HIDE_DURATION;
     }
@@ -246,7 +240,8 @@ void show5VoltRailStatus(Menu::MenuAction_t action) {
 
 // ****** DEBUG ONLY *************
 char _c[8];
-sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
+//sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
+itoa(BufferManager::poolOffsetLastMax, _c, 10);
 Draw::text(256 - 64, 32, _c);
 // *******************************
 

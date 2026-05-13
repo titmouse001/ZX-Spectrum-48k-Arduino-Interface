@@ -9,6 +9,17 @@
 
 namespace Utils {
 
+enum PauseMenu {
+  Resume,
+  SaveSNA,
+  SlowMo,
+  Cheats,
+  Screenshot,
+  MemView,
+  Exit
+};
+
+
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
 void clearScreen(uint8_t col);
 

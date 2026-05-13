@@ -120,7 +120,7 @@ void setup() {
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
-  while (!SdCardSupport::init(Pin::SD_CARD_CS)) {  
+  if (!SdCardSupport::init(Pin::SD_CARD_CS)) {  
     Draw::text_P(80, 90, F("INSERT SD CARD"));
     do {  
       delay(20);  
@@ -154,32 +154,25 @@ void handleScrFile(FatFile* pFile) {
 // .SNA FILE 
 // ---------------------
 void handleSnaFile(FatFile* pFile) {
-
   Utils::clearScreen(0);
-
-  uint8_t mark = BufferManager::getMark();
-  uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
-
-    // Here we place the Z80's SP at the start of screen RAM.
-    // Overwriting this with screen data is acceptable; it is only used for the return 
-    // address during a HALT state. Because the CPU is physically halted, the NMI 
-    // push/pop cycle is protected from being corrupted by ongoing RAM writes.
-    // Basically we can set the SP now at this location without a care!
-    constexpr uint8_t STORE=1;  // RESTORE=0;
+    // Here we place the Z80's SP at the start of screen RAM and it's only used for the HALT &
+    // NMI return address. Basically we can set the SP now at this location without a care!
+    constexpr uint8_t STORE = 1;                                   // RESTORE=0;
     Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
 
+    uint8_t mark = BufferManager::getMark();
+    uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
     pFile->read((void*)(snaHeaderPacket), SNA_TOTAL_ITEMS);
     Z80Bus::transferSnaData(pFile, true);
-
     Z80Bus::executeSnapshot(snaHeaderPacket);
+    BufferManager::freeToMark(mark);
+
     Utils::waitForUserExit();
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
-  BufferManager::freeToMark(mark);
 }
 
 // ---------------------
@@ -187,23 +180,19 @@ void handleSnaFile(FatFile* pFile) {
 // ---------------------
 
 void handleZ80File(FatFile* pFile) {
-
   Utils::clearScreen(0);
+  constexpr uint8_t STORE=1;  // RESTORE=0;
+  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
 
   uint8_t mark = BufferManager::getMark();
   uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-
-  constexpr uint8_t STORE=1;  // RESTORE=0;
-  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
   if (SnapZ80::convertZ80toSNA(pFile, snaHeaderPacket)) {
-
     Z80Bus::executeSnapshot(snaHeaderPacket);
     Utils::waitForUserExit();
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
     CommandRegistry::initialize();
   }
-
   BufferManager::freeToMark(mark);
 }
 
@@ -364,6 +353,6 @@ for (uint8_t y = 0; y < 8; y++) {
 destAddr = 0x5800 + (128 / 8);
 FILL_COMMAND(packetBuffer, 128 / 8, destAddr, B01000100);
 Z80Bus::sendBytes(packetBuffer, 6);
-sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));
+sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));  // eats flash memory
 Draw::text(256 - 128, 0, _c);
 */
