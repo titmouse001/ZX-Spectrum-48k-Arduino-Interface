@@ -34,6 +34,10 @@ public:
   static FatFile* handleMenu();
   static Button_t getButton();
 
+  __attribute__((optimize("-Os"), noinline)) 
+  static inline void waitForRelease() { while (Menu::getButton() != Menu::BUTTON_NONE);  }
+  __attribute__((optimize("-Os"), noinline)) 
+  static inline void waitForAnyKey() { while (Menu::getButton() == Menu::BUTTON_NONE); waitForRelease(); }
 
 private:
   static uint32_t lastButtonPressTime;

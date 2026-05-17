@@ -1,106 +1,62 @@
 #include <stdint.h>
 #include "SdCardSupport.h"
 #include "BufferManager.h"
+#include "menu.h"
+
 #include "SdFat.h"
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
+static char fileNameBuf[Menu::ZX_FILENAME_MAX_DISPLAY_LEN + 1];  // +1 null
 
 // NOTE: For SD cards
 // SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
-
- __attribute__((optimize("-Os")))
+__attribute__((optimize("-Os")))
 boolean SdCardSupport::init(uint8_t csPin) {
-  if (root.isOpen()) {
-    root.close();
-    sd.end();
-  }
+  closeRootIfOpen();
+  sd.end();
   
-  if (!sd.begin(csPin, SPI_HALF_SPEED)) {
-    return false;
-  }
-  if (!root.open("/")) {
-    sd.end();
-    return false;
-  }
-  return true;
+  if (!sd.begin(csPin, SPI_HALF_SPEED)) return false;
+  return root.open("/");
 }
 
 __attribute__((optimize("-Os"))) 
 void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   root.rewind();
   uint8_t index = 0;
-  while (file.openNext(&root, O_RDONLY)) {
-    if (!file.isHidden() &&  (file.isFile() || file.isDir())) {
-      if (index == searchIndex) {
-        break;
-      }
-      index++;
+  while (closeFileIfOpen().openNext(&root, O_RDONLY)) {
+    //if (!file.isHidden() &&  (file.isFile() || file.isDir())) {
+    if (!file.isHidden()) {
+      if (index++ == searchIndex) return;
     }
-    file.close();
   }
 }
 
-__attribute__((optimize("-Ofast"))) 
+__attribute__((optimize("-Os"))) // Changed from Ofast to Os to save space
 uint16_t SdCardSupport::countSnapshotFiles() {
-
-  if (file.isOpen()) {
-    file.close();
-  }
-
-  uint16_t totalFiles = 0;
+  closeFileIfOpen();
   root.rewind();
   DirFat_t dir;
 
-  // readDir: see FsStructs.h for struct layout and defines
+  uint16_t totalFiles = 0;
   while (root.readDir(&dir) > 0) {
-    if (dir.name[0] == FAT_NAME_FREE) {
-      break;  // as in "Entry is free", no more entries exist in this dir.
-    }
-    if (dir.name[0] == '.'  ||  // Hide . and .. invisible links
-        dir.name[0] == FAT_NAME_DELETED) {
-      continue;
-    }
+    uint8_t firstChar = dir.name[0];
+    if (firstChar == FAT_NAME_FREE) break;
+    if (firstChar == '.' || firstChar == FAT_NAME_DELETED) continue;
+
     uint8_t attr = dir.attributes;
-    if ((attr & 0x3F) == FAT_ATTRIB_LONG_NAME) {
-      continue;  // skip LFN - count just "8.3" filenames
-    }
-    if (attr & (FS_ATTRIB_HIDDEN | FS_ATTRIB_SYSTEM | FAT_ATTRIB_LABEL)) {
-      continue;
+    if (attr & (FAT_ATTRIB_LONG_NAME | FS_ATTRIB_HIDDEN | FS_ATTRIB_SYSTEM | FAT_ATTRIB_LABEL)) {
+        if ((attr & 0x3F) != FAT_ATTRIB_LONG_NAME) continue; 
+        // Logic check: if it's LFN, we skip - count just "8.3" filenames
+        continue;
     }
     totalFiles++;
-
-
-    // Serial.print(totalFiles,HEX);
-    // Serial.print("-");
-    // if (attr & FS_ATTRIB_DIRECTORY) {
-    //   Serial.print(" DIR:");
-    // }else {
-    //    Serial.print("FILE:");
-    // }
-    // for (int i = 0; i < 8; i++) {
-    //   Serial.print((char)dir.name[i]);
-    // }
-    // Serial.print(".");
-    // Serial.print((char)dir.name[8]);
-    // Serial.print((char)dir.name[9]);
-    // Serial.print((char)dir.name[10]);
-
-    // Serial.print(", SIZE:");
-    // Serial.print(dir.fileSize[3], HEX);
-    // Serial.print(dir.fileSize[2], HEX);
-    // Serial.print(dir.fileSize[1], HEX);
-    // Serial.println(dir.fileSize[0], HEX);
   }
   return totalFiles;
 }
 
-
-static char temp[MAX_FILENAME_LEN];
-
-__attribute__((optimize("-Os")))
-__attribute__((noinline)) 
+__attribute__((optimize("-Os"), noinline))
 uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   uint8_t len = pFile->getName7(pFileNameBuffer, MAX_FILENAME_LEN);
   if (len == 0) {
@@ -109,34 +65,29 @@ uint8_t SdCardSupport::getFileName(FatFile* pFile , char* pFileNameBuffer) {
   return len;
 }
 
-__attribute__((optimize("-Os")))
-__attribute__((noinline)) 
+__attribute__((optimize("-Os"), noinline))
 char* SdCardSupport::getFileName(FatFile* pFile) {
-  char* buffer = temp;
-  getFileName(pFile,buffer);
-  return buffer;
+  getFileName(pFile,fileNameBuf);
+  return fileNameBuf;
 }
 
 __attribute__((optimize("-Os")))
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
- char* buffer = temp;
-  getFileName(pFile,&buffer[1]);
-  buffer[0]='/';
-  return buffer;
+  getFileName(pFile,&fileNameBuf[1]);
+  fileNameBuf[0]='/';
+  return fileNameBuf;
 }
 
-__attribute__((optimize("-Os")))
-__attribute__((noinline)) 
-FatFile& SdCardSupport::closeFile() { 
+__attribute__((optimize("-Os"), noinline))
+FatFile& SdCardSupport::closeFileIfOpen() { 
   if (file.isOpen()) {
     file.close(); 
   }
   return file;
 }
 
-__attribute__((optimize("-Os")))
-__attribute__((noinline)) 
-FatFile& SdCardSupport::closeRoot() { 
+__attribute__((optimize("-Os"), noinline)) 
+FatFile& SdCardSupport::closeRootIfOpen() { 
   if (root.isOpen()) {
     root.close(); 
   }

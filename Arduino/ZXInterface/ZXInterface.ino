@@ -136,18 +136,22 @@ void handleScrFile(FatFile* pFile) {
   Utils::clearScreen(0);
   if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
     Z80Bus::transferSnaData(pFile, false);  // No loading effects.
-    while (Menu::getButton() == Menu::BUTTON_NONE) { delay(1000 / 50); }
+
+    Menu::waitForAnyKey();
+
     Utils::clearScreen(0);
   }
 }
 
 // -----------------------------------------------------------------------------------------------
-// NOTES: Exiting the menu and restoring the snapshot. Before doing that we must relocate 
-// the Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is no good later on.
+// NOTES: Exiting the menu and restoring the snapshot. Before doing this, we must relocate 
+// the Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is invalid while loading a game.
 // We set a temporary stack in screen memory (0x4000). This is safe because:
-// - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap. 
-// - We reuse 0x4003 for temporary 1-deep push/pops (targeting 0x4001/02) due to SP-2 behavior.
-// This temporary SP is active only until the game restore sets the final stack.
+// - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap instruction. 
+// - We reuse 0x4003 for temporary 1-deep push/pop operations (targeting 0x4001/02) due to SP-2 behavior.
+// This temporary SP is later set by the load process to the games correct stack.
+//
+// We can safely set the SP at screen location during loading and simply sacrifice/corrupt 3 bytes of screen data.
 // -----------------------------------------------------------------------------------------------
 
 // ---------------------
@@ -156,10 +160,9 @@ void handleScrFile(FatFile* pFile) {
 void handleSnaFile(FatFile* pFile) {
   Utils::clearScreen(0);
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
-    // Here we place the Z80's SP at the start of screen RAM and it's only used for the HALT &
-    // NMI return address. Basically we can set the SP now at this location without a care!
-    constexpr uint8_t STORE = 1;                                   // RESTORE=0;
-    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
+
+    // Set stack NOW before sending data over
+    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // Store=1, Restore=0
 
     uint8_t mark = BufferManager::getMark();
     uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
@@ -180,20 +183,42 @@ void handleSnaFile(FatFile* pFile) {
 // ---------------------
 
 void handleZ80File(FatFile* pFile) {
-  Utils::clearScreen(0);
-  constexpr uint8_t STORE=1;  // RESTORE=0;
-  Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, STORE);  // MUST BE CALLED BEFORE SETUP
 
-  uint8_t mark = BufferManager::getMark();
-  uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-  if (SnapZ80::convertZ80toSNA(pFile, snaHeaderPacket)) {
-    Z80Bus::executeSnapshot(snaHeaderPacket);
-    Utils::waitForUserExit();
-    Z80Bus::setSnaRom();
-    Z80Bus::resetZ80();
-    CommandRegistry::initialize();
+  Utils::clearScreen(0);
+
+  SnapZ80::Z80HeaderInfo headerInfo;
+  uint8_t ver = readZ80Header(pFile, &headerInfo);
+
+  if (ver != Z80_VERSION_UNKNOWN) {
+    if (checkZ80FileValidity(pFile, &headerInfo)) {
+
+      // Set stack NOW before sending data over
+      Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // Store=1, Restore=0
+
+      uint8_t mark = BufferManager::getMark();
+      uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
+
+      SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, snaHeaderPacket);
+      Z80Bus::executeSnapshot(snaHeaderPacket);
+
+      BufferManager::freeToMark(mark);
+
+      Utils::waitForUserExit();
+      Z80Bus::setSnaRom();
+      Z80Bus::resetZ80();
+      CommandRegistry::initialize();
+      return;  // load OK
+    }
   }
-  BufferManager::freeToMark(mark);
+
+  // drop down to report load error
+  Utils::clearScreen(COL::BLACK_WHITE);
+  Draw::text_P(0, 40, F("Can't load:"));
+  Draw::text(0, 50, SdCardSupport::getFileName(pFile));
+  if (SnapZ80::getMachineDetails(headerInfo.version, headerInfo.hw_mode) == MACHINE_128K) {
+    Draw::text_P(80, 90, F("128K not supported (yet)"));
+  }
+  Menu::waitForAnyKey();
 }
 
 // ---------------------
@@ -202,97 +227,157 @@ void handleZ80File(FatFile* pFile) {
 
 __attribute__((optimize("-Os")))
 void handleTxtFile(FatFile* pFile) {
-  constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
-  constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-  constexpr uint16_t maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
-  
+  constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+  constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
+  constexpr uint8_t maxChars = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
+
   uint16_t mark = BufferManager::getMark();
-  char* lineBuffer = (char*)BufferManager::allocate(maxCharsPerLine);
-
-  uint16_t currentPageIndex = 0;
-  uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
-  uint16_t lastPageIndex = 0;  // index of that page
-
-  Utils::clearScreen(COL::BLACK_WHITE);
+  char* buf = (char*)BufferManager::allocate(maxChars + 1);
+  
+  uint16_t currentPage = 0;
+  uint32_t pageStartPos = 0; 
 
   while (true) {
+    Utils::clearScreen(COL::BLACK_WHITE);
+    pFile->seekSet(pageStartPos);
+    
+    uint8_t y = 0;
+    for (uint8_t i = 0; i < maxLines; i++) {
+      uint8_t len = 0;
+      if (pFile->available()) {
+        len = Utils::readLineTxt(pFile, buf, maxChars);
+        if (!len) { buf[0] = ' '; len = 1; }
+      }
+      buf[len] = 0;
+      Draw::textLine(y, buf);
+      y += charHeight; // Faster/smaller than i * charH
+    }
 
-    const uint32_t autoScrollDelay = millis() + 400;
+    uint32_t nextPos = pFile->curPosition();
+    bool canFwd = pFile->available();
 
-    if (currentPageIndex == lastPageIndex + 1) {  // forward
-      pFile->seekSet(lastSeekPos);
-    } else if (currentPageIndex == lastPageIndex - 1) {  // backward
-      pFile->seekSet(0);
-      for (uint16_t i = 0; i < currentPageIndex; ++i) {
-        uint16_t linesReadOnPage = 0;
-        while (linesReadOnPage < maxLinesPerScreen) {
-          Utils::readLineTxt(pFile,NULL,maxCharsPerLine);  // skip
-          linesReadOnPage++;
+    // Block until button press
+    Menu::Button_t btn;
+    while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);
+
+    if (btn == Menu::BUTTON_MENU) break;
+    if (btn == Menu::BUTTON_ADVANCE && canFwd) {
+      pageStartPos = nextPos;
+      currentPage++;
+    } 
+    else if (btn == Menu::BUTTON_BACK && currentPage > 0) {
+      currentPage--;
+      pageStartPos = 0; // Re-scan logic
+      for (uint16_t p = 0; p < currentPage; p++) {
+        pFile->seekSet(pageStartPos);
+        for (uint8_t l = 0; l < maxLines; l++) {
+          Utils::readLineTxt(pFile, nullptr, maxChars); 
         }
-      }
-    } else {                        // page limits
-      if (currentPageIndex == 0) {  // hard stop on top page
-        pFile->seekSet(0);
-      } else if (currentPageIndex == lastPageIndex) {  // can only be last page now
-        pFile->seekSet(lastSeekPos);
+        pageStartPos = pFile->curPosition();
       }
     }
 
-    // Draw the current page
-    uint16_t currentLine = 0;
-    while (currentLine < maxLinesPerScreen && pFile->available()) {
-      uint16_t bytesRead = Utils::readLineTxt(pFile, lineBuffer, maxCharsPerLine);
-      
-      // empty line becomes single space
-      if (bytesRead == 0) {
-        lineBuffer[0] = ' ';
-        bytesRead = 1;
-      }
-      lineBuffer[bytesRead] = '\0';
-      Draw::textLine(currentLine * charHeight, lineBuffer);
-      currentLine++;
-    }
-
-    bool atEOF = !pFile->available();
-    if (!atEOF) {
-      lastSeekPos = pFile->curPosition();
-    }
-    lastPageIndex = currentPageIndex;
-
-    lineBuffer[0] = ' ';
-    lineBuffer[1] = '\0';
-    for (uint8_t i = currentLine; i < maxLinesPerScreen; i++) {   // Clear remaining lines
-      Draw::textLine(i * charHeight, lineBuffer);
-    }
-
-    Menu::Button_t button;
-    do {
-      button = Menu::getButton();
-    } while (button == Menu::BUTTON_NONE);
-
-    if (button == Menu::BUTTON_ADVANCE) {
-      if (!atEOF) {
-        currentPageIndex++;
-      }
-    } else if (button == Menu::BUTTON_BACK) {
-      if (currentPageIndex > 0) {
-        currentPageIndex--;
-      }
-    } else if (button == Menu::BUTTON_MENU) {
-      return;
-    }
-
-    while (Menu::getButton() != Menu::BUTTON_NONE) {
-      if (millis() > autoScrollDelay) {
-        break;
-      }
-    }
+    const uint32_t wait = millis() + 350;
+    while (Menu::getButton() != Menu::BUTTON_NONE && millis() < wait);
   }
-  while (Menu::getButton() != Menu::BUTTON_NONE) { delay(20); }
 
   BufferManager::freeToMark(mark);
-  
+  Menu::waitForRelease();
 }
+
+
+// __attribute__((optimize("-Os")))
+// void handleTxtFile(FatFile* pFile) {
+//   constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
+//   constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+//   constexpr uint16_t maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
+  
+//   uint16_t mark = BufferManager::getMark();
+//   char* lineBuffer = (char*)BufferManager::allocate(maxCharsPerLine);
+
+//   uint16_t currentPageIndex = 0;
+//   uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
+//   uint16_t lastPageIndex = 0;  // index of that page
+
+//   Utils::clearScreen(COL::BLACK_WHITE);
+
+//   while (true) {
+
+//     const uint32_t autoScrollDelay = millis() + 400;
+
+//     if (currentPageIndex == lastPageIndex + 1) {  // forward
+//       pFile->seekSet(lastSeekPos);
+//     } else if (currentPageIndex == lastPageIndex - 1) {  // backward
+//       pFile->seekSet(0);
+//       for (uint16_t i = 0; i < currentPageIndex; ++i) {
+//         uint16_t linesReadOnPage = 0;
+//         while (linesReadOnPage < maxLinesPerScreen) {
+//           Utils::readLineTxt(pFile,NULL,maxCharsPerLine);  // skip
+//           linesReadOnPage++;
+//         }
+//       }
+//     } else {                        // page limits
+//       if (currentPageIndex == 0) {  // hard stop on top page
+//         pFile->seekSet(0);
+//       } else if (currentPageIndex == lastPageIndex) {  // can only be last page now
+//         pFile->seekSet(lastSeekPos);
+//       }
+//     }
+
+//     // Draw the current page
+//     uint16_t currentLine = 0;
+//     while (currentLine < maxLinesPerScreen && pFile->available()) {
+//       uint16_t bytesRead = Utils::readLineTxt(pFile, lineBuffer, maxCharsPerLine);
+      
+//       // empty line becomes single space
+//       if (bytesRead == 0) {
+//         lineBuffer[0] = ' ';
+//         bytesRead = 1;
+//       }
+//       lineBuffer[bytesRead] = '\0';
+//       Draw::textLine(currentLine * charHeight, lineBuffer);
+//       currentLine++;
+//     }
+
+//     bool atEOF = !pFile->available();
+//     if (!atEOF) {
+//       lastSeekPos = pFile->curPosition();
+//     }
+//     lastPageIndex = currentPageIndex;
+
+//     lineBuffer[0] = ' ';
+//     lineBuffer[1] = '\0';
+//     for (uint8_t i = currentLine; i < maxLinesPerScreen; i++) {   // Clear remaining lines
+//       Draw::textLine(i * charHeight, lineBuffer);
+//     }
+
+//     Menu::Button_t button;
+//     do {
+//       button = Menu::getButton();
+//     } while (button == Menu::BUTTON_NONE);
+
+//     if (button == Menu::BUTTON_ADVANCE) {
+//       if (!atEOF) {
+//         currentPageIndex++;
+//       }
+//     } else if (button == Menu::BUTTON_BACK) {
+//       if (currentPageIndex > 0) {
+//         currentPageIndex--;
+//       }
+//     } else if (button == Menu::BUTTON_MENU) {
+//       return;
+//     }
+
+//     while (Menu::getButton() != Menu::BUTTON_NONE) {
+//       if (millis() > autoScrollDelay) {
+//         break;
+//       }
+//     }
+//   }
+//   //while (Menu::getButton() != Menu::BUTTON_NONE) { delay(20); }
+//   Menu::waitForRelease();
+//   BufferManager::freeToMark(mark);
+// }
 
 
 void loop() {

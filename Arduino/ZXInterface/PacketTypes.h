@@ -3,22 +3,22 @@
 
 #include <stdint.h>
 
-// NOTE: The static_asserts are a safe gard to make sure these packet structs have the 
-// same size as the Z80 assembly code running on the ZX Inerface.
-
 #pragma pack(push, 1)
+
+#define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
+    static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
 
 struct ReceiveKeyboardPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
 };
-static_assert(sizeof(ReceiveKeyboardPacket) == 2, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(2,ReceiveKeyboardPacket);
 
 struct ExecutePacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
 };
-static_assert(sizeof(ExecutePacket) == 2, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(2,ExecutePacket);
 
 struct TransferPacket {
     uint8_t cmd_high;
@@ -27,7 +27,7 @@ struct TransferPacket {
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
 };
-static_assert(sizeof(TransferPacket) == 5, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(5,TransferPacket);
 
 struct FillPacket {
     uint8_t cmd_high;
@@ -38,7 +38,7 @@ struct FillPacket {
     uint8_t start_addr_low;
     uint8_t fill_value;
 };
-static_assert(sizeof(FillPacket) == 7, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(7,FillPacket);
 
 struct Fill8Packet {
     uint8_t cmd_high;
@@ -48,7 +48,7 @@ struct Fill8Packet {
     uint8_t amount;
     uint8_t fill_value;
 };
-static_assert(sizeof(Fill8Packet) == 6, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(6,Fill8Packet);
 
 struct StackPacket {
     uint8_t cmd_high;
@@ -57,7 +57,7 @@ struct StackPacket {
     uint8_t sp_addr_low;
     uint8_t action;
 };
-static_assert(sizeof(StackPacket) == 5, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(5,StackPacket);
 
 struct CopyPacket {
     uint8_t cmd_high;
@@ -66,7 +66,7 @@ struct CopyPacket {
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
 };
-static_assert(sizeof(CopyPacket) == 5, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(5,CopyPacket);
 
 struct Copy32Packet {
     uint8_t cmd_high;
@@ -74,13 +74,13 @@ struct Copy32Packet {
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
 };
-static_assert(sizeof(Copy32Packet) == 4, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(4,Copy32Packet);
 
 struct WaitVBLPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
 };
-static_assert(sizeof(WaitVBLPacket) == 2, "Wrong packet size");
+ASSERT_Z80_PACKET_SIZE(2,WaitVBLPacket);
 
 struct RequestSendDataPacket {
     uint8_t cmd_high;
@@ -90,16 +90,9 @@ struct RequestSendDataPacket {
     uint8_t start_addr_high;
     uint8_t start_addr_low;
 };
-static_assert(sizeof(RequestSendDataPacket) == 6, "Wrong packet size");
-
-
-// check that all packets fit in a global buffer... NO LONGER USED
-//constexpr uint8_t GLOBAL_MAX_PACKET_LEN = 7;  // largest packet is FillPacket (7 bytes)
-//static_assert(GLOBAL_MAX_PACKET_LEN == sizeof(FillPacket), "Update GLOBAL_MAX_PACKET_LEN if needed");
+ASSERT_Z80_PACKET_SIZE(6,RequestSendDataPacket);
 
 #pragma pack(pop)
-
-
 
 
 #endif

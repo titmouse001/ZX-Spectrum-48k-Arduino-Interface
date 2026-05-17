@@ -3,47 +3,36 @@
 #include "Z80Bus.h"
 #include "utils.h"
 
-uint16_t CommandRegistry::command_TransmitKey;
-uint16_t CommandRegistry::command_Fill;
-uint16_t CommandRegistry::command_Transfer;
-uint16_t CommandRegistry::command_Copy;
-uint16_t CommandRegistry::command_Copy32;
-uint16_t CommandRegistry::command_VBL_Wait;
-uint16_t CommandRegistry::command_Stack;
-uint16_t CommandRegistry::command_Execute;
-uint16_t CommandRegistry::command_fill_mem_bytecount;
-uint16_t CommandRegistry::command_SendData;
+namespace CommandRegistry {
 
-void CommandRegistry::initialize(){
+    uint16_t command_TransmitKey;
+    uint16_t command_Fill;
+    uint16_t command_Transfer;
+    uint16_t command_Copy;
+    uint16_t command_Copy32;
+    uint16_t command_VBL_Wait;
+    uint16_t command_Stack;
+    uint16_t command_Execute;
+    uint16_t command_fill_mem_bytecount;
+    uint16_t command_SendData;
 
-  command_TransmitKey = Z80Bus::get_IO_Byte();
-  command_TransmitKey += Z80Bus::get_IO_Byte()<< 8 ;
+    static uint16_t read_IO_Word() {
+        uint16_t low = Z80Bus::get_IO_Byte();
+        uint16_t high = Z80Bus::get_IO_Byte();
+        return low | (high << 8);
+    }
 
-  command_Fill = Z80Bus::get_IO_Byte();
-  command_Fill += Z80Bus::get_IO_Byte()<< 8;
-
-  command_Transfer = Z80Bus::get_IO_Byte();
-  command_Transfer += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_Copy = Z80Bus::get_IO_Byte();
-  command_Copy += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_Copy32 = Z80Bus::get_IO_Byte();
-  command_Copy32 += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_VBL_Wait = Z80Bus::get_IO_Byte();
-  command_VBL_Wait += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_Stack = Z80Bus::get_IO_Byte();
-  command_Stack += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_Execute = Z80Bus::get_IO_Byte();
-  command_Execute += Z80Bus::get_IO_Byte()<< 8 ;
-
-  command_fill_mem_bytecount = Z80Bus::get_IO_Byte();
-  command_fill_mem_bytecount += Z80Bus::get_IO_Byte()<< 8;
-  
-  command_SendData = Z80Bus::get_IO_Byte();
-  command_SendData += Z80Bus::get_IO_Byte()<< 8;
-
+    void initialize() {
+        command_TransmitKey        = read_IO_Word();
+        command_Fill               = read_IO_Word();
+        command_Transfer           = read_IO_Word();
+        command_Copy               = read_IO_Word();
+        command_Copy32             = read_IO_Word();
+        command_VBL_Wait           = read_IO_Word();
+        command_Stack              = read_IO_Word();
+        command_Execute            = read_IO_Word();
+        command_fill_mem_bytecount = read_IO_Word();
+        command_SendData           = read_IO_Word();
+    }
 }
+

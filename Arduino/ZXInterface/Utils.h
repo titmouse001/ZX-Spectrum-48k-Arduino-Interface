@@ -75,7 +75,6 @@ inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
   if (aligned) { output[byteIndex + 1] |= aligned; }
 }
 
-
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
 byte reverseBits(byte data);

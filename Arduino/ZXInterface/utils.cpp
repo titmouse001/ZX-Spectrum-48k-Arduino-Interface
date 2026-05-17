@@ -90,20 +90,14 @@ void Utils::storeZ80States() {
 
   // note: for each get_IO_Byte the Z80 will 'OUT' then 'HALT'
   REG_A = Z80Bus::get_IO_Byte();
-
   REG_B = Z80Bus::get_IO_Byte();
   REG_C = Z80Bus::get_IO_Byte();
-
   REG_F = Z80Bus::get_IO_Byte();
-
   REG_IFF2 = Z80Bus::get_IO_Byte();     
-
   REG_D = Z80Bus::get_IO_Byte();
   REG_E = Z80Bus::get_IO_Byte();
-
   REG_H = Z80Bus::get_IO_Byte();
   REG_L = Z80Bus::get_IO_Byte();
-
   REG_IXH = Z80Bus::get_IO_Byte();
   REG_IXL = Z80Bus::get_IO_Byte();
 }
@@ -114,21 +108,15 @@ void Utils::restoreZ80States() {
   // for the ROM to swap back to the stock ROM and start the restore process at 0x04AA.
   uint8_t addr0x04AA[] = { 0x04, 0xAA }; 
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
-
   Z80Bus::sendBytes(&REG_D, 1); 
   Z80Bus::sendBytes(&REG_E, 1);
-
   Z80Bus::sendBytes(&REG_B, 1);
   Z80Bus::sendBytes(&REG_C, 1);
-
   Z80Bus::sendBytes(&REG_H, 1);
   Z80Bus::sendBytes(&REG_L, 1);
-
   Z80Bus::sendBytes(&REG_IXH, 1);
   Z80Bus::sendBytes(&REG_IXL, 1);
-
   Z80Bus::sendBytes(&REG_IFF2, 1); 
-
   Z80Bus::sendBytes(&REG_F, 1); 
   Z80Bus::sendBytes(&REG_A, 1); 
 
@@ -155,8 +143,8 @@ void Utils::saveScreen(const char* filename) {
   // FatFile &root = SdCardSupport::getRoot();
   // if (root.isOpen()) { root.close(); }
 
-  FatFile &file = SdCardSupport::closeFile(); 
-  FatFile &root = SdCardSupport::closeRoot();
+  FatFile &file = SdCardSupport::closeFileIfOpen(); 
+  FatFile &root = SdCardSupport::closeRootIfOpen();
 
   if (root.open("/")) {
     file.open(filename, O_CREAT | O_WRONLY);
@@ -196,8 +184,8 @@ void Utils::restoreScreen(const char *filename) {
   // FatFile &root = SdCardSupport::getRoot();
   // if (root.isOpen()) { root.close(); }
 
-  FatFile &file = SdCardSupport::closeFile(); 
-  FatFile &root = SdCardSupport::closeRoot();
+  FatFile &file = SdCardSupport::closeFileIfOpen(); 
+  FatFile &root = SdCardSupport::closeRootIfOpen();
 
   if (root.open("/")) {
     if (file.open(filename, O_READ)) {
@@ -433,7 +421,8 @@ void Utils::viewSpeccyMemory() {
         }
         break;  // Redraw
       } else if (btn == Menu::BUTTON_MENU) {
-        while (Menu::getButton() != Menu::BUTTON_NONE);
+        //while (Menu::getButton() != Menu::BUTTON_NONE);
+        Menu::waitForRelease();
         BufferManager::freeToMark(mark);  // frees both allocs
         return; 
       }

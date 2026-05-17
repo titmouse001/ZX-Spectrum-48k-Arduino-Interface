@@ -25,8 +25,8 @@ static char* getFileNameWithSlash(FatFile* pFile);
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }
 
-static FatFile& closeFile();
-static FatFile& closeRoot();
+static FatFile& closeFileIfOpen();
+static FatFile& closeRootIfOpen();
 
 };
 

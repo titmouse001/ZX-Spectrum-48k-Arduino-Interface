@@ -9,43 +9,34 @@
 #include "PacketTypes.h"
 #include "BufferManager.h"
 
+
 constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT) + sizeof(Copy32Packet);
+constexpr uint16_t PIX_INC = 0x0100;  // within same character -> +256 for next pixel line
+constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
 
 // textLine: Draws up to a full-width line of text (32 bytes per line)
 // Text must be NULL-terminated and no longer than 42 characters (font width is 6 pixels, screen width 256 pixels -> max 42 chars)
 __attribute__((optimize("-Ofast"))) 
 void Draw::textLine(int ypos, const char *message) {
-    // For ZX Spectrum, moving down 1 pixel within same character row adds 0x0100
-    constexpr uint16_t PIX_INC = 0x0100;  // +256 for next pixel line
-    constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
 
     uint16_t mark = BufferManager::getMark();
-    uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);
-    Copy32Packet* pkt = reinterpret_cast<Copy32Packet*>(buffer);
-    uint8_t* fontData = buffer + sizeof(Copy32Packet);      // header shares the same buffer
-
-// SOME ROOM HERE FOR FETURE OPTIMISING - prepareTextGraphics used for this part looks for null (could just loop 32)
+    uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
+    uint8_t* fontData = buffer + sizeof(Copy32Packet);          // header shares the same buffer
     RenderFont::prepareTextGraphics(fontData, message);
 
+    uint16_t destAddr = Utils::zx_spectrum_screen_address(ypos);
+    Copy32Packet* pkt = reinterpret_cast<Copy32Packet*>(buffer);
     pkt->cmd_high = static_cast<uint8_t>(CommandRegistry::command_Copy32 >> 8);
     pkt->cmd_low  = static_cast<uint8_t>(CommandRegistry::command_Copy32 & 0xFF);
-
-    uint16_t destAddr = Utils::zx_spectrum_screen_address(ypos);
 
     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
         pkt->dest_addr_high = static_cast<uint8_t>(destAddr >> 8);
         pkt->dest_addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
-
         Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(pkt), sizeof(Copy32Packet));
+
         Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE);
-
         fontData += SmallFont::FNT_BUFFER_SIZE;
-
-        if ((y & 0x07) == 0x07) {
-            destAddr += screen_width_offset;
-        } else {
-            destAddr += PIX_INC;
-        }
+        destAddr += PIX_INC;  // down 1 pixel scanline 
     }
 
     BufferManager::freeToMark(mark);

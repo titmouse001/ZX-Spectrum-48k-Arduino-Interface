@@ -170,7 +170,7 @@ bool SnapZ80::locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& r
 }
 
 __attribute__((optimize("-Os")))
-bool SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerInfo) {
+bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 	bool result = true;
 	uint32_t initial_file_pos = pFile->curPosition();
 
@@ -189,8 +189,7 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, const Z80HeaderInfo* headerIn
 		}
 	} else {  // V1
 		if (headerInfo->isV1Compressed) {
-			uint32_t dummy_length;
-			if (!locateV1Terminator(pFile, initial_file_pos, dummy_length)) {
+			if (!locateV1Terminator(pFile, initial_file_pos, headerInfo->v1PayloadLength ) ) {
 				result = false;
 			}
 		} else { // check uncompressed data is 48k + file header
@@ -213,10 +212,10 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
   uint8_t* txBuffer = BufferManager::allocate( PAYLOAD_SIZE);
 	uint8_t* header = BufferManager::allocate(sizeof(TransferPacket)); 
 
-  uint16_t commandPayloadPos = 0;
+	uint8_t commandPayloadPos = 0;
   uint16_t fileReadBufferCurrentPos = 0;
   uint16_t fileReadBufferBytesAvailable = 0;
-  uint32_t bytesReadFromSource = 0;
+  uint16_t bytesReadFromSource = 0;
 
 	// Cache SD card reads
   auto getNextByteFromFile = [&]() -> uint8_t {
@@ -249,7 +248,6 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
     }
   };
 
-	// Z80 RLE DECODING LOOP
   while (bytesReadFromSource < sourceLengthLimit) {
     uint8_t b1 = getNextByteFromFile();
     if (b1 == 0xED) { // maybe the start of compressed sequence
@@ -266,7 +264,7 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
       } else {
 				// We found a 'ED' followed by something that is NOT 'ED'. The format says that the byte immediately following a literal 'ED' 
 				// is NOT part of a compression block. So, we treat both b1 ('ED') and b2 as normal, uncompressed data.
-        addByteToCommandPayloadBuffer(b1);
+        addByteToCommandPayloadBuffer(0xED);
         addByteToCommandPayloadBuffer(b2);
       }
     } else {
@@ -303,7 +301,8 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile* pFile) {
 	return BLOCK_SUCCESS;
 }
 
-bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader) {
+// .z80 files get converted to reuse existing ".SNA" game loading functionaliy
+bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader) {
 	uint16_t stackAddrForPushingPC = 0;
 	uint8_t* v1_header = headerInfo->headerV1Data;
 
@@ -334,20 +333,23 @@ bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, ui
 		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		if (headerInfo->isV1Compressed) {
-			uint32_t start_of_rle_data = pFile->curPosition();
-			uint32_t rle_data_length = 0;
-			if (!locateV1Terminator(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
-				return false;  //  BLOCK_ERROR_NO_V1_MARKER;
-			}
-			decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
+			uint32_t rle_data_length = headerInfo->v1PayloadLength; 
+      decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
 
-			// Skip past the marker (locateV1Terminator leaves us at the start, so we need to skip past data + marker)
-			uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
-			if (pFile->curPosition() < expected_pos_after_marker) {
-				if (!pFile->seekSet(expected_pos_after_marker)) {
-					return false;  // -1;  // Failed to seek past marker
-				}
-			}
+			// uint32_t start_of_rle_data = pFile->curPosition();
+			// uint32_t rle_data_length = 0;
+			// if (!locateV1Terminator(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
+			// 	return false;  //  BLOCK_ERROR_NO_V1_MARKER;
+			// }
+			// decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
+
+			// // Skip past the marker (locateV1Terminator leaves us at the start, so we need to skip past data + marker)
+			// uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
+			// if (pFile->curPosition() < expected_pos_after_marker) {
+			// 	if (!pFile->seekSet(expected_pos_after_marker)) {
+			// 		return false;  // Failed to seek past marker
+			// 	}
+			// }
 		} else {  // Uncompressed V1 data
 			decodeRLE_core(pFile, DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
 		}
@@ -365,16 +367,6 @@ bool SnapZ80::convertZ80toSNA_impl(FatFile* pFile, Z80HeaderInfo* headerInfo, ui
 	return true; // BLOCK_SUCCESS;
 }
 
-// .z80 files get converted to reuse existing ".SNA" game loading functionaliy
-bool SnapZ80::convertZ80toSNA(FatFile* pFile, uint8_t* snaHeader) {
-	Z80HeaderInfo headerInfo;
-	if (readZ80Header(pFile, &headerInfo) == Z80_VERSION_UNKNOWN) {
-		return false;
-	}
-	if (checkZ80FileValidity(pFile, &headerInfo)) {
-		return convertZ80toSNA_impl(pFile, &headerInfo , snaHeader);
-	}
-	return false;
-}
+
 
 

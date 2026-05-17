@@ -249,60 +249,49 @@ Draw::text(256 - 64, 32, _c);
 
 __attribute__((optimize("-Os")))
 FatFile* Menu::handleMenu() {
-
   Utils::clearScreen(COL::BLACK_WHITE);
   uint16_t totalFiles = scanFolder();
-  while (true) {
 
+  while (true) {
     const uint32_t start = millis();
     const MenuAction_t action = getMenuAction(totalFiles);
 
     if (action != ACTION_NONE) {
       Utils::highlightSelection(currentFileIndex, startFileIndex, oldHighlightAddress);
-    } else {
-
     }
 
     if (action == ACTION_SELECT_FILE) {
       FatFile& root = SdCardSupport::getRoot();
+      bool backToRoot = (inSubFolder && currentFileIndex == 0); // Inside folder - first item shows "[/]"
 
-      if (inSubFolder && currentFileIndex == 0) {  // Go back to root
+      if (backToRoot) {
         root.close();
-        if (root.open("/")) {  // navagating back simply resets to root
-          inSubFolder = false;
-          totalFiles = scanFolder(true);
-        }
-        continue;
-      }
-      uint16_t actualFileIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
-      SdCardSupport::openFileByIndex(actualFileIndex);
-
-      FatFile& file = SdCardSupport::getFile();
-
-      if (file.isDir()) {
-        char* nameWithPath = SdCardSupport::getFileNameWithSlash(&file);
-        root.close();
-        if (root.open(nameWithPath)) {
-          inSubFolder = true;
-        } else {  // should not happen - just incase
-          inSubFolder = false;
-          root.open("/");  // something failed!
-        }
-        totalFiles = scanFolder(true);
- 
-        // Jump into folder - don't continue with select down!
-        while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  
-
+        inSubFolder = false;
+        root.open("/"); 
       } else {
-        return &file;  // actualFileIndex;
+        // File or Folder
+        SdCardSupport::openFileByIndex(inSubFolder ? currentFileIndex - 1 : currentFileIndex);
+        FatFile& file = SdCardSupport::getFile();
+        if (file.isDir()) {
+          char* path = SdCardSupport::getFileNameWithSlash(&file);
+          root.close();
+          inSubFolder = root.open(path);
+          if (!inSubFolder) root.open("/"); // Fallback on failure
+          Menu::waitForRelease();
+        } else {
+          return &file; // Selection confirmed
+        }
       }
-    } else if (action == ACTION_REFRESH_LIST) {
+      totalFiles = scanFolder(true); // refresh for nav change
+      continue; 
+    } 
+    
+    if (action == ACTION_REFRESH_LIST) {
       displayItemList(startFileIndex);
     }
 
-
     show5VoltRailStatus(action);
-
     Utils::frameDelay(start);
   }
 }
+
