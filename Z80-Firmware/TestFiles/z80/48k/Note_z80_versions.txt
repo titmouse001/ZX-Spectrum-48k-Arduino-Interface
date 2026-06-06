@@ -1,0 +1,17 @@
+Version 1
+---------
+paperboy.z80 : 49,182 (30bytes header + 49,152) uncompressed file
+GYRSCOPE.z80 : compressed file with end marker "00 ED ED 00"
+
+Version 2
+---------
+glider03.z80 : position 30 is 23 for version 2 files
+
+Version 3
+---------
+glider01.z80 : position 30 is 54 for version 3
+glider02.z80 : position 30 is 54 for version 3
+turtles.z80  : position 30 is 54 for version 3
+
+
+Not found any .z80 files that have position 30 is 55 for version 3 (54 or 55 for version 3)

@@ -96,7 +96,7 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
   if (pFile->read(len_buf, 2) != 2) return Z80_VERSION_UNKNOWN;
   
   uint16_t ext_len = len_buf[0] | ((uint16_t)len_buf[1] << 8);
-  if (ext_len < 3) return Z80_VERSION_UNKNOWN; // Corrupt file check
+  if (ext_len < 3) return Z80_VERSION_UNKNOWN; 
 
   uint8_t ext_data[3];
   if (pFile->read(ext_data, 3) != 3) return Z80_VERSION_UNKNOWN;
@@ -183,7 +183,10 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 				return false;
 			}
 			uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
-			if (!pFile->seekCur(compressed_len)) { // RESTORE NO REALLY NEEDED
+			constexpr uint16_t UNCOMPRESSED_16KB = 0x4000 ; // uses 16KB (0x4000)
+			constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF ; // flags uncompressed
+      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? UNCOMPRESSED_16KB : compressed_len;
+			if (!pFile->seekCur(skip_len)) { // RESTORE NO REALLY NEEDED
 				return false;  // skip block data
 			}
 		}
@@ -276,6 +279,48 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
   BufferManager::freeToMark(mark); // release all mallocs in this method
 }
 
+
+
+__attribute__((optimize("-Ofast")))
+void SnapZ80::sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t currentAddress) {
+  const uint16_t PAYLOAD_SIZE = 255;
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* fileReadBufferPtr = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+  uint8_t* txBuffer = BufferManager::allocate(PAYLOAD_SIZE);
+  uint8_t* header = BufferManager::allocate(sizeof(TransferPacket)); 
+
+  uint8_t commandPayloadPos = 0;
+  uint16_t bytesReadFromSource = 0;
+
+  while (bytesReadFromSource < length) {
+    uint16_t remaining = length - bytesReadFromSource;
+    uint16_t bytesToRead = min((uint16_t)FILE_READ_BUFFER_SIZE, remaining);
+    int16_t bytesRead = pFile->read(fileReadBufferPtr, bytesToRead);
+    if (bytesRead <= 0) break;
+
+    for (int16_t i = 0; i < bytesRead; i++) {
+      txBuffer[commandPayloadPos++] = fileReadBufferPtr[i];
+      if (commandPayloadPos >= PAYLOAD_SIZE) {
+        uint8_t headerLen = PacketBuilder::buildTransferCommand(header, currentAddress, commandPayloadPos);
+        Z80Bus::sendBytes(header, headerLen);
+        Z80Bus::sendBytes(txBuffer, commandPayloadPos);
+        currentAddress += commandPayloadPos;
+        commandPayloadPos = 0;
+      }
+    }
+    bytesReadFromSource += bytesRead;
+  }
+
+  // Flush any leftover bytes
+  if (commandPayloadPos > 0) {
+    uint8_t headerLen = PacketBuilder::buildTransferCommand(header, currentAddress, commandPayloadPos);
+    Z80Bus::sendBytes(header, headerLen);
+    Z80Bus::sendBytes(txBuffer, commandPayloadPos);
+  }
+
+  BufferManager::freeToMark(mark);
+}
+
 __attribute__((optimize("-Ofast")))
 BlockReadResult SnapZ80::readAndWriteBlock(FatFile* pFile) {
 	uint8_t header[3];  // compressed length (2 bytes), page number (1 byte)
@@ -297,7 +342,15 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile* pFile) {
 			return BLOCK_UNSUPPORTED_PAGE;
 	}
 
-	decodeRLE_core(pFile, compressed_len, mem_offset);
+	
+  if (compressed_len == 0xFFFF) {
+		// uncompressed 16K blocks
+    sendRawBytes_core(pFile, 0x4000, mem_offset);
+  } else {
+    decodeRLE_core(pFile, compressed_len, mem_offset);
+  }
+
+	//decodeRLE_core(pFile, compressed_len, mem_offset);
 	return BLOCK_SUCCESS;
 }
 
@@ -323,35 +376,21 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, uin
 			BlockReadResult block_result = readAndWriteBlock(pFile); 
 			if (block_result == BLOCK_END_OF_FILE) break;
 			if (block_result == BLOCK_UNSUPPORTED_PAGE) { continue; }  // Skip to the next block
-			if (block_result < 0) { return false; }                    // block_result; }             // negative critical errors
+
+			if (block_result == BLOCK_ERROR) { return false; } 
 		}
 	} else {      
 		//                                                     
 		// V1 Format
 		//
-		const uint32_t DEST_BUFFER_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY;  // Expected uncompressed size (48K machine)
 		stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
 		if (headerInfo->isV1Compressed) {
 			uint32_t rle_data_length = headerInfo->v1PayloadLength; 
       decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
-
-			// uint32_t start_of_rle_data = pFile->curPosition();
-			// uint32_t rle_data_length = 0;
-			// if (!locateV1Terminator(pFile, start_of_rle_data, rle_data_length) || rle_data_length == 0) {
-			// 	return false;  //  BLOCK_ERROR_NO_V1_MARKER;
-			// }
-			// decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
-
-			// // Skip past the marker (locateV1Terminator leaves us at the start, so we need to skip past data + marker)
-			// uint32_t expected_pos_after_marker = start_of_rle_data + rle_data_length + 4;
-			// if (pFile->curPosition() < expected_pos_after_marker) {
-			// 	if (!pFile->seekSet(expected_pos_after_marker)) {
-			// 		return false;  // Failed to seek past marker
-			// 	}
-			// }
 		} else {  // Uncompressed V1 data
-			decodeRLE_core(pFile, DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
+			//decodeRLE_core(pFile, DEST_BUFFER_SIZE, ZX_SCREEN_ADDRESS_START);
+			sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY, ZX_SCREEN_ADDRESS_START);
 		}
 	}
 

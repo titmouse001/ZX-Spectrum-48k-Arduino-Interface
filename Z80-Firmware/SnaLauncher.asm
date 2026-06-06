@@ -3,6 +3,22 @@
 ;     screen: $4000 - $57FF (6144 bytes - screen display data)
 ; attributes: $5800 - $5AFF (768 bytes - screen color attributes)
 ;
+; This ROM works in tandem with a lightly modified version of the stock ROM.
+; (see \Z80-Firmware\ZxSpectrum16K_OriginalASM\48KROM.asm)
+; This modified stock ROM has been carefully altered only where the code is not used.
+; I've stayed away from modifying anything live or is some way used in Spectrum games,
+; such as the patch of blank 0xFF used for IM 2 on most 48k Speccy games.
+;
+; Tested on both 48K and 128K machines (using '_ROMCS' & 'ROM1_OE').
+; - 48K: _ROMCS (edge 25B) is NOT USED on +2a/b or +3 boards.
+; - +2a/b, +3: Earlier prototype used a jumper wire from 'ROM1_OE' (edge 4A) to 5V.
+; - Production boards include a PCB jumper labeled "BOOT128" - when jumpered, this 
+;	enables 128K mode while still working fine on 48K machines.
+;
+; Note: 128K machines can play 48k games work.
+;		Need reset timing tweak see Arduino code "Z80Bus::resetZ80()".
+
+
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
@@ -15,10 +31,11 @@ LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 ; PRESERVE_MENU_STACK: Prevents the pause menu from overusing the game's stack 
 ; at the cost of 4 bytes of screen corruption. Using /RD + /IORQ prior to 
 ; triggering the NMI appears to help prevent stack overflow in tested games.
+; (this is experimental incase the game's stack could not be used - leave off )
 ;
 ; 0 = OFF: Uses game stack (Uses 4 bytes / 2 deep)
 ; 1 = ON:  Uses screen as temp stack (Reduces game stack usage to 2 bytes / 1 deep)
-PRESERVE_MENU_STACK             EQU 0
+PRESERVE_MENU_STACK             EQU 0 
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -67,43 +84,49 @@ ENDM
 ;******************
 ORG $0000
 L0000:  
-	DI                
-	;------------------------------------------
-	; For a test on both 48/128k machines (now using '_ROMCS' & 'ROM1_OE')
-	;       48k: _ROMCS (edge 25B) is NOT USED on +2a/b, +3 boards.
-    ; +2a/b, +3: Added test jumper wire from 'ROM1 _OE' (edge 4A) to 5v.
-	; 			 (loading games works fine on 128k machines (minor reset timing tweek))
+	DI           
+	ld SP,0xFFFF
+
 	;------------------------------------------
 	; Disable 128k Spectrums from paging
-	LD A, %00100000  ; bit 5, paging disabled until the computer is reset
-    LD BC, $7FFD     ; 7FFD = paging port
-    OUT (C), A    
+	; 0x7FFD : Bit 5=1 (Lock), Bit 3=0 (Screen at 0x4000), Bits 0-2=0 (Bank 0)
+	LD A, %00100000   
+    LD BC, $7FFD      
+    OUT (C), A        ; Lock and select Bank 0/Screen 5
 	;------------------------------------------
 
-	;-----------------------------------------------------------------------------------	
-	;Stack Behavior - 	The stack grows downward.
-	;					PUSH: sp -= 2; stores value at (sp).
-	;					POP: loads value from (sp); sp += 2.
-	;*** IMPORTANT WARNINGS ***:
-	; Code limitations when using "command_Execute":
-	; Total stack usage must be only 1 level deep (2 bytes, just one push).
-	; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
-	; (While in the menu code, it's okay to use the stack normally.)
+
+	; ;-----------------------------------------------------------------------------------	
+	; ;Stack Behavior - 	The stack grows downward.
+	; ;					PUSH: sp -= 2; stores value at (sp).
+	; ;					POP: loads value from (sp); sp += 2.
+	; ;*** IMPORTANT WARNINGS ***:
+	; ; Code limitations when using "command_Execute":
+	; ; Total stack usage must be only 1 level deep (2 bytes, just one push).
+	; ; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
+	; ; (While in the menu code, it's okay to use the stack normally.)
 
 	;-----------------------------------------------------------------------------------	
 	SET_BORDER 0
-	jp ClearAllRam 
+	jp ClearAllRam  	; 48k
 ClearAllRamRet:
-	; Now we know all RAM is zeroed
-	; This means we can now assume loading can skip large chunks of zero-length data
+
 	
-	ld SP,0xFFFF  ; !!! This stack location is only for menu use !!!
+	;ld SP,0xFFFF  ; !!! This stack location is only for menu use !!!
 	; Note: At game loading time, SP is reasigned with 'command_Stack' from the Arduino.
 	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
 
 	call sendFunctionList
+	
+	
 	jp mainloop
- 
+
+; -------------------------------------------------------------------------
+	IF $ > $0038
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+; -------------------------------------------------------------------------
+
 ;----------------------------------------------------------------------------------
 ; MASKABLE INTERRUPT (IM 1) - Vector: 0x0038  
 ; Note: 'EI' is intentionally omitted - we don't use IM1 in the usual way.  
@@ -112,6 +135,12 @@ L0038:
 	RET 	; 10 t-states
 ;----------------------------------------------------------------------------------
 
+; -------------------------------------------------------------------------
+	IF $ > $0066
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+; -------------------------------------------------------------------------
+
 ; notes: NMI Z80 timings
 ; 		 Push PC onto Stack: 10/11 T-states
 ; 		 RETN Instruction:   14 T-states.
@@ -119,34 +148,36 @@ L0038:
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
 ; The Arduino monitors the HALT line and triggers the NMI to let the Z80 exit the HALT state. 
-;				     
-ORG $0066  ; location needs to use up 14 bytes
+;			
+ORG $0066   ; Must occupy exactly 14 bytes
 L0066:
-	; WARNING: NMI disables maskable interrupts (IFF1=0, old IFF1 saved into IFF2).
-	; If we return with 'RET' and not 'RETN', IFF1 will stay cleared and maskable interrupts will never come back.
-	; UPDATE: Above warning still applies - however this rule must be broken when the game is
-	;         running and the NMI fires to bring up the in-game menu, this time using bank switching
-	;         with control via idle JR -2 loops and NOPs in the mirror to swap into.
+    ; -------------------------------------------------------------------------
+    ; NMI handling: NMI copies IFF1 to IFF2 and clears IFF1, disabling maskable 
+	; interrupts. Usually, a 'RETN' is required to restore IFF1 from IFF2.
+    ;
+    ; Note: We should aim to restore interrupts, this rule is intentionally 
+    ; broken during in-game menu activation, where we perform bank switching 
+    ; and trap the main loop in a 'JR -2' state.
+    ; -------------------------------------------------------------------------
+    RETN     ; In File Browser mode, we exit the NMI immediately.
+    NOP
+    NOP
+    ; -------------------------------------------------------------------------
+    ; The following NOPs provide a landing zone for the mirror ROM's idle loop.
+    ; The stock ROM uses a "jr -2" infinite loop here. If NMI triggers while in the loop
+	; it will safely break out regardless of whether it hit the loops opcode or the operand.
+    ; -------------------------------------------------------------------------
+    NOP   ; Pad for mirror ROM 'jr -2'
+    NOP   
 
-	; -------------------------------------------
-	; The Sna ROM will use this routine 'RETN' while in the file browser menu.
-	; The idea is to get in and out from this NMI as quickly as possible!
-	;
-	RETN   ; (the mirror ROM continues with NOPS here)
-	NOP	
-	NOP	
-	;
-	; Stock ROM has instructions to ".idle: jr .idle" here
-	; These NOPs will release the mirror's idle loop and turn JR -2 into JR 0 (same as a slow NOP)
-    NOP		; 1 byte 				MIRROR ROM - Uses jr -2
-    NOP		; 1 byte 							
-	;
-	NOP
-	NOP
-	NOP
-	NOP
-	NOP
-	jp .IngameHook
+    ; Additional padding to maintain the 14-byte requirement
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    
+    JP .IngameHook
 
 ;------------------------------------------------------
 ;******************
@@ -228,60 +259,38 @@ sendFunctionList:
 	OUT (C), h    		  
 	halt
 	;--------------------------------
-
-	ret
+	ret ; return OK as inside menu's stack
 
 
 ;------------------------------------------------------;
 ; *** Transmit to Arduno ***
-; command_SendData:	
-
-; 	READ_PAIR_WITH_HALT d,e  ; DE = amount
-; 	;ld de, 6144+768  ; DE = Fill amount 2 bytes
-;  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
-; 	;ld hl, 16384  ; HL = Destination address
-
-; 	LD C, $1F
-; .transmitLoop:
-; 	ld a,(hl)	
-   	
-; 	OUT (C), A    		  ; Game cart automatically latches value (with latch ic: 74HC574PW)
-; 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
-
-;     inc hl		
-;     DEC DE      
-;     LD A, D     
-;     OR E        
-;     JP NZ, .transmitLoop 
-
-; 	jp mainloop    
-
 command_SendData:	
-	READ_PAIR_WITH_HALT b,c  ; BC = amount
+	READ_PAIR_WITH_HALT d,e  ; DE = amount 
  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
+
 .transmitLoop:
-	ld a,(hl)	
-	OUT ($1f), A    	  ; Game cart automatically latches value (with latch ic: 74HC574PW)
-	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
+	ld a,(hl)
+	OUT ($1f), A    	  ; Latch value (Game cart uses ic: 74HC574PW)
+	halt				  ; Sync with Arduino
     inc hl		
-    DEC bc      
-    LD A, b     
-    OR c        
+    DEC de
+    LD A, d     
+    OR e        
     JP NZ, .transmitLoop 
-	jp mainloop    
+	jp mainloop
 
 ;------------------------------------------------------;
 
 
 ;------------------------------------------------------
-; Fast memory fill 
+; Small Memory Fill (byte amount)
 ; Input: Buffer end address, total fill count (byte), fill byte value (byte)
 ;------------------------------------------------------
 command_fill_mem_bytecount:  
 
     READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
     halt                     ; Synchronization 
-    in b,(c)                 ; B = total fill count
+    in b,(c)                 ; B = total fill amount/count
     READ_ACC_WITH_HALT       ; A = fill byte value
 
     LD IX, 0
@@ -328,9 +337,9 @@ GET_KEY_RET:		  ; (jump back - avoid stack usage)
 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 	jp mainloop
 
-;------------------------------------------------------
-command_Fill:  ; "F" - FILL
-;------------------------------------------------------
+; ;------------------------------------------------------
+; command_Fill:  
+; ;------------------------------------------------------
 ; 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
 ; 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
 ; 	halt		 	; Synchronizes with Arduino (NMI to continue)
@@ -344,18 +353,81 @@ command_Fill:  ; "F" - FILL
 ;     JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
 ;     JP mainloop 	; Return back for next transfer command
 
-    READ_PAIR_WITH_HALT b,c   ; BC = Fill amount (Counter)
-    READ_PAIR_WITH_HALT h,l   ; HL = Destination address
-    halt                      ; Sync
-    in a,($1f)                ; Fill value 
-fillLoop:
-    ld (hl), a      ; [7]  Write the fill value to memory
-    cpi             ; [16] A-[HL], HL := HL+1, BC := BC-1, P/V := 0 if BC == 0
-    jp pe, fillLoop ; [10] Parity Even, Counter > 0
-    jp mainloop  
+; ;     READ_PAIR_WITH_HALT b,c   ; BC = Fill amount (Counter)
+; ;     READ_PAIR_WITH_HALT h,l   ; HL = Destination address
+; ;     halt                      ; Sync
+; ;     in a,($1f)                ; Fill value 
+; ; fillLoop:
+; ; // BUG !!!!
+; ;     ld (hl), a      ; [7]  Write the fill value to memory
+; ;     cpi             ; [16] A-[HL], HL := HL+1, BC := BC-1, P/V := 0 if BC == 0
+; ;     jp pe, fillLoop ; [10] Parity Even, Counter > 0
+; ;     jp mainloop  
+ 
+;------------------------------------------------------
+; command_Fill: 
+; Input: DE = Count, HL = Start Addr, A = Fill Byte
+;------------------------------------------------------
+command_Fill:
+    READ_PAIR_WITH_HALT d,e    ; DE = Count
+    READ_PAIR_WITH_HALT h,l    ; HL = Start
+    halt
+    in a,(c)                   ; A = Fill byte
+    
+    ; Save original SP
+    ld ix, 0
+    add ix, sp 
+         
+    ; Handle Odd Byte (if any)
+    bit 0, e                   
+    jr z, .EvenStart
+    ld (hl), a                 
+    inc hl                     
+    dec de                     
+    
+.EvenStart:
+    ; SP needs to point to (Start + Count) 
+    add hl, de                 ; HL = End of buffer
+    ld sp, hl                  ; SP points to the end
+    
+    ; Prepare fill pattern in HL (PUSH will write 2 bytes at a time)
+    ld h, a                    ; HL = Fill Word
+    ld l, a                    
+    
+    ; Divide count by 2 for word-based fill
+    srl d                      ; A = high byte of count/2
+    rr e                       ; E = low byte of count/2
+    
+    ; Process 256-word blocks (if A > 0)
+    ld a, d                    ; A = high byte
+    or a
+    jr z, .Remainder           ; Skip if no full blocks
+    
+.LoopBlocks:
+    ld b, 0                    ; 256 iterations
+.LoopInner:
+    push hl
+    djnz .LoopInner            ; Loops 256 times
+    dec a
+    jr nz, .LoopBlocks         ; Continue until high byte is 0
+    
+.Remainder:
+    ; Process remaining words (E)
+    ld a, e
+    or a
+    jr z, .Done
+    ld b, a
+.LoopRem:
+    push hl
+    djnz .LoopRem              ; Process remainder (1 to 255)
+
+.Done:
+    ld sp, ix                  ; Restore SP
+    jp mainloop
+
 
 ;---------------------------------------------------
-command_Transfer:  ; "G" - TRANSFER DATA (flashes border)
+command_Transfer:   ; TRANSFER DATA (flashes border)
 ;---------------------------------------------------
 	halt
 	in b,(c)  					; B = transfer size
@@ -371,7 +443,7 @@ readDataLoop:
 	jp mainloop
 
 ;------------------------------------------------------
-command_Copy:  ; "C" - COPY DATA
+command_Copy:  ;  COPY DATA
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
 	halt							; Synchronizes with Arduino (NMI to continue)
@@ -390,7 +462,7 @@ CopyLoop:
   jp mainloop 			; done - back for next transfer command
 
 ;------------------------------------------------------
-command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
+command_Copy32:  ; Copy Block of Data (32 bytes)
 ;  ini: [HL]:=port[BC], HL:=HL+1, B:=B-1, Z is set if BC == 0
 ;------------------------------------------------------
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
@@ -401,7 +473,7 @@ command_Copy32:  ; 'Z' - Copy Block of Data (32 bytes)
   JP mainloop 			; done - back for next transfer command
 
 ;--------------------------------------------------------
-command_VBL_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
+command_VBL_Wait:  ; Wait for the 50Hz maskable interrupt
 ;--------------------------------------------------------
     ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
     ; This will trigger an interrupt at 50Hz (every 20ms) at address $0038 (default ISR).
@@ -416,7 +488,7 @@ command_VBL_Wait:  ; "W" - Wait for the 50Hz maskable interrupt
     jp mainloop 	; done - back for next transfer command
 
 ;-----------------------------------------------------
-command_Stack:  ; 'S'  - store or restores snapshots stack 
+command_Stack:  ; store or restores snapshots stack 
 ;-----------------------------------------------------
 
 	READ_PAIR_WITH_HALT h,l 
@@ -440,7 +512,7 @@ command_Stack:  ; 'S'  - store or restores snapshots stack
     jp mainloop          	
 	
 ;-------------------------------------------------------------------------------------------
-command_Execute:  ; "E" - EXECUTE CODE, RESTORE & LAUNCH 
+command_Execute:  ;  EXECUTE CODE, RESTORE & LAUNCH 
 ; Restore snapshot states & execute stored jump point from the stack
 ;-------------------------------------------------------------------------------------------
 
@@ -644,10 +716,10 @@ setIM2:
 setIM1:
 	; IM1 uses the Spectrum's default interrupt handler at $0038 (simple RET).
     IM 1
-    jp RestoreInterruptModeComplete  ; used only to avoid stack use
+    jp RestoreInterruptModeComplete  ; jp used to avoid stack
 setIM0:
     IM 0
-    jp RestoreInterruptModeComplete  ; used only to avoid stack use
+    jp RestoreInterruptModeComplete  ; jp used to avoid stack
 ;------------------------------------------------------------------------
 
 ;------------------------------------------------------------------------
@@ -696,6 +768,12 @@ KEY_TABLE:	; Key row mapping  		; $6649
 
 ;------------------------------------------------------------------------
 
+; -------------------------------------------------------------------------
+	IF $ > $04AA
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+; -------------------------------------------------------------------------
+
 ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 
 ; Exit mechanism – the Arduino signals a jump to L04AA in SNA ROM,
@@ -709,15 +787,18 @@ ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 ; swap. If the displacement byte comes from the new ROM (which contains NOPs),
 ; a "JR -2" becomes "JR 0" (effectively a two-cycle slow NOP).
 
-L04AA:
+; unused stock rom location - ROM SWAP LOCATION
+L04AA: 
 	;----------------------------------------------------------------
 	JR .restoreInGameState
+	;----------------------------------------------------------------
 .restoreInGameStateCompletedWithEI:  ; jp return point - avoid stack usage
 .ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
 	NOP ; 2nd rom -> 'EI'
 	NOP ; 2nd rom -> 'RET'
 	;----------------------------------------------------------------
-L04B0:
+; stock rom location with 18 bytes of unused space - ROM SWAP LOCATION
+L04B0:  
 	;----------------------------------------------------------------
 .restoreInGameStateCompletedWithDI: 
 .ContinueGameIdle2: jr .ContinueGameIdle2   ; ROM sync, swapping back to stock
@@ -753,11 +834,11 @@ ENDIF
 
 	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
 	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
-	; We must keep IFF2 and manually restore IFF (call EI or DI) to resume the game.
+	; We must keep IFF2 and when done manually restore IFF (call EI or DI) to resume the game.
 
 	; Here we use OUTs to save registers and minimize stack usage.
 	out  (0x1F), a			; A
-	halt
+	halt					; Nano triggers a NMI to release halt (this processs will use stack)
 	ld   a,b				; B
 	out  (0x1F), a
 	halt
@@ -806,6 +887,10 @@ ENDIF
 	out  (0x1F), a
 	halt
 
+	; We've already been forced to used the GAMES STACK above
+	; using the luxury of a call/return here will not matter now!
+	call command_MuteAY; // Prevent audio looping (machines with AY chip)
+
     jp mainloop         
 
 ;------------------------------------------------------------------------
@@ -842,9 +927,11 @@ ENDIF
     in a, ($1f)   	
 	bit 7,a			; IFF2
 
-	jr  z,.ExitDisabled
+	jr  z,.disablePath
+	;;;.ExitEnabled:
 
-.ExitEnabled:
+	; -------------------------------------------------------
+	; Enable Maskable Interrupts Path
 	halt 
     in a, ($1f)   ; F
 
@@ -859,9 +946,11 @@ IF PRESERVE_MENU_STACK = 1
 	LD SP,(16384+30)		 ; restore game stack
 ENDIF
 	jp .restoreInGameStateCompletedWithEI
+	; -------------------------------------------------------
 
-.ExitDisabled:
-
+.disablePath:
+	; -------------------------------------------------------
+	; Disable Maskable Interrupts Path
 	halt 
     in a, ($1f)   ; F
 
@@ -877,8 +966,81 @@ IF PRESERVE_MENU_STACK = 1
 	LD SP,(16384+30)   ; restore game stack
 ENDIF
 	jp .restoreInGameStateCompletedWithDI
+	; -------------------------------------------------------
+
+
 ;------------------------------------------------------------------------
 
+;--------------------------------------------------------
+; Mute the AY-3-8912 sound chip (128K Spectrum)
+command_MuteAY:
+;--------------------------------------------------------
+	; register select - port $FFFD 
+    LD   BC, $FFFD         
+    LD   A, 7             ; Register 7 = mixer/enable
+    OUT  (C), A           
+	; register write - port $BFFD
+    LD   B, $BF           
+    LD   A, $FF           ; disable tone + noise on A/B/C
+    OUT  (C), A            
+    RET		; return OK as using MuteAY inside game menu's stack
+;--------------------------------------------------------
+
+	
+; =======================================================================
+; PORT 0x7FFD - ZX SPECTRUM 128K PAGING REGISTER
+; =======================================================================
+; Bits 0-2 : RAM Bank Select (0-7) mapped to Slot 3 (0xC000-0xFFFF)
+; Bit  3   : Screen Select   (0 = RAM 5 Normal, 1 = RAM 7 Shadow)
+; Bit  4   : ROM Select      (0 = ROM 0 128k Editor, 1 = ROM 1 48k BASIC)
+; Bit  5   : Paging Lock     (1 = Lock machine into 48k mode until RESET)
+; Bits 6-7 : Unused          (Should always be 0)
+;
+; System Variable copy: 0x5B5C <- we can ignore not using system
+; =======================================================================
+
+;--------------------------------------------------------
+; Detect 128K memory paging (port $7FFD)
+; Returns: A = 0   -> no paging (48K)
+;          A = $10 -> paging works (128K)
+;
+; Port 0x7FFD: [7:Unused][6:Unused][5:Lock][4:ROM][3:Screen][2:RAM_B2][1:RAM_B1][0:RAM_B0]
+;--------------------------------------------------------
+Detect128K:
+    LD   HL, $C000        ; Base of the paging window ($C000–$FFFF)
+    LD   BC, $7FFD        ; BC = 128K paging port
+    LD   A, $10           ; Bank 0, normal screen, ROM 1
+    OUT  (C), A           ; Select bank 0 at $C000
+
+    LD   E, (HL)          ; Save original byte from bank 0
+    LD   (HL), $63        ; Write test value $63 into bank 0
+
+    LD   A, %00010111     ; ROM:48k, Bank:7 (SCR:Norm, Lock:off)
+    OUT  (C), A           ; Switch to bank 7 at $C000
+
+    LD   A, $63
+    CP   (HL)             ; Is $C000 (now bank 7) still $63?
+    JR   Z, no_paging     ; If equal no paging found
+
+    LD   D, $10           ; Result: paging works (128K)
+    JR   cleanup
+
+no_paging:
+    LD   D, 0             ; Result: no paging (48K)
+
+cleanup:
+    LD   A, $10           ; Switch back to bank 0
+    OUT  (C), A
+    LD   (HL), E          ; Restore original byte in bank 0
+    LD   A, D             ; Move result into A for return
+
+    RET  ; return OK as using Detect128K inside game menu's stack
+
+; -------------------------------------------------------------------------
+	IF $ > $16D4
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+; -------------------------------------------------------------------------	
 
 ; -------------------------------------------------------------------------
 ; *** ROM SWAP - GAME STARTUP ***
@@ -915,27 +1077,18 @@ L16D4:
 	nop
 ;-------------------------------------------------------------------------
 
+	IF $ > $3ff0
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+
 ;------------------------------------------------------------------------
-org $3ff0	  		; Locate near the end of ROM
-debug_trap:  		; If we see border lines, we probably hit this trap.
+; If we see border lines, we probably hit this debug trap.
+org $3ff0	  		
+debug_trap:  		
 	SET_BORDER a
 	inc a
 	jr debug_trap
 ;------------------------------------------------------------------------
-
-org $3fff
-;START_GAME: halt ; this will coninue into ram (screen memory)
-;START_GAME: 
-;	dec a  ; stock rom has 0xffff:inc a and we need that path back.
-;.idleGameStart: jr .idleGameStart  ; the stock will continue with "inc a" 
-; note: Luckly the last byte is useable as it's part of the charater set, the (c) symbol.
-; Doing this idle loop allows the stock rom to take control and continue
-; without needed to wait a precise number of Z80 t-states over on the Arduino, as 
-; this othjer wise need a HALT and NMI soforcing the Arduino to delayMicroseconds(7).
-
-; note: L16D4 get this path ready for the stock rom
-
-	NOP  ; REF ONLY: mirror rom runs this - this is never called
 
 ;------------------------------------------------------------------------
 last:
@@ -944,7 +1097,7 @@ DS  16384 - last	; leave rest of rom blank
 
 
 ;******************************************************
-; todo - future extra support for 2-byte "header"
+; todo 
 ; 1/ Shorten commands i.e. 'GO' to 'G' [DONE] 
 ; 2/ Add SCR loading/viewing "SC" [DONE]
 ; 3/ Add PSG Files - AY Player  "PS" 
@@ -954,39 +1107,53 @@ DS  16384 - last	; leave rest of rom blank
 ; 7/ Options to slow down loading, mimic tapes
 ; 8/ load binary TAP files (add command "T")
 ; 9/ load TZX files
-; 10/ Load Z80 Files
+; 10/ Load Z80 Files  [DONE]
 ; 11/ Load PNG file
 ; 12/ Support poke cheats
 ; 13/ Analyse games at load time, add lives + cheats
 ; 14/ Analyse music players extract, enable for AY on 48k.
-; 15/ Compress data/unpack - with the aim of faster load times (so maybe not)
-; 16/ Very simple run-length encoding - could pay off - find most frequent/clear all mem to that/skip those on loading ? 
+; 15/ Compress data/unpack - with the aim of faster load times [DONE]
+; 16/ Very simple run-length encoding [DONE]
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
 ; 18/ Move stack for menu stuff (currently it's using screen mem) [DONE]
 ; 19/ Relocate stack anywhere in memory [DONE]
-; 20/ Launcher code can be relocated depending on game (maybe final unused ram outside screen?!?!). This will need to be done Arduino side
-; 21/ Command to upload code and execute (this will do the 20/ relocate)
+; 20/ Launcher code can be relocated depending on game [MAYBE, HOWEVER IT'S NOW JUST 3BYTES]
+; 21/ Command to upload code and execute 
 ; 22/ Joystick remapping including 2nd button support
 ;*****************************
 
 
 ; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)
-; [0 ] I            = 0x3F       
-; [1 ] HL_          = 0x2758     
-; [3 ] DE_          = 0xB462     
-; [5 ] BC_          = 0x3F62     
-; [7 ] AF_          = 0x12A8     
-; [9 ] HL           = 0xFC0B    
-; [11] DE           = 0x98B2    
-; [13] BC           = 0x0012     
-; [15] IY           = 0x5C3A  [i.e. received 1st]
-; [17] IX           = 0xDB59     
-; [19] IFF2         = 0x00       
-; [20] R            = 0x5F       
-; [21] AF           = 0x4040  [i.e. received last]
-; [23] SP           = 0x6188     
-; [25] IM           = 0x01       
-; [26] BorderColour = 0x00       
+
+;  Arduino's data transmit code loaded by z80
+;   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
+;   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
+;   sendBytes(&header[SNA_SP_LOW], 2);              // The rest aren't in SNA header sequence...
+;   sendBytes(&header[SNA_HL_LOW], 2);
+;   sendBytes(&header[SNA_IM_MODE], 1);
+;   sendBytes(&header[SNA_BORDER_COLOUR], 1);
+;   sendBytes(&header[SNA_DE_LOW], 2);
+;   sendBytes(&header[SNA_BC_LOW], 2);
+;   sendBytes(&header[SNA_AF_LOW], 2);
+
+; [0 ] I            = 0x3F     	 [1st loaded]   
+; [1 ] HL_          = 0x2758   	 [2nd]  
+; [3 ] DE_          = 0xB462     [3rd]  
+; [5 ] BC_          = 0x3F62     [4th]  
+; [7 ] AF_          = 0x12A8     [5th]  
+; [15] IY           = 0x5C3A  	 [6th]  
+; [17] IX           = 0xDB59     [7th]  
+; [19] IFF2         = 0x00       [8th]  
+; [20] R            = 0x5F       [9th]  
+; [23] SP           = 0x6188     [10th]  
+; [9 ] HL           = 0xFC0B     [11th]  
+; [25] IM           = 0x01       [12th]  
+; [26] BorderColour = 0x00       [13th]  
+; [11] DE           = 0x98B2     [14th]  
+; [13] BC           = 0x0012     [15th]  
+; [21] AF           = 0x4040  	 [16th is loaded last]
+
+; ----------------------------------------------------------------------------------
 
 
 ; usefull ASM tips
@@ -995,8 +1162,6 @@ DS  16384 - last	; leave rest of rom blank
 ; (64+192+56)*224 = 69888 T-states (One scanline takes 224 T-states)
 	; Total per frame: 312 PAL lines*224 = 69888 T-states (48k Speccy) 
 	; Vertical Blank: 14336+11637 = 25972 T-states (Uncontended)
-
-
 
 
 ; ======================

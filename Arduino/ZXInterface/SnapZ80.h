@@ -28,6 +28,7 @@ bool locateV1TerminatorInternal(FatFile* pFile, uint32_t start_pos, uint32_t& rl
 BlockReadResult readAndWriteBlock(FatFile* pFile);
 bool convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader);
 void decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress);
+void sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t currentAddress); 
 
 }
 

@@ -1,0 +1,2 @@
+python AnalyzeZ80File.py
+pause

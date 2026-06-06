@@ -56,12 +56,18 @@ constexpr uint8_t ledPin = 13;  // onboard LED shares SPI:SD SCK
 // 74HC165 shift-register (parallel-in to serial-out)
 // Used to read 8 digital inputs (joystick) using only 3 Arduino pins
 // ----------------------------------------------------------------------------------------------------
-// Arduino connections to 74HC165:
+// Arduino connections (all ShiftRegxxxxPin) to 74HC165: 
 // - PB1 (Arduino pin 9)  <- QH (pin 9 on 74HC165): Serial data output (read input bits here)
-// - PC2 (Arduino pin A2) -> CLK (pin 2 on 74HC165): Clock input (shifts out next bit on rising edge)
-// - PB2 (Arduino pin 10) -> SH/LD (pin 1 on 74HC165): Shift/Load control (LOW to load inputs, HIGH to shift)
 constexpr uint8_t ShiftRegDataPin  = 9;    // PB1: Serial data in from 74HC165 QH
-constexpr uint8_t ShiftRegClockPin = A2;   // PC2: Clock output to 74HC165 CLK
+
+// ************************************************************************
+// *** ShiftRegClockPin = A2 is SPECIAL - CAN BE AN INPUT OR OUTPUT PIN ***
+// ************************************************************************
+// - PC2 (Arduino pin A2) -> CLK (pin 2 on 74HC165): Clock input (shifts out next bit on rising edge)
+//                        <- monitors /RD and /IORQ (both low to find best sweet spot (stack not hijacked) for /NMI into a game)
+constexpr uint8_t ShiftRegClockPin = A2;   // PC2: [OUT] Clock output to 74HC165 CLK, [IN] /RD and /IORQ  
+
+// - PB2 (Arduino pin 10) -> SH/LD (pin 1 on 74HC165): Shift/Load control (LOW to load inputs, HIGH to shift)
 constexpr uint8_t ShiftRegLatchPin = 10;   // PB2: Latch control to 74HC165 SH/LD
 // ----------------------------------------------------------------------------------------------------
 // Analog input  (see "pins_arduino.h" pulled in by "Arduino.h" )

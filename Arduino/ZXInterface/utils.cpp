@@ -24,7 +24,7 @@ static uint8_t REG_IXH;
 
 static const char* SCRATCH_FILE = "scratch16384.SCR";
 
-__attribute__((optimize("-Os")))
+__attribute__((optimize("-Os"))) 
 void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
   const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
   if (oldHighlightAddress != fillAddr) {  // Clear old highlight if it's different
@@ -34,13 +34,13 @@ void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileInde
   Z80Bus::sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
 }
 
- __attribute__((optimize("-Os")))
+//__attribute__((optimize("-Os")))
 void Utils::clearScreen(uint8_t col) {
-   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
-   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
+  Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
 }
 
- __attribute__((optimize("-Os")))
+__attribute__((optimize("-Os"))) 
 void Utils::frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
   if (timeSpent < MAX_BUTTON_READ_MILLISECONDS) {
@@ -56,20 +56,20 @@ void Utils::frameDelay(unsigned long start) {
 
 __attribute__((optimize("-Ofast")))
 uint8_t Utils::readJoystick() {
-  digitalWriteFast(Pin::ShiftRegLatchPin, LOW);     // snapshot joystick
-  delayMicroseconds(1);                             // let the latch IC complete
-  digitalWriteFast(Pin::ShiftRegLatchPin, HIGH);    // Enable shifting + 1st bit now available
+  digitalWriteFast(Pin::ShiftRegLatchPin, LOW);   // snapshot joystick
+  delayMicroseconds(1);                           // let the latch IC complete
+  digitalWriteFast(Pin::ShiftRegLatchPin, HIGH);  // Enable shifting + 1st bit now available
 
   uint8_t data = 0;
   for (uint8_t i = 0; i < 8; i++) {
-    data <<= 1;      
-    digitalWriteFast(Pin::ShiftRegClockPin, LOW);  
-    if (digitalReadFast(Pin::ShiftRegDataPin)) {    // get serial data
+    data <<= 1;
+    digitalWriteFast(Pin::ShiftRegClockPin, LOW);
+    if (digitalReadFast(Pin::ShiftRegDataPin)) {  // get serial data
       data |= 1;
     }
-    digitalWriteFast(Pin::ShiftRegClockPin, HIGH);   // next bit
+    digitalWriteFast(Pin::ShiftRegClockPin, HIGH);  // next bit
   }
-  return data;  // bits "XsfFUDLR" 
+  return data;  // bits "XsfFUDLR"
   // bit 0 to 7: Right,Left,Down,Up,Fire1,Fire2, Select (PCB button) and last bit is not used.
 }
 
@@ -83,17 +83,18 @@ void Utils::setupJoystick() {
 
 __attribute__((optimize("-Os"))) 
 void Utils::storeZ80States() {
-  
-  delay(1);             // Allow NMI time to do it's idle loop (will be way more than needed)
-  Z80Bus::setSnaRom();  // swap out stock ROM 
-  delay(1);             // wait for Z80 to hit SNA ROM's '.IngameHook'
+
+  // // to-do .. move this!!!
+  // delay(1);             // Allow NMI time to do it's idle loop (will be way more than needed)
+  // Z80Bus::setSnaRom();  // swap out stock ROM
+  // delay(1);             // wait for Z80 to hit SNA ROM's '.IngameHook'
 
   // note: for each get_IO_Byte the Z80 will 'OUT' then 'HALT'
   REG_A = Z80Bus::get_IO_Byte();
   REG_B = Z80Bus::get_IO_Byte();
   REG_C = Z80Bus::get_IO_Byte();
   REG_F = Z80Bus::get_IO_Byte();
-  REG_IFF2 = Z80Bus::get_IO_Byte();     
+  REG_IFF2 = Z80Bus::get_IO_Byte();
   REG_D = Z80Bus::get_IO_Byte();
   REG_E = Z80Bus::get_IO_Byte();
   REG_H = Z80Bus::get_IO_Byte();
@@ -102,13 +103,13 @@ void Utils::storeZ80States() {
   REG_IXL = Z80Bus::get_IO_Byte();
 }
 
-void Utils::restoreZ80States() {  
-  
-  // 0x04AA:  Z80 code jumps to '.restoreInGameState' then idle loops. This allow time 
+void Utils::restoreZ80States() {
+
+  // 0x04AA:  Z80 code jumps to '.restoreInGameState' then idle loops. This allow time
   // for the ROM to swap back to the stock ROM and start the restore process at 0x04AA.
-  uint8_t addr0x04AA[] = { 0x04, 0xAA }; 
+  uint8_t addr0x04AA[] = { 0x04, 0xAA };
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
-  Z80Bus::sendBytes(&REG_D, 1); 
+  Z80Bus::sendBytes(&REG_D, 1);
   Z80Bus::sendBytes(&REG_E, 1);
   Z80Bus::sendBytes(&REG_B, 1);
   Z80Bus::sendBytes(&REG_C, 1);
@@ -116,13 +117,13 @@ void Utils::restoreZ80States() {
   Z80Bus::sendBytes(&REG_L, 1);
   Z80Bus::sendBytes(&REG_IXH, 1);
   Z80Bus::sendBytes(&REG_IXL, 1);
-  Z80Bus::sendBytes(&REG_IFF2, 1); 
-  Z80Bus::sendBytes(&REG_F, 1); 
-  Z80Bus::sendBytes(&REG_A, 1); 
+  Z80Bus::sendBytes(&REG_IFF2, 1);
+  Z80Bus::sendBytes(&REG_F, 1);
+  Z80Bus::sendBytes(&REG_A, 1);
 
-  delay(1); // allow Z80 time to reach the next idle loop for the stock rom to take control.
+  delay(1);               // allow Z80 time to reach the next idle loop for the stock rom to take control.
   Z80Bus::setStockRom();  // Stock rom escapes out of idle loop via it's NOP's
-  delay(1); // let the stock rom catch up
+  delay(1);               // let the stock rom catch up
 }
 
 __attribute__((optimize("-Os"))) 
@@ -132,66 +133,60 @@ void Utils::saveScreen(const char* filename) {
   uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
 
   // Speccy to send its screen data
-  uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
-  Z80Bus::sendBytes(buf, len); // Sending z80 request to send bytes
+  uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000); 
+  Z80Bus::sendBytes(buf, len);  // Sending z80 request to send bytes
 
-// TODO - ******* replace me with optimised code please ********
-// ...... This version of the code is for testing the get_IO_Byte by hammering it with this task.
-// .......By saving a screen shot we can easly verify things work OK, is free testing!
-  // FatFile &file = SdCardSupport::getFile();
-  // if (file.isOpen()) { file.close(); }
-  // FatFile &root = SdCardSupport::getRoot();
-  // if (root.isOpen()) { root.close(); }
+  FatFile& file = SdCardSupport::closeFileIfOpen();
+  FatFile& root = SdCardSupport::closeRootIfOpen();
 
-  FatFile &file = SdCardSupport::closeFileIfOpen(); 
-  FatFile &root = SdCardSupport::closeRootIfOpen();
+  // if (root.open("/")) {
+  //   file.open(filename, O_CREAT | O_WRONLY);
+  //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+  //     file.write(Z80Bus::get_IO_Byte());
+  //   }
+  //   file.close();
+  // }
 
   if (root.open("/")) {
     file.open(filename, O_CREAT | O_WRONLY);
+    DDRD = 0x00;   // make them inputs
+    digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
+    __asm__ __volatile__("nop; nop");
+
     for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-      file.write(Z80Bus::get_IO_Byte());
+      Z80Bus::waitHalt_syncWithZ80();
+      uint8_t byte = PIND;  // Capture latched data
+      Z80Bus::triggerZ80NMI();
+      file.write(byte);
     }
     file.close();
+
+    digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
+    DDRD = 0xFF;                     // Set all PORTD pins as outputs
   }
 
   BufferManager::freeToMark(mark);
 
-  // if (root.open("/")) {
-  //   file.open(filename, O_CREAT | O_WRONLY);
-  //   DDRD = 0x00;   // make them inputs
-  //   digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading 
-  //   __asm__ __volatile__("nop; nop");
 
-  //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-  //     Z80Bus::waitHalt_syncWithZ80();
-  //     uint8_t byte = PIND;  // Capture latched data
-  //     Z80Bus::triggerZ80NMI();
-  //     file.write(byte);
-  //   }
-  //   file.close();
-
-  //   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
-  //   DDRD = 0xFF;                     // Set all PORTD pins as outputs
-  // }
 }
 
 
 __attribute__((optimize("-Os"))) 
-void Utils::restoreScreen(const char *filename) {
-  
+void Utils::restoreScreen(const char* filename) {
+
   // FatFile &file = SdCardSupport::getFile();
   // if (file.isOpen()) file.close();
   // FatFile &root = SdCardSupport::getRoot();
   // if (root.isOpen()) { root.close(); }
 
-  FatFile &file = SdCardSupport::closeFileIfOpen(); 
-  FatFile &root = SdCardSupport::closeRootIfOpen();
+  FatFile& file = SdCardSupport::closeFileIfOpen();
+  FatFile& root = SdCardSupport::closeRootIfOpen();
 
   if (root.open("/")) {
     if (file.open(filename, O_READ)) {
 
       const uint16_t mark = BufferManager::getMark();
-      uint8_t *buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+      uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
       uint16_t currentAddress = 0x4000;
       uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
       while (totalRemaining > 0) {
@@ -211,10 +206,11 @@ void Utils::restoreScreen(const char *filename) {
 // ----------------------------------------------------------------------------------------------
 // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
 // ----------------------------------------------------------------------------------------------
-// PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line). 
+// PCB UPDATE:   (double duty for ShiftRegClockPin)
+// Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per line).
 // This acts as a hardware AND gate for active-low signals: A2 only hits a Logic LOW when both
 // Z80 lines are active, pinpointing the I/O Read cycle.
-// WHY: Most games poll input (IN) when the stack is stable, so using NMI directly after seeing 
+// WHY: Most games poll input (IN) when the stack is stable, so using NMI directly after seeing
 // a I/O read means the stack is unlikely to be hijacked.
 //
 // Using Inline ASM for cycle-accurate timing.
@@ -227,68 +223,96 @@ void Utils::restoreScreen(const char *filename) {
 __attribute__((optimize("-Os"))) 
 void Utils::waitForUserExit() {
 
-  readJoystick(); // flush junk (Z80 rd/wr port 0x1f shared)
+  readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
 
   uint8_t buttonData;
   while (true) {
     buttonData = Utils::readJoystick();
-    PORTD = buttonData & JOYSTICK_MASK;  // Kempston joystick interface
+    PORTD = buttonData & INPUT_MASK;  // Kempston joystick interface + pcb select button
 
-    if (buttonData & JOYSTICK_SELECT) {
+    if (buttonData & INPUT_SELECT) {  // Pause Menu
+
+      // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's /RD & /IORQ lines
       pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
-      asm volatile (
-          "1: sbic %[pin],2   \n\t"   // skip if LOW
-          "rjmp 1b            \n\t"   // loop while HIGH
-          "cbi  %[port],0     \n\t"   // NMI low
-          "sbi  %[port],0     \n\t"   // NMI high
-          :
-          : [pin]  "I" (_SFR_IO_ADDR(PINC)),
-            [port] "I" (_SFR_IO_ADDR(PORTC))
-      );
+      asm volatile(                // continue when both /RD & /IORQ are low
+        "1: sbic %[pin],2   \n\t"  // skip if LOW
+        "rjmp 1b            \n\t"  // loop while HIGH
+        "cbi  %[port],0     \n\t"  // NMI low
+        "sbi  %[port],0     \n\t"  // NMI high (Pulsed /NMI)
+        :
+        : [pin] "I"(_SFR_IO_ADDR(PINC)),
+          [port] "I"(_SFR_IO_ADDR(PORTC)));
+
+      pinModeFast(Pin::ShiftRegClockPin, OUTPUT);  // back to normal clock use
+      
+      //------------------------------------------------------------------------
+      // At this point we are running of the stock ROM
+      // Allow NMI routine time to reach it's idle loop (way more than needed)
+      delay(10);            
+      //------------------------------------------------------------------------
+      // Swap out to use SNA ROM, it takes over with NOPs
+      Z80Bus::setSnaRom();  
+      //------------------------------------------------------------------------
+       // Wait for Z80 to hit SNA ROM's '.IngameHook'
+      delay(10);            
+      //------------------------------------------------------------------------
 
       storeZ80States();
-      pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
-      saveScreen(SCRATCH_FILE); 
-      while ((Utils::readJoystick() & JOYSTICK_SELECT)) {}
-      
+
+    //  pinModeFast(Pin::ShiftRegClockPin, OUTPUT);  // back to normal clock use
+      saveScreen(SCRATCH_FILE);
+      //while ((Utils::readJoystick() & INPUT_SELECT)) {}
+      Menu::waitForRelease();
+
       uint8_t result = pauseMenu();
-     
+
       if (result == 5) {
-        Utils::clearScreen(COL::BLACK_WHITE); 
-       viewSpeccyMemory();
+        Utils::clearScreen(COL::BLACK_WHITE);
+        viewSpeccyMemory();
       }
 
 
       if (result == 4) {  // Screenshot
-    
-        Utils::clearScreen(COL::BLACK_WHITE); 
-        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS/2)-((6*17)/2), (ZX_SCREEN_HEIGHT_PIXELS/2)-4, F("Saving Screenshot"));
-      
-        exportScreenshot();
-        while ((Menu::getButton() != Menu::BUTTON_NONE)) {}
+        Utils::clearScreen(COL::BLACK_WHITE);
+        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 17) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) - 4, F("Saving Screenshot"));
+        while (exportScreenshot() == false) {
+          // SD card removed
+          Utils::clearScreen(COL::FLASH_BLACK_RED);
+          Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 10) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) - 4, F("SD Missing"));
+          do {  
+              delay(20);
+          } while (!SdCardSupport::init(Pin::SD_CARD_CS));  // keep looking
+          Utils::clearScreen(COL::BLACK_WHITE);
+        }
+        //while ((Menu::getButton() == Menu::BUTTON_NONE)) {}
+       // while ((Menu::getButton() != Menu::BUTTON_NONE)) {}
+        Menu::waitForAnyKey();
       }
-      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);  
 
-      if (result == 6 ) { break; }  // back to main menu
-      while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
-      
+      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+
+      if (result == 6) { break; }                          // back to main menu
+      //while ((Menu::getButton() != Menu::BUTTON_NONE)) {}  // wait for button let go
+      Menu::waitForRelease();
+
       restoreScreen(SCRATCH_FILE);
 
       restoreZ80States();
-      readJoystick(); // flush junk
-
+      readJoystick();  // flush junk
     }
   }
 }
 
 
-constexpr uint16_t PM_INITIAL_DELAY = 380; 
+constexpr uint16_t PM_INITIAL_DELAY = 380;
 constexpr uint16_t PM_REPEAT_RATE = 120;
-constexpr uint16_t PAUSE_XPOS = 80; 
-constexpr uint8_t  PAUSE_YPOS_START = 48;
-constexpr uint8_t  HIGHLIGHT_OFFSET = PAUSE_YPOS_START / 8;  // align highlighting with the "Resume" line
-inline uint8_t getY(int8_t line) { return PAUSE_YPOS_START + (line * 8); }
+constexpr uint16_t PAUSE_XPOS = 80;
+constexpr uint8_t PAUSE_YPOS_START = 48;
+constexpr uint8_t HIGHLIGHT_OFFSET = PAUSE_YPOS_START / 8;  // align highlighting with the "Resume" line
+inline uint8_t getY(int8_t line) {
+  return PAUSE_YPOS_START + (line * 8);
+}
 
 __attribute__((optimize("-Os")))
 uint8_t Utils::pauseMenu() {
@@ -309,7 +333,7 @@ uint8_t Utils::pauseMenu() {
   bool isRepeating = false;
   Menu::Button_t lastButton = Menu::BUTTON_NONE;
   while (true) {
-    highlightSelection(index + HIGHLIGHT_OFFSET, 0, oldHighlightAddress); 
+    highlightSelection(index + HIGHLIGHT_OFFSET, 0, oldHighlightAddress);
     Menu::Button_t currentButton = Menu::getButton();
     if (currentButton == Menu::BUTTON_NONE) {
       lastButton = Menu::BUTTON_NONE;
@@ -342,7 +366,7 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
   uint16_t i = 0;
   uint8_t c;
   while (i < maxChars) {
-    if (f->read(&c, 1) <= 0) break;      // EOF
+    if (f->read(&c, 1) <= 0) break;  // EOF
     if (c >= 32 && c <= 126) {
       if (buf) {
         buf[i] = c;
@@ -362,20 +386,20 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
 
 
 static inline char hexChar(uint8_t nibble) {
-    nibble &= 0x0F;
-    return nibble < 10 ? '0' + nibble : 'A' + (nibble - 10);
+  nibble &= 0x0F;
+  return nibble < 10 ? '0' + nibble : 'A' + (nibble - 10);
 }
 
 __attribute__((optimize("-Os"))) 
 void Utils::viewSpeccyMemory() {
   constexpr uint8_t MAX_CHARS_PER_LINE = 42;  // (256pixels/6)
   constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
-  int32_t currentBaseAddr = 0x5B00; // start of program mem
+  int32_t currentBaseAddr = 0x5B00;  // start of program mem
   uint16_t mark = BufferManager::getMark();
   uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
-  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE+1);
+  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1);
 
-  memset(lineBuffer, '\0', MAX_CHARS_PER_LINE+1);
+  memset(lineBuffer, '\0', MAX_CHARS_PER_LINE + 1);
 
   while (true) {
     uint16_t tempBaseAddr = currentBaseAddr;
@@ -402,50 +426,49 @@ void Utils::viewSpeccyMemory() {
         // ascii text far right - "." for unknown (+30 draws past previous chars)
         lineBuffer[6 + (3 * 8) + k] = (b >= 32 && b <= 126) ? b : '.';
       }
-      Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels 
+      Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels
       tempBaseAddr += BYTES_TO_SHOW_PER_LINE;
     }
 
     while (true) {
       Menu::Button_t btn = Menu::getButton();
       if (btn == Menu::BUTTON_ADVANCE) {
-        currentBaseAddr += ZX_SCREEN_HEIGHT_PIXELS; // 8 * 24;
-        if (currentBaseAddr > 0xFFFF - ZX_SCREEN_HEIGHT_PIXELS ) {  
-          currentBaseAddr =  0xFFFF - (ZX_SCREEN_HEIGHT_PIXELS-1);    // = 0xFF40
+        currentBaseAddr += ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
+        if (currentBaseAddr > 0xFFFF - ZX_SCREEN_HEIGHT_PIXELS) {
+          currentBaseAddr = 0xFFFF - (ZX_SCREEN_HEIGHT_PIXELS - 1);  // = 0xFF40
         }
         break;  // Redraw
       } else if (btn == Menu::BUTTON_BACK) {
-        currentBaseAddr -= ZX_SCREEN_HEIGHT_PIXELS; // 8 * 24;
-        if (currentBaseAddr<0) {
-          currentBaseAddr=0;
+        currentBaseAddr -= ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
+        if (currentBaseAddr < 0) {
+          currentBaseAddr = 0;
         }
         break;  // Redraw
       } else if (btn == Menu::BUTTON_MENU) {
         //while (Menu::getButton() != Menu::BUTTON_NONE);
         Menu::waitForRelease();
         BufferManager::freeToMark(mark);  // frees both allocs
-        return; 
+        return;
       }
     }
   }
 }
 
-
-constexpr char SHOTS[]   = "SHOTS";   // Folder name (5 chars) & filename prefix (4 chars)
-constexpr char SCR_EXT[] = ".SCR";    // Extension
+constexpr char SHOTS[] = "SHOTS";   // Folder name (5 chars) & filename prefix (4 chars)
+constexpr char SCR_EXT[] = ".SCR";  // Extension
 
 __attribute__((optimize("-Os"))) 
-void Utils::exportScreenshot() {
+bool Utils::exportScreenshot() {
   FatFile& root = SdCardSupport::getRoot();
   if (!root.isOpen() && !root.open("/")) {
-    return;
+    return false;
   }
 
   // make sure "SHOTS" folder exists
   FatFile dir;
   if (!dir.open(&root, SHOTS, O_READ)) {
     if (!dir.mkdir(&root, SHOTS) || !dir.open(&root, SHOTS, O_READ)) {
-      return;
+      return false;
     }
   }
 
@@ -464,10 +487,14 @@ void Utils::exportScreenshot() {
       }
     }
     if (!file.open(&dir, filename, O_READ)) {
+      Draw::text((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 12) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 8, filename);
+      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 6) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("Saving"));
       break;  // name found
     }
     file.close();  // exists - try next
   }
+
+// TODO - release save screen code
 
   // Copy the scratch file to the new filename
   uint16_t mark = BufferManager::getMark();
@@ -485,6 +512,10 @@ void Utils::exportScreenshot() {
   }
   dir.close();
   BufferManager::freeToMark(mark);
+
+  Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 15) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("Saved - any key"));
+
+  return true;
 }
 
 
@@ -511,7 +542,7 @@ void Utils::exportScreenshot() {
 // //     uint32_t lastPulseTime = 0;
 // //     while (1) {
 // //       // Service current HALT if active
-// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH
 // //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
 // //         // digitalWriteFast(Pin::Z80_NMI, LOW);
 // //         // digitalWriteFast(Pin::Z80_NMI, HIGH);
@@ -519,7 +550,7 @@ void Utils::exportScreenshot() {
 // //         pulseCount++;
 // //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
 // //       }
-// //       // Detect end marker delay at end of each single bit 
+// //       // Detect end marker delay at end of each single bit
 // //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
 // //         break;
 // //       }
@@ -539,7 +570,7 @@ void Utils::exportScreenshot() {
 // //     uint32_t lastPulseTime = 0;
 // //     while (1) {
 // //       // Service current HALT if active
-// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH   
+// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH
 // //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
 // // //        digitalWriteFast(Pin::Z80_NMI, LOW);
 // // //        digitalWriteFast(Pin::Z80_NMI, HIGH);
@@ -547,7 +578,7 @@ void Utils::exportScreenshot() {
 // //         pulseCount++;
 // //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
 // //       }
-// //       // Detect end marker delay at end of each single bit 
+// //       // Detect end marker delay at end of each single bit
 // //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
 // //         break;
 // //       }
@@ -562,8 +593,8 @@ void Utils::exportScreenshot() {
 // ========================
 
 // Not used ...
-// 
-// __attribute__((optimize("-Ofast"))) 
+//
+// __attribute__((optimize("-Ofast")))
 // void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
 //   uint16_t byteIndex = bitPosition >> 3;   // /8
 //   uint8_t  bitIndex  = bitPosition & 7;    // %8
@@ -574,16 +605,16 @@ void Utils::exportScreenshot() {
 //     output[byteIndex + 1] |= aligned << (8 - bitIndex);
 //   }
 // }
-// 
-// __attribute__((optimize("-Ofast"))) 
+//
+// __attribute__((optimize("-Ofast")))
 // byte reverseBits(byte data) {
 //   data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
 //   data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
 //   data = (data & 0xAA) >> 1 | (data & 0x55) << 1;
 //   return data;
 // }
-// 
-// __attribute__((optimize("-Ofast"))) 
+//
+// __attribute__((optimize("-Ofast")))
 // void swap(byte &a, byte &b) {
 //   byte temp = a;
 //   a = b;
@@ -598,4 +629,3 @@ void Utils::exportScreenshot() {
 // T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
 // 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
 // 20 T-States / 0.285714 = 70 t-states
-

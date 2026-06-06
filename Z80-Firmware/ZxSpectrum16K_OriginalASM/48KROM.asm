@@ -273,16 +273,16 @@ L0055:  LD      (IY+$00),L      ; Store it in the system variable ERR_NR.
 ; *** NMI has been repurposed to break into games and display an in game menu         ***
 ; *** Method has no 'RETN' exit path, meaning the maskable interrupt is kept disabled ***
 ; ***************************************************************************************
-L0066:  ; /NMI line fired   (method length must be 14 bytes)
-
- ;;;;  RETN  ;  this works a simple concept test - just using the NMI and it's stack for keeping the ret value 
-
-       NOP
-       NOP
+; NMI line fired   (method length must be 14 bytes)
+L0066:  
         NOP
         NOP
-        ; Bank switching happens here and the SNA ROM takes over with NOPs.
+        NOP
+        NOP
+        ; ----------------------------------------------------------------
+        ; Bank switching happens here and the SNA ROM takes over with NOPs
 .idle: jr .idle  
+         ; ----------------------------------------------------------------
         nop
         nop
         nop
@@ -20427,15 +20427,17 @@ L3D00:  DEFB    %00000000
         DEFB    %10100001
         DEFB    %10011001
         DEFB    %01000010
-
-
-; **************************************************
+; *************************************************
 ; **** THIS LAST BYTE USEFUL FOR THE SNA LOADER ***
-; **************************************************
+; *************************************************
         DEFB    %00111100  ; 0x3C
-        ; This last byte works out to be a "INC A" (0x3C) 
-        ; we can make use this to run code from ram from stock rom!
-        ; (see L16D4)
+        ; This last byte works out to be a "INC A" (0x3C) we can make use this
+        ; to run code from ram from stock rom!  See location L16D4 for details.
+        ; (Could use a 'JP' hack (DEFB $C3), but decided against it 
+        ; as screen corruption is easily visible on the BASIC boot screen)
+
+; *************************************************
+
 
 ;#end                            ; generic cross-assembler directive 
 

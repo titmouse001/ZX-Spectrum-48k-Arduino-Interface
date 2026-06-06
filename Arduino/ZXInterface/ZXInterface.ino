@@ -40,7 +40,10 @@
 #include "Z80Bus.h"
 #include "pin.h"
 
-#define VERSION ("0.24")  // Arduino firmware
+//#include "packettypes.h"
+//#include "packetbuilder.h"
+
+#define VERSION ("0.25")  // Arduino firmware
 #define DEBUG_OLED 0
 #define SERIAL_DEBUG 0
 
@@ -74,11 +77,7 @@ extern bool setupOled();  // debugging with a 128x32 pixel oled
 #endif
 // ----------------------------------------------------------------------------------
 
-// __attribute__((optimize("-O1")))  //28370 
-// __attribute__((optimize("-O2")))  // 28346 
-// __attribute__((optimize("-O3")))  // 28864 
-// __attribute__((optimize("-Ofast")))  // 29010  
-__attribute__((optimize("-Os")))  // 28332  
+__attribute__((optimize("-Os")))
 void setup() {
 
 #if (SERIAL_DEBUG == 1)
@@ -86,11 +85,6 @@ void setup() {
   while (!Serial) {};
   Serial.println("SERIAL DEBUG BREAKS COMMS TO Z80");
 #endif
-
-// SdCardSupport::init(PIN_A4);
-//  uint16_t  a = SdCardSupport::countSnapshotFiles() ;
-//  Serial.print("count =");
-//  Serial.println(a);
 
   Z80Bus::setupPins(); 
   Utils::setupJoystick();  
@@ -101,20 +95,23 @@ void setup() {
 
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
-  if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
+  if (Utils::readJoystick() & (INPUT_FIRE | INPUT_SELECT)) {
     Z80Bus::setStockRom();
     Z80Bus::resetZ80();                                        // Resets Z80 for a clean boot from internal ROM.
-    while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Debounces button release.
+   // while ((Utils::readJoystick() & INPUT_SELECT) != 0) {}  // Debounces button release.
+    Menu::waitForRelease();
     while (true) {
-      if (Utils::readJoystick() & JOYSTICK_SELECT) {
+      // Allow the user to return back to the game loader screen.
+      if (Utils::readJoystick() & INPUT_SELECT) {
         Z80Bus::setSnaRom();
-        break;                                                 // Returns to Sna loader.
+        break;    // continue with Sna loader ROM
       }
-      delay(50);
     }
   }
 
   Z80Bus::resetZ80();
+  
+  // Grab APIs: Query Speccy for the addresses of supporting methods.
   CommandRegistry::initialize();
 
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
@@ -125,8 +122,27 @@ void setup() {
     do {  
       delay(20);  
     } while (!SdCardSupport::init(Pin::SD_CARD_CS));  // keep looking
-    Utils::clearScreen(COL::BLACK_WHITE);
+    Utils::clearScreen(COL::BLACK_WHITE);    
   }
+
+
+// BUG HUNT .... AHHHHHHHHH! I optimised sendFillCommand a while back, and now it is total sh*t!
+//               Only noticed it on the 128k Spectrum some time later; the startup memory on the 128k was different random, which helped catch my mistake.
+//               The Z80 ASM sendFillCommand used the 'cpi' instruction. That was a bad idea, as it stopped clearing the memory (even though it was technically doing its job)!
+//               For some reason, this never happened on 48k machines.
+//               **** FIXED NOW ****
+//                
+// delay(4000);
+//    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, 0b01111010);
+//    Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
+//   Draw::text(100,64, "HELLO");
+//   delay(4000);
+//     FillPacket  packet;
+//   uint8_t value = 0b01100001;
+//       uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*)&packet, ZX_SCREEN_ATTR_ADDRESS_START, 255, value);
+//       Z80Bus::sendBytes((uint8_t*)&packet, packetLen);
+//   delay(4000);
+
 }
 
 // ---------------------
@@ -285,105 +301,10 @@ void handleTxtFile(FatFile* pFile) {
   Menu::waitForRelease();
 }
 
-
-// __attribute__((optimize("-Os")))
-// void handleTxtFile(FatFile* pFile) {
-//   constexpr uint16_t maxCharsPerLine = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
-//   constexpr uint16_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-//   constexpr uint16_t maxLinesPerScreen = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
-  
-//   uint16_t mark = BufferManager::getMark();
-//   char* lineBuffer = (char*)BufferManager::allocate(maxCharsPerLine);
-
-//   uint16_t currentPageIndex = 0;
-//   uint32_t lastSeekPos = 0;    // file position of the start of the last drawn page
-//   uint16_t lastPageIndex = 0;  // index of that page
-
-//   Utils::clearScreen(COL::BLACK_WHITE);
-
-//   while (true) {
-
-//     const uint32_t autoScrollDelay = millis() + 400;
-
-//     if (currentPageIndex == lastPageIndex + 1) {  // forward
-//       pFile->seekSet(lastSeekPos);
-//     } else if (currentPageIndex == lastPageIndex - 1) {  // backward
-//       pFile->seekSet(0);
-//       for (uint16_t i = 0; i < currentPageIndex; ++i) {
-//         uint16_t linesReadOnPage = 0;
-//         while (linesReadOnPage < maxLinesPerScreen) {
-//           Utils::readLineTxt(pFile,NULL,maxCharsPerLine);  // skip
-//           linesReadOnPage++;
-//         }
-//       }
-//     } else {                        // page limits
-//       if (currentPageIndex == 0) {  // hard stop on top page
-//         pFile->seekSet(0);
-//       } else if (currentPageIndex == lastPageIndex) {  // can only be last page now
-//         pFile->seekSet(lastSeekPos);
-//       }
-//     }
-
-//     // Draw the current page
-//     uint16_t currentLine = 0;
-//     while (currentLine < maxLinesPerScreen && pFile->available()) {
-//       uint16_t bytesRead = Utils::readLineTxt(pFile, lineBuffer, maxCharsPerLine);
-      
-//       // empty line becomes single space
-//       if (bytesRead == 0) {
-//         lineBuffer[0] = ' ';
-//         bytesRead = 1;
-//       }
-//       lineBuffer[bytesRead] = '\0';
-//       Draw::textLine(currentLine * charHeight, lineBuffer);
-//       currentLine++;
-//     }
-
-//     bool atEOF = !pFile->available();
-//     if (!atEOF) {
-//       lastSeekPos = pFile->curPosition();
-//     }
-//     lastPageIndex = currentPageIndex;
-
-//     lineBuffer[0] = ' ';
-//     lineBuffer[1] = '\0';
-//     for (uint8_t i = currentLine; i < maxLinesPerScreen; i++) {   // Clear remaining lines
-//       Draw::textLine(i * charHeight, lineBuffer);
-//     }
-
-//     Menu::Button_t button;
-//     do {
-//       button = Menu::getButton();
-//     } while (button == Menu::BUTTON_NONE);
-
-//     if (button == Menu::BUTTON_ADVANCE) {
-//       if (!atEOF) {
-//         currentPageIndex++;
-//       }
-//     } else if (button == Menu::BUTTON_BACK) {
-//       if (currentPageIndex > 0) {
-//         currentPageIndex--;
-//       }
-//     } else if (button == Menu::BUTTON_MENU) {
-//       return;
-//     }
-
-//     while (Menu::getButton() != Menu::BUTTON_NONE) {
-//       if (millis() > autoScrollDelay) {
-//         break;
-//       }
-//     }
-//   }
-//   //while (Menu::getButton() != Menu::BUTTON_NONE) { delay(20); }
-//   Menu::waitForRelease();
-//   BufferManager::freeToMark(mark);
-// }
-
+// -------------------------------------------------------------------------------------
 
 void loop() {
-  
   FatFile* pFile = Menu::handleMenu();
-
   if (strcasestr( SdCardSupport::getFileName(pFile) , ".scr")) {
     handleScrFile(pFile);
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".sna")) {
@@ -393,9 +314,11 @@ void loop() {
   } else if (strcasestr( SdCardSupport::getFileName(pFile) , ".txt")) {
     handleTxtFile(pFile);
   }
-
   pFile->close();
 }
+
+
+// -------------------------------------------------------------------------------------
 
 
 #if (DEBUG_OLED == 1)

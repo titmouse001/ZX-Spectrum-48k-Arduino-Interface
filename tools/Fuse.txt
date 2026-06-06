@@ -1,0 +1,10 @@
+Debugger commands
+
+> BR [address] - set breakpoint
+> BA 10  / BA 16 - set base
+> DI [address] - disassemble address 
+> DEL [bp] - delete break point
+> N - step over instruction (CALL / LDIR / DJNZ etc)
+
+SET:
+se [addr] value

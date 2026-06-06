@@ -24,8 +24,8 @@ void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint
 void clearScreen(uint8_t col);
 
 uint8_t readJoystick();
-uint16_t get16bitPulseValue();
-uint8_t get8bitPulseValue_NO_LONGER_USED();
+//uint16_t get16bitPulseValue();
+//uint8_t get8bitPulseValue_NO_LONGER_USED();
 
 void frameDelay(unsigned long start);
 void setupJoystick();
@@ -41,7 +41,7 @@ uint8_t pauseMenu();
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
-void exportScreenshot();
+bool exportScreenshot();
 void viewSpeccyMemory();
 void displayHexDump(uint16_t startAddr, uint16_t length);
 
