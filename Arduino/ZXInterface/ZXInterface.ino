@@ -124,25 +124,6 @@ void setup() {
     } while (!SdCardSupport::init(Pin::SD_CARD_CS));  // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);    
   }
-
-
-// BUG HUNT .... AHHHHHHHHH! I optimised sendFillCommand a while back, and now it is total sh*t!
-//               Only noticed it on the 128k Spectrum some time later; the startup memory on the 128k was different random, which helped catch my mistake.
-//               The Z80 ASM sendFillCommand used the 'cpi' instruction. That was a bad idea, as it stopped clearing the memory (even though it was technically doing its job)!
-//               For some reason, this never happened on 48k machines.
-//               **** FIXED NOW ****
-//                
-// delay(4000);
-//    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, 0b01111010);
-//    Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
-//   Draw::text(100,64, "HELLO");
-//   delay(4000);
-//     FillPacket  packet;
-//   uint8_t value = 0b01100001;
-//       uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*)&packet, ZX_SCREEN_ATTR_ADDRESS_START, 255, value);
-//       Z80Bus::sendBytes((uint8_t*)&packet, packetLen);
-//   delay(4000);
-
 }
 
 // ---------------------

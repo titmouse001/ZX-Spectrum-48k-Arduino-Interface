@@ -2,6 +2,7 @@
 #define PACKET_TYPES_H
 
 #include <stdint.h>
+#include "CommandRegistry.h"
 
 #pragma pack(push, 1)
 
@@ -11,12 +12,16 @@
 struct ReceiveKeyboardPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
+    ReceiveKeyboardPacket() : cmd_high(CommandRegistry::command_TransmitKey >> 8), 
+                              cmd_low(CommandRegistry::command_TransmitKey & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,ReceiveKeyboardPacket);
 
 struct ExecutePacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
+    ExecutePacket() : cmd_high(CommandRegistry::command_Execute >> 8), 
+                      cmd_low(CommandRegistry::command_Execute & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,ExecutePacket);
 
@@ -29,6 +34,15 @@ struct TransferPacket {
 };
 ASSERT_Z80_PACKET_SIZE(5,TransferPacket);
 
+struct CopyPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t amount;
+    uint8_t dest_addr_high;
+    uint8_t dest_addr_low;
+};
+ASSERT_Z80_PACKET_SIZE(5,CopyPacket);
+
 struct FillPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
@@ -40,6 +54,10 @@ struct FillPacket {
 };
 ASSERT_Z80_PACKET_SIZE(7,FillPacket);
 
+//Sketch uses 26922 bytes (87%) of program storage space. Maximum is 30720 bytes.
+//Global variables use 1371 bytes (66%) of dynamic memory, leaving 677 bytes for local variables. Maximum is 2048 bytes.
+
+
 struct Fill8Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
@@ -47,6 +65,9 @@ struct Fill8Packet {
     uint8_t addr_low;
     uint8_t amount;
     uint8_t fill_value;
+
+    Fill8Packet() : cmd_high(CommandRegistry::command_fill_mem_bytecount >> 8), 
+                    cmd_low(CommandRegistry::command_fill_mem_bytecount & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(6,Fill8Packet);
 
@@ -56,29 +77,32 @@ struct StackPacket {
     uint8_t sp_addr_high;
     uint8_t sp_addr_low;
     uint8_t action;
+
+    StackPacket(uint16_t addr, uint8_t action ) : 
+        cmd_high(CommandRegistry::command_Stack >> 8) , cmd_low(CommandRegistry::command_Stack & 0xff) ,
+        sp_addr_high(static_cast<uint8_t>(addr >> 8)), sp_addr_low(static_cast<uint8_t>(addr & 0xFF)) ,
+        action(action) {}
 };
 ASSERT_Z80_PACKET_SIZE(5,StackPacket);
 
-struct CopyPacket {
-    uint8_t cmd_high;
-    uint8_t cmd_low;
-    uint8_t amount;
-    uint8_t dest_addr_high;
-    uint8_t dest_addr_low;
-};
-ASSERT_Z80_PACKET_SIZE(5,CopyPacket);
-
+// copies a fixed amount of 32 bytes
 struct Copy32Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
+
+    Copy32Packet() : cmd_high(CommandRegistry::command_Copy32 >> 8), 
+                     cmd_low(CommandRegistry::command_Copy32 & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(4,Copy32Packet);
 
 struct WaitVBLPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
+    
+    WaitVBLPacket() : cmd_high(CommandRegistry::command_VBL_Wait >> 8), 
+                      cmd_low(CommandRegistry::command_VBL_Wait & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,WaitVBLPacket);
 
@@ -89,8 +113,15 @@ struct RequestSendDataPacket {
     uint8_t amount_low;
     uint8_t start_addr_high;
     uint8_t start_addr_low;
+
+    RequestSendDataPacket(uint16_t amount, uint16_t address) : 
+        cmd_high(CommandRegistry::command_SendData >> 8), cmd_low(CommandRegistry::command_SendData & 0xff), 
+        amount_high(static_cast<uint8_t>(amount >> 8)), amount_low(static_cast<uint8_t>(amount & 0xFF)),
+        start_addr_high(static_cast<uint8_t>(address >> 8)), start_addr_low(static_cast<uint8_t>(address & 0xFF))
+        {}
 };
 ASSERT_Z80_PACKET_SIZE(6,RequestSendDataPacket);
+
 
 #pragma pack(pop)
 

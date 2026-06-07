@@ -251,6 +251,8 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
     }
   };
 
+
+  Fill8Packet pkt;
   while (bytesReadFromSource < sourceLengthLimit) {
     uint8_t b1 = getNextByteFromFile();
     if (b1 == 0xED) { // maybe the start of compressed sequence
@@ -260,9 +262,8 @@ void SnapZ80::decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_
         flushCommandPayloadBuffer(); // Flush uncompressed bytes
         uint8_t runAmount = getNextByteFromFile(); 	// repeat count
         uint8_t value = getNextByteFromFile();  		// byte to repeat
-			
-			  uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(txBuffer, currentAddress , runAmount, value);
-        Z80Bus::sendBytes(txBuffer, packetLen);   	// Ok to reuse and build with txBuffer here to send fill
+      	uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*) &pkt, currentAddress, runAmount, value);
+      	Z80Bus::sendBytes((uint8_t*) &pkt, packetLen);
         currentAddress += runAmount;
       } else {
 				// We found a 'ED' followed by something that is NOT 'ED'. The format says that the byte immediately following a literal 'ED' 

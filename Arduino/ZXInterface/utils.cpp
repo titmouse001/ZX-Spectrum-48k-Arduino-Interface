@@ -129,16 +129,14 @@ void Utils::restoreZ80States() {
 __attribute__((optimize("-Os"))) 
 void Utils::saveScreen(const char* filename) {
 
-  uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
-
-  // Speccy to send its screen data
-  uint8_t len = PacketBuilder::build_Request_CommandSendData(buf, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000); 
-  Z80Bus::sendBytes(buf, len);  // Sending z80 request to send bytes
+  // send header detials first (request Spectrum to send all screen data)
+  RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
 
   FatFile& file = SdCardSupport::closeFileIfOpen();
   FatFile& root = SdCardSupport::closeRootIfOpen();
 
+  // UnOptimised version
   // if (root.open("/")) {
   //   file.open(filename, O_CREAT | O_WRONLY);
   //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
@@ -164,20 +162,11 @@ void Utils::saveScreen(const char* filename) {
     digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
     DDRD = 0xFF;                     // Set all PORTD pins as outputs
   }
-
-  BufferManager::freeToMark(mark);
-
-
 }
 
 
 __attribute__((optimize("-Os"))) 
 void Utils::restoreScreen(const char* filename) {
-
-  // FatFile &file = SdCardSupport::getFile();
-  // if (file.isOpen()) file.close();
-  // FatFile &root = SdCardSupport::getRoot();
-  // if (root.isOpen()) { root.close(); }
 
   FatFile& file = SdCardSupport::closeFileIfOpen();
   FatFile& root = SdCardSupport::closeRootIfOpen();
@@ -396,7 +385,7 @@ void Utils::viewSpeccyMemory() {
   constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
   int32_t currentBaseAddr = 0x5B00;  // start of program mem
   uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
+ // uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
   char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1);
 
   memset(lineBuffer, '\0', MAX_CHARS_PER_LINE + 1);
@@ -414,8 +403,8 @@ void Utils::viewSpeccyMemory() {
       lineBuffer[pos++] = ':';
       lineBuffer[pos++] = ' ';
 
-      uint8_t cmdLen = PacketBuilder::build_Request_CommandSendData(buf, BYTES_TO_SHOW_PER_LINE, tempBaseAddr);
-      Z80Bus::sendBytes(buf, cmdLen);
+      RequestSendDataPacket pkt (BYTES_TO_SHOW_PER_LINE, tempBaseAddr);
+      Z80Bus::sendBytes((uint8_t*) &pkt, sizeof(RequestSendDataPacket));
 
       for (uint8_t k = 0; k < 8; ++k) {
         uint8_t b = Z80Bus::get_IO_Byte();

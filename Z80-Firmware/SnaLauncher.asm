@@ -188,7 +188,7 @@ mainloop:
 check_initial:   
 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
 	JP (hl) ; 
-	jp check_initial	
+	jp check_initial	  ; not needed!
 ;----------------------------------------------------------------------------------
 
 sendFunctionList:
@@ -324,46 +324,12 @@ RestoreSP:
 ;------------------------------------------------------
 command_TransmitKey:
 ;------------------------------------------------------
-	; JP GET_KEY            ; Returns key in A
-	; GET_KEY_RET:		  ; (jump back - avoid stack usage)
-    ; LD C, $1F			  ; #IORQ + A7 + #RD
-    ; OUT (C), A    		  ; Game cart latches value (latch ic: 74HC574PW)
-	; halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
-	; jp mainloop
-
 	JP GET_KEY            ; Returns key in A
 GET_KEY_RET:		  ; (jump back - avoid stack usage)
     OUT ($1F), A    		  ; Game cart latches value (latch ic: 74HC574PW)
 	halt				  ; Halt line - Arduino knows is safe to #EO and read new value from latch
 	jp mainloop
 
-; ;------------------------------------------------------
-; command_Fill:  
-; ;------------------------------------------------------
-; 	READ_PAIR_WITH_HALT d,e  ; DE = Fill amount 2 bytes
-; 	READ_PAIR_WITH_HALT h,l  ; HL = Destination address
-; 	halt		 	; Synchronizes with Arduino (NMI to continue)
-; 	in b,(c)		; Read fill value from the z80 I/O port
-; fillLoop:
-; 	ld (hl),b	 	; Write to memory   [7]
-;     inc hl			;					[6]
-;     DEC DE      	;					[6]
-;     LD A, D      	;					[4]
-;     OR E         	;					[4]
-;     JP NZ, fillLoop ; JP, 2 cycles saved per iter (jr=12,jp=10 cycles when taken)  [10]
-;     JP mainloop 	; Return back for next transfer command
-
-; ;     READ_PAIR_WITH_HALT b,c   ; BC = Fill amount (Counter)
-; ;     READ_PAIR_WITH_HALT h,l   ; HL = Destination address
-; ;     halt                      ; Sync
-; ;     in a,($1f)                ; Fill value 
-; ; fillLoop:
-; ; // BUG !!!!
-; ;     ld (hl), a      ; [7]  Write the fill value to memory
-; ;     cpi             ; [16] A-[HL], HL := HL+1, BC := BC-1, P/V := 0 if BC == 0
-; ;     jp pe, fillLoop ; [10] Parity Even, Counter > 0
-; ;     jp mainloop  
- 
 ;------------------------------------------------------
 ; command_Fill: 
 ; Input: DE = Count, HL = Start Addr, A = Fill Byte

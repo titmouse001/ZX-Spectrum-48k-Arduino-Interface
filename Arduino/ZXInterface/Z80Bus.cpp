@@ -74,13 +74,11 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   //  sei();
 }
 
-//TODO - PUT THIS IN Snapshot.cpp  (rename snapZ80 - allow for all sna,z80 ...)
-
 __attribute__((optimize("-Os")))
 void Z80Bus::sendSnaHeader(uint8_t* header) {
-  uint8_t buf[2];
-  uint8_t cmdLength = PacketBuilder::buildExecuteCommand(buf);
-  sendBytes(buf, cmdLength);
+  ExecutePacket pkt;
+  uint8_t* buf = (uint8_t*)&pkt;
+  sendBytes(buf, sizeof(ExecutePacket));
   // Execute Command expects registers to follow in this order
   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
@@ -104,13 +102,8 @@ void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
 
 __attribute__((optimize("-Os"))) 
 void Z80Bus::sendWaitVBLCommand() {
-	uint16_t mark = BufferManager::getMark();
-	//uint8_t* buf = BufferManager::allocate(E(WaitVBLPacket::PACKET_LEN));
- 	uint8_t* buf = BufferManager::allocate(sizeof(WaitVBLPacket));
-  uint8_t packetLen = PacketBuilder::buildWaitVBLCommand(buf);
-  Z80Bus::sendBytes(buf, packetLen);
-  BufferManager::freeToMark(mark);
-
+  WaitVBLPacket pkt;
+  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(WaitVBLPacket));
 }
 
 // sendStackCommand:
@@ -121,12 +114,8 @@ void Z80Bus::sendWaitVBLCommand() {
 __attribute__((optimize("-Os"))) 
 void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
 	
-  uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(  sizeof(StackPacket) );
-  uint8_t packetLen = PacketBuilder::buildStackCommand( buf, addr, action);
-  Z80Bus::sendBytes( buf, packetLen);
-  BufferManager::freeToMark(mark);
-
+  StackPacket pkt(addr, action);
+  Z80Bus::sendBytes( (uint8_t*) &pkt, sizeof(StackPacket) );
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
@@ -153,30 +142,9 @@ uint8_t Z80Bus::get_IO_Byte() {
   return byte;
 }
 
-// Reminder ... optimised runs can do this with #OE pin set once at start and end ....
-  //       for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-  //         Z80Bus::waitHalt_syncWithZ80();
-  //         uint8_t byte = PIND;  // Capture latched data
-  //         Z80Bus::triggerZ80NMI();
-  //         file.write(byte);
-  //       }
-
-// __attribute__((optimize("-Os"))) 
-// uint8_t Z80Bus::getKeyboard() {
-
-//   uint8_t buf[E(ReceiveKeyboardPacket::PACKET_LEN)];
-//   // Send command packet to the Z80 asking it to send back a byte with the OUT instruction (TransmitKey) 
-//   buf[E(ReceiveKeyboardPacket::CMD_HIGH)] = (uint8_t)(CommandRegistry::command_TransmitKey >> 8);
-//   buf[E(ReceiveKeyboardPacket::CMD_LOW)] =  (uint8_t)(CommandRegistry::command_TransmitKey & 0xFF);
-//   Z80Bus::sendBytes(buf, (uint8_t)ReceiveKeyboardPacket::PACKET_LEN);
-//   return get_IO_Byte();
-// }
-
  __attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::getKeyboard() {
     ReceiveKeyboardPacket pkt;
-    pkt.cmd_high = static_cast<uint8_t>(CommandRegistry::command_TransmitKey >> 8);
-    pkt.cmd_low  = static_cast<uint8_t>(CommandRegistry::command_TransmitKey & 0xFF);
     Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
     return get_IO_Byte();
 }
@@ -191,21 +159,33 @@ uint8_t Z80Bus::getKeyboard() {
 //
 __attribute__((optimize("-Ofast")))
 void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* input, bool borderLoadingEffect) {
-  //   {
-  //  //  DEBUG FOR TESTING WITHOUT RLE (RLE JUST HELPS SPEEDUP TRANSFER)
-  //     uint8_t* pTransfer = &BufferManager::packetBuffer[0];
-  //     uint8_t packetLen = PacketBuilder::buildTransferCommand(pTransfer, addr, input_len);
-  //     Z80Bus::sendBytes(pTransfer, packetLen + input_len);
-  //     return ;
-  //   }
+
+#if 0
+      {
+      // TESTING WITHOUT RLE (RLE JUST HELPS SPEEDUP TRANSFER)
+        TransferPacket pkt;
+        uint8_t packetLen = PacketBuilder::buildTransferCommand((uint8_t*)&pkt, addr, input_len);
+        Z80Bus::sendBytes((uint8_t*)&pkt, packetLen );
+        Z80Bus::sendBytes(input, input_len);
+        return;
+      }
+#endif
+
   constexpr uint16_t MAX_RUN_LENGTH = 255;
   constexpr uint16_t MAX_RAW_LENGTH = 255;
   constexpr uint8_t MIN_RUN_LENGTH = 3;  // about where RLE pays off over raw
 
-  uint8_t mark = BufferManager::getMark();
-  //uint8_t* pHeader = BufferManager::allocate(E(FillPacket::PACKET_LEN));
-  uint8_t* pHeader = BufferManager::allocate(sizeof(FillPacket));
+ // uint8_t mark = BufferManager::getMark();
+  //uint8_t* pHeader = BufferManager::allocate(sizeof(FillPacket));
+  Fill8Packet pkt;
 
+  union {
+        FillPacket fill;
+        TransferPacket trans;
+        CopyPacket copy;
+  } header;
+
+  uint8_t* pHeader = (uint8_t*)&header;
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -220,8 +200,9 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount(pHeader, addr, run_len, value);
-      Z80Bus::sendBytes(pHeader, packetLen);
+      //uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*) &pkt, addr, run_len, value);
+      uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*) &pkt, addr, run_len, value);
+      Z80Bus::sendBytes((uint8_t*) &pkt, packetLen);
       addr += run_len;
       i += run_len;
     } else {
@@ -243,17 +224,20 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       uint8_t* dataSrc = &input[raw_start];
       uint8_t headerLen;
       if (borderLoadingEffect) {
-        headerLen = PacketBuilder::buildTransferCommand(pHeader, addr, raw_len);
+        headerLen = PacketBuilder::buildTransferCommand((uint8_t*)&header, addr, raw_len);
+       // headerLen = PacketBuilder::buildTransferCommand(pHeader, addr, raw_len);
       } else {
-        headerLen = PacketBuilder::buildCopyCommand(pHeader, addr, raw_len);
+        //headerLen = PacketBuilder::buildCopyCommand(pHeader, addr, raw_len);
+        headerLen = PacketBuilder::buildCopyCommand((uint8_t*)&header, addr, raw_len);
       }
+
 
       Z80Bus::sendBytes(pHeader, headerLen);
       Z80Bus::sendBytes(dataSrc, raw_len);
       addr += raw_len;
     }
   }
-  BufferManager::freeToMark(mark);
+//  BufferManager::freeToMark(mark);
 }
 
 // Note: Since snapshots (*.SNA files) include the screen we can reuse this for things like loading *.SCR files
