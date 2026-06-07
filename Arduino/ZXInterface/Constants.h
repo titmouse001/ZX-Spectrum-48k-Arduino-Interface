@@ -30,19 +30,17 @@ namespace COL {
     constexpr uint8_t Paper0Ink7  = 0b01000111;
     constexpr uint8_t Paper5Ink0  = 0b00101000;
     constexpr uint8_t Paper0Ink0  = 0b00000000;
-    constexpr uint8_t FlashPaper0Ink2  = 0b11000010;
     constexpr uint8_t BLACK_WHITE = Paper0Ink7;  
     constexpr uint8_t CYAN_BLACK  = Paper5Ink0; 
     constexpr uint8_t BLACK_BLACK = Paper0Ink0;  
-    constexpr uint8_t FLASH_BLACK_RED   = FlashPaper0Ink2;  
 }
 
 //-----------------------------------------
 // BUTTON INPUTS
-constexpr uint8_t INPUT_MASK = 0b00111111;
-constexpr uint8_t INPUT_FIRE = 0b00100000;
+constexpr uint8_t JOYSTICK_MASK = 0b00111111;
+constexpr uint8_t JOYSTICK_FIRE = 0b00100000;
 //constexpr uint8_t JOYSTICK_DOWN = 0b00000100;
-constexpr uint8_t INPUT_SELECT = 0b01000000;
+constexpr uint8_t JOYSTICK_SELECT = 0b01000000;
 constexpr uint8_t MAX_BUTTON_READ_MILLISECONDS  = 1000 / 50;  // 50 FPS
 
 //-----------------------------------------

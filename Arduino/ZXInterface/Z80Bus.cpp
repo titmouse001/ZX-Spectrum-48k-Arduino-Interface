@@ -45,14 +45,12 @@ void Z80Bus::setupPins() {
 __attribute__((optimize("-Os")))
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
-  delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
- // delay(10);
-  delay(250);  
+  // delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
+  delay(10);
   // Noticed a 48K Spectrum will boot with a very short reset pulse less than 10ms,
   // but a Spectrum +2B needs a much longer hold time, around 250ms.
   digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
-  //delay(10);
-  delay(50);
+  delay(10);
 }
 
 void Z80Bus::setSnaRom() {
@@ -81,10 +79,10 @@ void Z80Bus::sendSnaHeader(uint8_t* header) {
   uint8_t buf[2];
   uint8_t cmdLength = PacketBuilder::buildExecuteCommand(buf);
   sendBytes(buf, cmdLength);
-  // Execute Command expects registers to follow in this order
-  sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
-  sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
-  sendBytes(&header[SNA_SP_LOW], 2);              // The rest aren't in SNA header sequence...
+
+  sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);    // I,HL',DE',BC',AF'
+  sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);    // IY,IX,IFF2,R
+  sendBytes(&header[SNA_SP_LOW], 2);                // The rest aren't in sequence...
   sendBytes(&header[SNA_HL_LOW], 2);
   sendBytes(&header[SNA_IM_MODE], 1);
   sendBytes(&header[SNA_BORDER_COLOUR], 1);
@@ -131,17 +129,14 @@ void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
 
-// ASM> OUT ($1F), A    		  ; Game cart latches value (latch ic: 74HC574PW)
-// ASM> halt	
-
 //__attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::get_IO_Byte() {
-  DDRD = 0x00;                    // Nano data pins to input
+  DDRD = 0x00;                    // All Nano data pins to input
 
   waitHalt_syncWithZ80();         // Wait for OUT cycle
   digitalWriteFast(Pin::OE_LATCH, LOW);  // Drive bus with latch data
 
-  // Capture time for latch - spec says around 38ns (nanoseconds)
+  // Capture time for latch - spec says around 38ns.
   __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
                        "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
 
@@ -312,8 +307,8 @@ void Z80Bus::triggerZ80NMI() {
 }
 
 __attribute__((optimize("-Os"))) 
-void Z80Bus::hasZ80Resumed() {
+void Z80Bus::hasZ80Resumed(){
   // wait until HALT goes HIGH (Z80 resumes)
-  while (digitalReadFast(Pin::Z80_HALT) == 0) {};
+   while (digitalReadFast(Pin::Z80_HALT) == 0) {};  
 }
 

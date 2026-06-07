@@ -1,9 +1,11 @@
 @echo off
 echo -------------------------------------
+echo.
 cd ZxSpectrum16K_OriginalASM
 call _make.bat
 cd ..
 echo -------------------------------------
+echo.
 
 @echo off
 setlocal enabledelayedexpansion
@@ -14,10 +16,11 @@ set BIN_FILE=.\output\SnaLauncher.bin
 set LST_FILE=.\SnaLauncher.lst
 set ASM_TOOL=..\tools\pasmo-0.5.4.beta2\pasmo.exe
 
-set MOD_48KROM=.\ZxSpectrum16K_OriginalASM\48KROM.bin
+set ROM_FILE=48.rom
+set EXTRA_BIN=.\ZxSpectrum16K_OriginalASM\48KROM.bin
 
 :: Uncomment to enable debug list output
-::set DEBUG_LST=1
+:: set DEBUG_LST=1
 
 if not exist .\output mkdir .\output
 del /Q .\output\*.bin >nul 2>&1
@@ -30,7 +33,7 @@ if defined DEBUG_LST (
     "%ASM_TOOL%" --bin "%ASM_FILE%" "%BIN_FILE%"
 )
 
-
+echo.
 
 if not exist "%BIN_FILE%" (
     echo ERROR: %BIN_FILE% was not created.
@@ -50,9 +53,14 @@ for %%A in ("%BIN_FILE%") do (
 )
 
 echo Building EPROM image...
-copy /b "%BIN_FILE%"+%MOD_48KROM% .\output\EPROM_PAIR.bin >nul
+::copy /b "%BIN_FILE%"+%EXTRA_BIN% .\output\EPROM2.bin >nul
+::copy /b "%BIN_FILE%"+%ROM_FILE% .\output\EPROM.bin >nul
+
+copy /b "%BIN_FILE%"+%EXTRA_BIN% .\output\EPROM_PAIR.bin >nul
+
 del /Q "%BIN_FILE%" >nul
-echo joined x2 bin roms (SnaRom with modifed stock rom)
+
+echo.
 echo Build complete!
 echo.
 echo -------------------------------------

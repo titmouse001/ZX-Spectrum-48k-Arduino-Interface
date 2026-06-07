@@ -11,10 +11,11 @@ set ASM_TOOL=..\..\tools\pasmo-0.5.4.beta2\pasmo.exe
 set REF_FILE=..\48.rom
 
 :: Uncomment this if you want the .lst debug file
-::set DEBUG_LST=48KROM.lst
+set DEBUG_LST=48KROM.lst
 :: -------------------------------
 
 echo Assembling modified stock ROM: %ASM_FILE%
+echo.
 
 if defined DEBUG_LST (
     "%ASM_TOOL%" --bin -d "%ASM_FILE%" "%BIN_FILE%" > "%DEBUG_LST%"
