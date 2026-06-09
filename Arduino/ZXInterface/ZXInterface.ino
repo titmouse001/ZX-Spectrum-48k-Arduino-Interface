@@ -101,12 +101,12 @@ void setup() {
 
   // ---------------------------------------------------------------------------
   // *** Use stock ROM *** when select button or fire held at power up
-  if (Utils::readJoystick() & (JOYSTICK_FIRE | JOYSTICK_SELECT)) {
+  if (Utils::readJoystick() & (INPUT_FIRE | INPUT_SELECT)) {
     Z80Bus::setStockRom();
     Z80Bus::resetZ80();                                        // Resets Z80 for a clean boot from internal ROM.
-    while ((Utils::readJoystick() & JOYSTICK_SELECT) != 0) {}  // Debounces button release.
+    while ((Utils::readJoystick() & INPUT_SELECT) != 0) {}  // Debounces button release.
     while (true) {
-      if (Utils::readJoystick() & JOYSTICK_SELECT) {
+      if (Utils::readJoystick() & INPUT_SELECT) {
         Z80Bus::setSnaRom();
         break;                                                 // Returns to Sna loader.
       }

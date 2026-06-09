@@ -41,7 +41,7 @@ uint8_t pauseMenu();
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
-void exportScreenshot();
+bool exportScreenshot();
 void viewSpeccyMemory();
 void displayHexDump(uint16_t startAddr, uint16_t length);
 
