@@ -7,8 +7,6 @@
 #include "Z80Bus.h"
 #include <string.h>  
 
-#include "CommandRegistry.h"
-
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = Menu::MAX_REPEAT_KEY_DELAY;
@@ -165,7 +163,8 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
 __attribute__((optimize("-Os")))
 uint16_t Menu::scanFolder(bool reset) {
- if (reset) {
+ 
+  if (reset) {
     currentFileIndex = 0;
     startFileIndex = 0;
   }
@@ -173,10 +172,8 @@ uint16_t Menu::scanFolder(bool reset) {
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
     // SD card removed?
     Draw::text_P(80, 90, F("NO FILES FOUND"));
-    do {  
-      delay(20);  
-    } while (!SdCardSupport::init(Pin::SD_CARD_CS));  // keep looking
-    Utils::clearScreen(COL::BLACK_WHITE);   
+    delay(100);
+    SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
   }
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
   displayItemList(startFileIndex);
@@ -241,12 +238,12 @@ void Menu::show5VoltRailStatus(Menu::MenuAction_t action) {
     Draw::text(224, 0, voltageStr);
 
 
-// // ****** SCRATCH CODE - DEBUG ONLY *************
-// char _c[8];
-// itoa(BufferManager::poolOffsetLastMax, _c, 10);
-// //itoa(CommandRegistry::command_Transfer, _c, 10);
-// Draw::text(256 - 64, 32, _c);
-// // *******************************
+// ****** DEBUG ONLY *************
+char _c[8];
+//sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
+itoa(BufferManager::poolOffsetLastMax, _c, 10);
+Draw::text(256 - 64, 32, _c);
+// *******************************
 
 }
 

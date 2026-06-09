@@ -18,8 +18,6 @@ boolean SdCardSupport::init(uint8_t csPin) {
   sd.end();
   
   if (!sd.begin(csPin, SPI_HALF_SPEED)) return false;
- // if (!sd.begin(csPin, SPI_QUARTER_SPEED)) return false;
- 
   return root.open("/");
 }
 
