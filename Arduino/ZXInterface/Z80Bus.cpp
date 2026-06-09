@@ -92,12 +92,8 @@ void Z80Bus::sendSnaHeader(uint8_t* header) {
 }
 
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
-	uint16_t mark = BufferManager::getMark();
-	//uint8_t* buf = BufferManager::allocate(  E(FillPacket::PACKET_LEN) );
-  uint8_t* buf = BufferManager::allocate(  sizeof(FillPacket) );
-  uint8_t packetLen = PacketBuilder::buildFillCommand(buf, amount, address, color);
-  Z80Bus::sendBytes(buf, packetLen);
-  BufferManager::freeToMark(mark);
+  FillPacket pkt(amount, address, color);
+  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(FillPacket));
 }
 
 __attribute__((optimize("-Os"))) 
@@ -175,16 +171,11 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
   constexpr uint16_t MAX_RAW_LENGTH = 255;
   constexpr uint8_t MIN_RUN_LENGTH = 3;  // about where RLE pays off over raw
 
- // uint8_t mark = BufferManager::getMark();
-  //uint8_t* pHeader = BufferManager::allocate(sizeof(FillPacket));
   Fill8Packet pkt;
-
   union {
-        FillPacket fill;
         TransferPacket trans;
         CopyPacket copy;
   } header;
-
   uint8_t* pHeader = (uint8_t*)&header;
 
   if (input_len == 0) return;
@@ -200,8 +191,7 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      //uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*) &pkt, addr, run_len, value);
-      uint8_t packetLen = PacketBuilder::build_command_fill_mem_bytecount((uint8_t*) &pkt, addr, run_len, value);
+      uint8_t packetLen = PacketBuilder::build_command_fill8((uint8_t*) &pkt, addr, run_len, value);
       Z80Bus::sendBytes((uint8_t*) &pkt, packetLen);
       addr += run_len;
       i += run_len;
@@ -225,19 +215,15 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       uint8_t headerLen;
       if (borderLoadingEffect) {
         headerLen = PacketBuilder::buildTransferCommand((uint8_t*)&header, addr, raw_len);
-       // headerLen = PacketBuilder::buildTransferCommand(pHeader, addr, raw_len);
       } else {
-        //headerLen = PacketBuilder::buildCopyCommand(pHeader, addr, raw_len);
         headerLen = PacketBuilder::buildCopyCommand((uint8_t*)&header, addr, raw_len);
       }
-
 
       Z80Bus::sendBytes(pHeader, headerLen);
       Z80Bus::sendBytes(dataSrc, raw_len);
       addr += raw_len;
     }
   }
-//  BufferManager::freeToMark(mark);
 }
 
 // Note: Since snapshots (*.SNA files) include the screen we can reuse this for things like loading *.SCR files

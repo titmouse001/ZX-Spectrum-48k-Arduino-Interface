@@ -6,7 +6,7 @@
 namespace CommandRegistry {
 
     // NOTE: FUTURE ME - ARE YOU RUNNNING OUT OF VARIABLE SPACE... 
-    //       !!!MAYBE HARDCODE THESE!!!
+    //       !!!MAYBE HARDCODE THESE!!! OR VECTOR TABLE Z80 SIDE
     uint16_t command_TransmitKey;
     uint16_t command_Fill;
     uint16_t command_Transfer;
@@ -24,8 +24,8 @@ namespace CommandRegistry {
         return low | (high << 8);
     }
 
-   // API: At startup, we read the location of each support method on the Z80 side,
-   // as these memory locations will change, be added, or be deleted over time.
+    // API: At startup, we read the location of each support method on the Z80 side,
+    // as these memory locations will change, be added, or be deleted over time.
     void initialize() {
         command_TransmitKey        = read_IO_Word();
         command_Fill               = read_IO_Word();
@@ -38,6 +38,7 @@ namespace CommandRegistry {
         command_fill_mem_bytecount = read_IO_Word();
         command_SendData           = read_IO_Word();
     }
+
 
  //   BUG HUNT... THIS IS GOOD - PROVED OK WITH HARDCODE ADDRESS (...LATER THE ISSUE (128k machines not showing menu!!!) FOUND DUE TO BAD FILL (using CPI) ON Z80 SIDE!!!)
  //   NOTE: REFESH FROM "SnaLauncher.lst" file .

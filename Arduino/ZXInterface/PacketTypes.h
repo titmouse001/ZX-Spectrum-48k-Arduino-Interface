@@ -12,6 +12,7 @@
 struct ReceiveKeyboardPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
+    
     ReceiveKeyboardPacket() : cmd_high(CommandRegistry::command_TransmitKey >> 8), 
                               cmd_low(CommandRegistry::command_TransmitKey & 0xff) {}
 };
@@ -20,6 +21,7 @@ ASSERT_Z80_PACKET_SIZE(2,ReceiveKeyboardPacket);
 struct ExecutePacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
+
     ExecutePacket() : cmd_high(CommandRegistry::command_Execute >> 8), 
                       cmd_low(CommandRegistry::command_Execute & 0xff) {}
 };
@@ -51,12 +53,17 @@ struct FillPacket {
     uint8_t start_addr_high;
     uint8_t start_addr_low;
     uint8_t fill_value;
+
+    FillPacket(uint16_t amount, uint16_t address, uint8_t value) : 
+                cmd_high(CommandRegistry::command_Fill >> 8), 
+                cmd_low(CommandRegistry::command_Fill & 0xff),
+                amount_high(static_cast<uint8_t>(amount >> 8)),
+                amount_low(static_cast<uint8_t>(amount & 0xFF)),
+                start_addr_high(static_cast<uint8_t>(address >> 8)),
+                start_addr_low(static_cast<uint8_t>(address & 0xFF)),
+                fill_value(value) {}
 };
 ASSERT_Z80_PACKET_SIZE(7,FillPacket);
-
-//Sketch uses 26922 bytes (87%) of program storage space. Maximum is 30720 bytes.
-//Global variables use 1371 bytes (66%) of dynamic memory, leaving 677 bytes for local variables. Maximum is 2048 bytes.
-
 
 struct Fill8Packet {
     uint8_t cmd_high;
