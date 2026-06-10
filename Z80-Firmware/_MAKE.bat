@@ -20,7 +20,7 @@ set ROM_FILE=48.rom
 set EXTRA_BIN=.\ZxSpectrum16K_OriginalASM\48KROM.bin
 
 :: Uncomment to enable debug list output
-:: set DEBUG_LST=1
+set DEBUG_LST=1
 
 if not exist .\output mkdir .\output
 del /Q .\output\*.bin >nul 2>&1

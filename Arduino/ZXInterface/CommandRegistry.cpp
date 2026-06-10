@@ -24,21 +24,51 @@ namespace CommandRegistry {
         return low | (high << 8);
     }
 
+
+    // ORG $00D0
+	// jp command_TransmitKey			;1  (offset +0)
+	// jp command_Fill					;2  (offset +3)
+	// jp command_Transfer				;3  (offset +6)
+	// jp command_Copy					;4	...
+	// jp command_Copy32				;5
+	// jp command_VBL_Wait				;6
+	// jp command_Stack				    ;7
+	// jp command_Execute				;8
+	// jp command_fill_mem_bytecount	;9
+	// jp command_SendData				;10
+
     // API: At startup, we read the location of each support method on the Z80 side,
     // as these memory locations will change, be added, or be deleted over time.
-    void initialize() {
-        command_TransmitKey        = read_IO_Word();
-        command_Fill               = read_IO_Word();
-        command_Transfer           = read_IO_Word();
-        command_Copy               = read_IO_Word();
-        command_Copy32             = read_IO_Word();
-        command_VBL_Wait           = read_IO_Word();
-        command_Stack              = read_IO_Word();
-        command_Execute            = read_IO_Word();
-        command_fill_mem_bytecount = read_IO_Word();
-        command_SendData           = read_IO_Word();
-    }
 
+    constexpr uint16_t CMD_BASE = 0x00D0;
+    constexpr uint16_t cmd_addr(uint8_t n) {
+         return CMD_BASE + (3 * n); 
+        }
+
+    void initialize() {
+      //  NOP        = cmd_addr(0);
+        command_TransmitKey        = cmd_addr(1);
+        command_Fill               = cmd_addr(2);
+        command_Transfer           = cmd_addr(3);
+        command_Copy               = cmd_addr(4);
+        command_Copy32             = cmd_addr(5);
+        command_VBL_Wait           = cmd_addr(6);
+        command_Stack              = cmd_addr(7);
+        command_Execute            = cmd_addr(8);
+        command_fill_mem_bytecount = cmd_addr(9);
+        command_SendData           = cmd_addr(10);
+
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+        Z80Bus::waitHalt_syncWithZ80(); Z80Bus::triggerZ80NMI();Z80Bus::waitHalt_syncWithZ80();Z80Bus::triggerZ80NMI();
+    }
 
  //   BUG HUNT... THIS IS GOOD - PROVED OK WITH HARDCODE ADDRESS (...LATER THE ISSUE (128k machines not showing menu!!!) FOUND DUE TO BAD FILL (using CPI) ON Z80 SIDE!!!)
  //   NOTE: REFESH FROM "SnaLauncher.lst" file .

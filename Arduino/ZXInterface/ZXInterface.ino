@@ -119,6 +119,8 @@ void setup() {
     } while (!SdCardSupport::init(Pin::SD_CARD_CS)); // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);
   }
+
+  Z80Bus::getKeyboard();  /// BANG !
 }
 
 // ---------------------

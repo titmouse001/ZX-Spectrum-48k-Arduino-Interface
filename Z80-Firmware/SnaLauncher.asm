@@ -183,14 +183,40 @@ L0066:
 ;******************
 ; *** MAIN LOOP ***
 ;******************
+; mainloop:
+; 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
+; check_initial:   
+; 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
+; 	JP (hl) ; 
+; 	jp check_initial	  ; not needed!
+
 mainloop:
-	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
-check_initial:   
+	ld c,$1F  
 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
-	JP (hl) ; 
-	jp check_initial	  ; not needed!
+ 	JP (hl) ; 
+	jp mainloop
+
 ;----------------------------------------------------------------------------------
 
+;-------------------------------
+; Jump Table
+ORG $00D0
+	jp command_NOP
+	jp command_TransmitKey			
+	jp command_Fill					
+	jp command_Transfer				
+	jp command_Copy					
+	jp command_Copy32				
+	jp command_VBL_Wait				
+	jp command_Stack				
+	jp command_Execute				
+	jp command_fill_mem_bytecount	
+	jp command_SendData				
+
+IF $ > $00D0+(11*3)
+	.ERROR "CODE OVERLAPS"
+ENDIF
+;-------------------------------
 sendFunctionList:
 	; Hardware Info: The game cartridge sends these addresses using a 74HC574PW latch IC.
 	; The hardware performs a lazy check on address lines - A7=0 enables latching (requires #IORQ + #RD).
@@ -261,6 +287,9 @@ sendFunctionList:
 	;--------------------------------
 	ret ; return OK as inside menu's stack
 
+command_NOP:
+	nop
+	jp mainloop
 
 ;------------------------------------------------------;
 ; *** Transmit to Arduno ***
