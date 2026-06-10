@@ -145,6 +145,13 @@ uint8_t Z80Bus::getKeyboard() {
     return get_IO_Byte();
 }
 
+ __attribute__((optimize("-Os"))) 
+void Z80Bus::Z80_NOP() {
+    NOP_Packet pkt;
+    Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
+  
+}
+
 
 //------------------------------------------------------------------------------------------
 // This transfer has a simple look ahead to see if data can be RLE-compressed.  When a performance payoff 

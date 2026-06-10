@@ -32,6 +32,8 @@ extern void triggerZ80NMI();
 extern void hasZ80Resumed();
 extern void waitRelease_NMI();
 
+extern void Z80_NOP();
+
 }
 
 #endif

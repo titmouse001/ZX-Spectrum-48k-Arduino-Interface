@@ -84,6 +84,7 @@ void setup() {
 #endif
 
   Z80Bus::setupPins();
+  Z80Bus::resetZ80();
   Utils::setupJoystick();
 
 #if (DEBUG_OLED == 1)
@@ -105,7 +106,7 @@ void setup() {
     }
   }
 
-  Z80Bus::resetZ80();
+//  Z80Bus::resetZ80();
   CommandRegistry::initialize();
 
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
@@ -120,7 +121,8 @@ void setup() {
     Utils::clearScreen(COL::BLACK_WHITE);
   }
 
-  Z80Bus::getKeyboard();  /// BANG !
+ // Z80Bus::Z80_NOP();  // z80 NOP command turns border red for testing 1st item in jump table is ok
+
 }
 
 // ---------------------

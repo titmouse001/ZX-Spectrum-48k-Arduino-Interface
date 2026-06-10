@@ -9,6 +9,15 @@
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
 
+struct NOP_Packet {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    
+    NOP_Packet() : cmd_high(CommandRegistry::command_NOP >> 8), 
+                   cmd_low(CommandRegistry::command_NOP & 0xff) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
+
 struct ReceiveKeyboardPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;

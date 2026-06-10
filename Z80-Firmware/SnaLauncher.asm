@@ -116,7 +116,7 @@ ClearAllRamRet:
 	; Note: At game loading time, SP is reasigned with 'command_Stack' from the Arduino.
 	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
 
-	call sendFunctionList
+	;;;call sendFunctionList
 	
 	
 	jp mainloop
@@ -288,7 +288,7 @@ sendFunctionList:
 	ret ; return OK as inside menu's stack
 
 command_NOP:
-	nop
+	SET_BORDER 2
 	jp mainloop
 
 ;------------------------------------------------------;

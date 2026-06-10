@@ -4,6 +4,9 @@
 #include "stdint.h"
 
 namespace CommandRegistry {
+
+  extern uint16_t command_NOP;
+
   extern uint16_t command_TransmitKey;
   extern uint16_t command_Fill;
   extern uint16_t command_Transfer;
