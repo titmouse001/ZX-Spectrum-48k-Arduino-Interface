@@ -87,6 +87,9 @@ L0000:
 	DI           
 	ld SP,0xFFFF
 
+	SET_BORDER 0
+	call ClearScreenAttributes
+
 	;------------------------------------------
 	; Disable 128k Spectrums from paging
 	; 0x7FFD : Bit 5=1 (Lock), Bit 3=0 (Screen at 0x4000), Bits 0-2=0 (Bank 0)
@@ -107,9 +110,9 @@ L0000:
 	; ; (While in the menu code, it's okay to use the stack normally.)
 
 	;-----------------------------------------------------------------------------------	
-	SET_BORDER 0
-	jp ClearAllRam  	; 48k
-ClearAllRamRet:
+;	SET_BORDER 0
+;	jp ClearAllRam  	; 48k
+;ClearAllRamRet:
 
 	
 	;ld SP,0xFFFF  ; !!! This stack location is only for menu use !!!
@@ -664,38 +667,61 @@ relocateEnd:
 ;-----------------------------------------------------------------------
 ; SCREEN CLEAR - Initialize display memory
 ;-----------------------------------------------------------------------
-ClearScreen:
-	SET_BORDER 0
-   	ld a, 0
-    ld hl, SCREEN_START
-    ld de, SCREEN_START+1
-    ld bc, 6144					; Screen bitmap
-    ld (hl), a
-    ldir
-    ld bc, 768-1				; Screen attributes
-    ld (hl), a
-    ldir
-    ret
+; ClearScreen:
+; 	SET_BORDER 0
+;    	ld a, 0
+;     ld hl, SCREEN_START
+;     ld de, SCREEN_START+1
+;     ld bc, 6144					; Screen bitmap
+;     ld (hl), a
+;     ldir
+;     ld bc, 768-1				; Screen attributes
+;     ld (hl), a
+;     ldir
+;     ret
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------
 ; CLEAR RAM 48KB - 273,725 T-states / 3,500,000 = 0.0782
 ; +0.08 seconds (will be a bit more due to contended memory)
 ;-----------------------------------------------------------------------
-ClearAllRam: 
-        LD IX, 0        
-        ADD IX, SP               
-        ld hl, 0                 
-        ld sp, 16384 + (48*1024) ; top of RAM (65536)
-        ld b, 0                  ; wraps so 256 times
-clr:    REPT 96
-        push hl           		 ; 11 * 96 * 256
-        ENDM
-        djnz clr          		 ; (256 * 13) - (13-8)
-        ld sp, ix                
+; ClearAllRam: 
+;         LD IX, 0        
+;         ADD IX, SP               
+;         ld hl, 0                 
+;         ld sp, 16384 + (48*1024) ; top of RAM (65536)
+;         ld b, 0                  ; wraps so 256 times
+; clr:    REPT 96
+;         push hl           		 ; 11 * 96 * 256
+;         ENDM
+;         djnz clr          		 ; (256 * 13) - (13-8)
+;         ld sp, ix                
 
-		jp ClearAllRamRet 
+; 		jp ClearAllRamRet 
 ;-----------------------------------------------------------------------	
+
+
+;-----------------------------------------------------------------------
+; CLEAR SCREEN ATTRIBUTES - 768 bytes of attribute memory.
+;-----------------------------------------------------------------------
+ClearScreenAttributes:
+    LD IX, 0        
+    ADD IX, SP     
+        
+    ld hl, 0    
+    ld sp, $5800 + 768  
+    ld b, 6   ; 768 / 2 (push) / 6 = 64
+        
+clr_attr_loop:
+    REPT 64
+    push hl
+    ENDM        
+    djnz clr_attr_loop   
+
+ 	ld sp, ix     
+    ret
+;-----------------------------------------------------------------------
+
 
 ;-----------------------------------------------------------------------	
 ; RESTORE INTERRUPT MODE - Helper for command_Execute
