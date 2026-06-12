@@ -1,41 +1,43 @@
-; ZX SPECTRUM 48K MEMORY MAP:-
-;        rom: $0000 - $3FFF (16 KB ROM)
-;     screen: $4000 - $57FF (6144 bytes - screen display data)
-; attributes: $5800 - $5AFF (768 bytes - screen color attributes)
+;------------------
+; SNA ROM
+;------------------
 ;
-; This ROM works in tandem with a lightly modified version of the stock ROM.
-; (see \Z80-Firmware\ZxSpectrum16K_OriginalASM\48KROM.asm)
-; This modified stock ROM has been carefully altered only where the code is not used.
-; I've stayed away from modifying anything live or is some way used in Spectrum games,
-; such as the patch of blank 0xFF used for IM 2 on most 48k Speccy games.
+; This Asm file is the source for the 16k sna rom image.
+; The Make.bat script will assemble x2 roms:
+;   (1) Upper 16k: SnaLauncher.asm (this sna rom - the remote command/launcher code)
+;   (2) Lower 16k: A lightly modified version of the original 48K ROM (48KROM.asm)
+; A final 32k ROM is built by joining the two 16k ROM images.
+;
+;-----------------------------------------------------------------------------------
+;
+; _Make.bat will build everything and put the build rom in output/EPROM_PAIR.bin
+;
+;-----------------------------------------------------------------------------------
+;
+; The modified stock ROM (48KROM.asm) has been altered in areas that are never used. 
+; I've stayed away from anything used in Spectrum games. e.g. The 0xFF padding for 
+; IM 2 vectors remains untouched, as most 48k games rely on it.
+;
 ;
 ; Tested on both 48K and 128K machines (using '_ROMCS' & 'ROM1_OE').
 ; - 48K: _ROMCS (edge 25B) is NOT USED on +2a/b or +3 boards.
-; - +2a/b, +3: Earlier prototype used a jumper wire from 'ROM1_OE' (edge 4A) to 5V.
-; - Production boards include a PCB jumper labeled "BOOT128" - when jumpered, this 
-;	enables 128K mode while still working fine on 48K machines.
+; - PCB now includes jumper labeled "BOOT128" which allows 128K machines to access 
+;   the sna ROM on 48K machines. Infact it could just be solder blob/bridge and 
+;   has no effect on 48k machines.
+;   128k needs longer pause for a80 reset - see Arduino code 'Z80Bus::resetZ80()'
 ;
-; Note: 128K machines can play 48k games work.
-;		Need reset timing tweak see Arduino code "Z80Bus::resetZ80()".
-
-
 ;******************************************************************************
 ;   CONSTANTS
 ;******************************************************************************
-SCREEN_START				EQU $4000  ; [6144 bytes]
-SCREEN_END					EQU $57FF
-SCREEN_ATTRIBUTES_START		EQU $5800  ; [768 bytes]
-SCREEN_ATTRIBUTES_END		EQU $5AFF  
-LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
+SCREEN_START                EQU $4000
+SCREEN_END                  EQU $57FF
+SCREEN_SIZE                 EQU SCREEN_END - SCREEN_START + 1 ; 6144 bytes
 
-; PRESERVE_MENU_STACK: Prevents the pause menu from overusing the game's stack 
-; at the cost of 4 bytes of screen corruption. Using /RD + /IORQ prior to 
-; triggering the NMI appears to help prevent stack overflow in tested games.
-; (this is experimental incase the game's stack could not be used - leave off )
-;
-; 0 = OFF: Uses game stack (Uses 4 bytes / 2 deep)
-; 1 = ON:  Uses screen as temp stack (Reduces game stack usage to 2 bytes / 1 deep)
-PRESERVE_MENU_STACK             EQU 0 
+SCREEN_ATTRIBUTES_START     EQU $5800
+SCREEN_ATTRIBUTES_END       EQU $5AFF
+SCREEN_ATTRIBUTES_SIZE      EQU SCREEN_ATTRIBUTES_END - SCREEN_ATTRIBUTES_START + 1 ; 768 bytes
+
+LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -85,7 +87,19 @@ ENDM
 ORG $0000
 L0000:  
 	DI           
+	; This stack is only for menu use (this does not include the in-game menu)
+	; Note: At game loading time, SP is reasigned with 'command_SetStack' from the Arduino.
+	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
 	ld SP,0xFFFF
+
+	;Stack Behavior - 	The stack grows downward.
+	;					PUSH: sp -= 2; stores value at (sp).
+	;					POP: loads value from (sp); sp += 2.
+	;*** IMPORTANT WARNINGS ***:
+	; Code limitations when using "command_Execute":
+	; Total stack usage must be only 1 level deep (2 bytes, just one push).
+	; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
+	; (While in the menu code, it's okay to use the stack normally.)
 
 	SET_BORDER 0
 	call ClearScreenAttributes
@@ -98,30 +112,6 @@ L0000:
     OUT (C), A        ; Lock and select Bank 0/Screen 5
 	;------------------------------------------
 
-
-	; ;-----------------------------------------------------------------------------------	
-	; ;Stack Behavior - 	The stack grows downward.
-	; ;					PUSH: sp -= 2; stores value at (sp).
-	; ;					POP: loads value from (sp); sp += 2.
-	; ;*** IMPORTANT WARNINGS ***:
-	; ; Code limitations when using "command_Execute":
-	; ; Total stack usage must be only 1 level deep (2 bytes, just one push).
-	; ; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
-	; ; (While in the menu code, it's okay to use the stack normally.)
-
-	;-----------------------------------------------------------------------------------	
-;	SET_BORDER 0
-;	jp ClearAllRam  	; 48k
-;ClearAllRamRet:
-
-	
-	;ld SP,0xFFFF  ; !!! This stack location is only for menu use !!!
-	; Note: At game loading time, SP is reasigned with 'command_Stack' from the Arduino.
-	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
-
-	;;;call sendFunctionList
-	
-	
 	jp mainloop
 
 ; -------------------------------------------------------------------------
@@ -186,19 +176,10 @@ L0066:
 ;******************
 ; *** MAIN LOOP ***
 ;******************
-; mainloop:
-; 	ld c,$1F  	; setup for 'READ_PAIR_WITH_HALT'
-; check_initial:   
-; 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
-; 	JP (hl) ; 
-; 	jp check_initial	  ; not needed!
-
 mainloop:
 	ld c,$1F  
 	READ_PAIR_WITH_HALT h,l  ; HL = jump address
  	JP (hl) ; 
-	jp mainloop
-
 ;----------------------------------------------------------------------------------
 
 ;-------------------------------
@@ -211,91 +192,32 @@ ORG $00D0
 	jp command_Copy					
 	jp command_Copy32				
 	jp command_VBL_Wait				
-	jp command_Stack				
-	jp command_Execute				
+	jp command_SetStack				
+	jp command_RestoreGameAndExecute				
 	jp command_fill_mem_bytecount	
 	jp command_SendData				
 
-IF $ > $00D0+(11*3)
-	.ERROR "CODE OVERLAPS"
-ENDIF
+;------------------------------------------------------
+	IF $ > $00D0+(11*3)
+		.ERROR "CODE OVERLAPS"
+	ENDIF
+;------------------------------------------------------
+
+
+;------------------------------------------------------
+;------------------------------------------------------
+; REMOTE COMMAND SECTION (routines called via main loop)
+;------------------------------------------------------
+;------------------------------------------------------
+
 ;-------------------------------
-sendFunctionList:
-	; Hardware Info: The game cartridge sends these addresses using a 74HC574PW latch IC.
-	; The hardware performs a lazy check on address lines - A7=0 enables latching (requires #IORQ + #RD).
-	; Each HALT synchronizes the Z80 with the Arduino. The Arduino enables the latch outputs for reading,
-	; then disables them (tri-state) and signals the z80 to continue (un-halts).
-
- 	LD C, $1F			  
-	;--------------------------------
-	ld hl,command_TransmitKey
-   	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt				
-	;--------------------------------
-	ld hl,command_Fill
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_Transfer
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_Copy
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_Copy32
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_VBL_Wait
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_Stack
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_Execute
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_fill_mem_bytecount
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ld hl,command_SendData
-	OUT (C), l    		  
-	halt				
-	OUT (C), h    		  
-	halt
-	;--------------------------------
-	ret ; return OK as inside menu's stack
-
+; Debugging support - NOP 
 command_NOP:
 	SET_BORDER 2
 	jp mainloop
 
-;------------------------------------------------------;
-; *** Transmit to Arduno ***
+;------------------------------------------------------
+; Transmit Data to Arduno 
 command_SendData:	
 	READ_PAIR_WITH_HALT d,e  ; DE = amount 
  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
@@ -311,7 +233,7 @@ command_SendData:
     JP NZ, .transmitLoop 
 	jp mainloop
 
-;------------------------------------------------------;
+;------------------------------------------------------
 
 
 ;------------------------------------------------------
@@ -354,6 +276,7 @@ RestoreSP:
 
 
 ;------------------------------------------------------
+; Read Keyboard / Transmit key (0 none)
 command_TransmitKey:
 ;------------------------------------------------------
 	JP GET_KEY            ; Returns key in A
@@ -363,7 +286,7 @@ GET_KEY_RET:		  ; (jump back - avoid stack usage)
 	jp mainloop
 
 ;------------------------------------------------------
-; command_Fill: 
+; Fill Memory 
 ; Input: DE = Count, HL = Start Addr, A = Fill Byte
 ;------------------------------------------------------
 command_Fill:
@@ -425,7 +348,8 @@ command_Fill:
 
 
 ;---------------------------------------------------
-command_Transfer:   ; TRANSFER DATA (flashes border)
+; Receive Data Transfer from Arduino (flashes border)
+command_Transfer:  
 ;---------------------------------------------------
 	halt
 	in b,(c)  					; B = transfer size
@@ -441,7 +365,8 @@ readDataLoop:
 	jp mainloop
 
 ;------------------------------------------------------
-command_Copy:  ;  COPY DATA
+; Receive Data Transfer from Arduino
+command_Copy: 
 ;------------------------------------------------------
 	; Same as TRANSFER DATA but without the flashing boarder.
 	halt							; Synchronizes with Arduino (NMI to continue)
@@ -460,7 +385,8 @@ CopyLoop:
   jp mainloop 			; done - back for next transfer command
 
 ;------------------------------------------------------
-command_Copy32:  ; Copy Block of Data (32 bytes)
+; Receive Data Transfer from Arduino (32 bytes)
+command_Copy32: 
 ;  ini: [HL]:=port[BC], HL:=HL+1, B:=B-1, Z is set if BC == 0
 ;------------------------------------------------------
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
@@ -471,7 +397,8 @@ command_Copy32:  ; Copy Block of Data (32 bytes)
   JP mainloop 			; done - back for next transfer command
 
 ;--------------------------------------------------------
-command_VBL_Wait:  ; Wait for the 50Hz maskable interrupt
+; Wait for the 50Hz maskable interrupt
+command_VBL_Wait:  
 ;--------------------------------------------------------
     ; Enable Interrupt Mode 1 (IM 1) to use the default Spectrum interrupt handler at $0038.  
     ; This will trigger an interrupt at 50Hz (every 20ms) at address $0038 (default ISR).
@@ -486,32 +413,76 @@ command_VBL_Wait:  ; Wait for the 50Hz maskable interrupt
     jp mainloop 	; done - back for next transfer command
 
 ;-----------------------------------------------------
-command_Stack:  ; store or restores snapshots stack 
+; Read/Write to the Stack Pointer
+command_SetStack: 
 ;-----------------------------------------------------
 
 	READ_PAIR_WITH_HALT h,l 
-  	READ_ACC_WITH_HALT       ; A = Save:0 or Restore:1
+;  	READ_ACC_WITH_HALT       ; A = Save:0 or Restore:1
 
-	or a    
-    jr nz, .restore 
+; 	or a    
+;     jr nz, .restore 
 	
-.store:
-	ld HL,0
-	add HL,SP
-	OUT (C), L
-	halt				
-	OUT (C), H    		  
-	halt
- 	jp mainloop    
+; .store:
+	; ld HL,0
+	; add HL,SP
+	; OUT (C), L
+	; halt				
+	; OUT (C), H    		  
+	; halt
+ 	; jp mainloop    
 	
-.restore 	
-	ld sp,hl
+; .restore 	
+ 	ld sp,hl
     halt  					; synchronization with Arduino
     jp mainloop          	
 	
+
+;------------------------------------------------------
+; Command: Upload Code and Execute
+; Input from Arduino: 
+;   1 Byte  : Transfer size (B) 
+;   2 Bytes : Target execution address (DE)
+;   N Bytes : Payload (256 bytes)
+;------------------------------------------------------
+command_UploadAndExec:
+    halt
+    in b,(c)                    ; B = Transfer size (0 means 256 bytes)
+    READ_PAIR_WITH_HALT e,d  
+    
+    ld h, d  
+    ld l, e             
+    
+.uploadCodeLoop:
+    halt                        ; Synch Arduino
+    ini                         ; (HL) <- (C), B <- B-1, HL <- HL+1
+    jp nz, .uploadCodeLoop 
+    
+    ex de, hl                   ; start address
+    ; Payload code must use 'RET' to return back to mainloop
+   	ld de, mainloop        		; return address
+    push de
+
+    jp (hl) ; Execute the payload!
+
+
+;------------------------------------------------------
+; Command: Poke Single Byte
+; Input from Arduino: 
+;   2 Bytes : Target RAM address (HL)
+;   1 Byte  : Value to write (A)
+;------------------------------------------------------
+command_Poke:
+    READ_PAIR_WITH_HALT l,h
+    halt
+    in a,(c)                    ; Read the value to POKE from Arduino
+    ld (hl), a                  ; Perform the POKE: Write A to RAM address (HL)
+    jp mainloop                 ; Return to the primary command loop
+
+
 ;-------------------------------------------------------------------------------------------
-command_Execute:  ;  EXECUTE CODE, RESTORE & LAUNCH 
-; Restore snapshot states & execute stored jump point from the stack
+; Restore snapshot states & execute stored jump point
+command_RestoreGameAndExecute: 
 ;-------------------------------------------------------------------------------------------
 
 	;-------------------------------------------------------------------------------------------
@@ -665,43 +636,6 @@ relocateEnd:
 ;-----------------------------------------------------------------------	
 
 ;-----------------------------------------------------------------------
-; SCREEN CLEAR - Initialize display memory
-;-----------------------------------------------------------------------
-; ClearScreen:
-; 	SET_BORDER 0
-;    	ld a, 0
-;     ld hl, SCREEN_START
-;     ld de, SCREEN_START+1
-;     ld bc, 6144					; Screen bitmap
-;     ld (hl), a
-;     ldir
-;     ld bc, 768-1				; Screen attributes
-;     ld (hl), a
-;     ldir
-;     ret
-;-----------------------------------------------------------------------	
-
-;-----------------------------------------------------------------------
-; CLEAR RAM 48KB - 273,725 T-states / 3,500,000 = 0.0782
-; +0.08 seconds (will be a bit more due to contended memory)
-;-----------------------------------------------------------------------
-; ClearAllRam: 
-;         LD IX, 0        
-;         ADD IX, SP               
-;         ld hl, 0                 
-;         ld sp, 16384 + (48*1024) ; top of RAM (65536)
-;         ld b, 0                  ; wraps so 256 times
-; clr:    REPT 96
-;         push hl           		 ; 11 * 96 * 256
-;         ENDM
-;         djnz clr          		 ; (256 * 13) - (13-8)
-;         ld sp, ix                
-
-; 		jp ClearAllRamRet 
-;-----------------------------------------------------------------------	
-
-
-;-----------------------------------------------------------------------
 ; CLEAR SCREEN ATTRIBUTES - 768 bytes of attribute memory.
 ;-----------------------------------------------------------------------
 ClearScreenAttributes:
@@ -709,7 +643,7 @@ ClearScreenAttributes:
     ADD IX, SP     
         
     ld hl, 0    
-    ld sp, $5800 + 768  
+    ld sp, SCREEN_ATTRIBUTES_START + SCREEN_ATTRIBUTES_SIZE  
     ld b, 6   ; 768 / 2 (push) / 6 = 64
         
 clr_attr_loop:
@@ -845,14 +779,6 @@ L04B0:
 ; Ingame NMI hook - save game state
 .IngameHook:
 
-IF PRESERVE_MENU_STACK=1
-    ; Keep stack safe, we will relocate to screen memory!
-	; 16415 Original SP High Byte (screens top far right)
-	; 16414 Original SP Low Byte
-	LD (16384+30),SP  
-	LD SP,16384+30 ; next push goes down (sp:=sp-2)
-ENDIF
-
 	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
 	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
 	; We must keep IFF2 and when done manually restore IFF (call EI or DI) to resume the game.
@@ -963,9 +889,6 @@ ENDIF
 
 	halt 
     in a, ($1f)   			 ; A - now we have 'AF'
-IF PRESERVE_MENU_STACK = 1
-	LD SP,(16384+30)		 ; restore game stack
-ENDIF
 	jp .restoreInGameStateCompletedWithEI
 	; -------------------------------------------------------
 
@@ -983,9 +906,6 @@ ENDIF
 	halt 
     in a, ($1f)   			 ; A - now we have 'AF'
 
-IF PRESERVE_MENU_STACK = 1
-	LD SP,(16384+30)   ; restore game stack
-ENDIF
 	jp .restoreInGameStateCompletedWithDI
 	; -------------------------------------------------------
 
@@ -1104,10 +1024,19 @@ L16D4:
 
 ;------------------------------------------------------------------------
 ; If we see border lines, we probably hit this debug trap.
-org $3ff0	  		
+org $3fd0	  		
 debug_trap:  		
-	SET_BORDER a
-	inc a
+	SET_BORDER 2
+
+    ; delay loop - about 1/2 second
+    ld bc, 0xFFFF    
+pause_loop:
+    dec bc          
+    ld a, b       
+    or c
+    jr nz, pause_loop 
+
+	SET_BORDER 0
 	jr debug_trap
 ;------------------------------------------------------------------------
 
@@ -1287,3 +1216,41 @@ DS  16384 - last	; leave rest of rom blank
 ; 	ld SP,IX   
 ; 	jp mainloop             
 
+
+
+
+;-----------------------------------------------------------------------
+; SCREEN CLEAR - Initialize display memory
+;-----------------------------------------------------------------------
+; ClearScreen:
+; 	SET_BORDER 0
+;    	ld a, 0
+;     ld hl, SCREEN_START
+;     ld de, SCREEN_START+1
+;     ld bc, 6144					; Screen bitmap
+;     ld (hl), a
+;     ldir
+;     ld bc, 768-1				; Screen attributes
+;     ld (hl), a
+;     ldir
+;     ret
+;-----------------------------------------------------------------------	
+
+;-----------------------------------------------------------------------
+; CLEAR RAM 48KB - 273,725 T-states / 3,500,000 = 0.0782
+; +0.08 seconds (will be a bit more due to contended memory)
+;-----------------------------------------------------------------------
+; ClearAllRam: 
+;         LD IX, 0        
+;         ADD IX, SP               
+;         ld hl, 0                 
+;         ld sp, 16384 + (48*1024) ; top of RAM (65536)
+;         ld b, 0                  ; wraps so 256 times
+; clr:    REPT 96
+;         push hl           		 ; 11 * 96 * 256
+;         ENDM
+;         djnz clr          		 ; (256 * 13) - (13-8)
+;         ld sp, ix                
+
+; 		jp ClearAllRamRet 
+;-----------------------------------------------------------------------	

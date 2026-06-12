@@ -4,7 +4,7 @@
 #include "pin.h"
 #include "Z80Bus.h"
 #include "PacketBuilder.h"
-#include "CommandRegistry.h"
+//#include "CommandRegistry.h"
 #include "PacketTypes.h"
 #include "BufferManager.h"
 #include "Utils.h"
@@ -102,16 +102,14 @@ void Z80Bus::sendWaitVBLCommand() {
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(WaitVBLPacket));
 }
 
-// sendStackCommand:
-//   action = 0 -> Read SP
-//   action = 1 -> Write SP
-// The Z80-side routine finishes with a HALT. We wait for that HALT
-// to confirm things have completed and release with NMI.
 __attribute__((optimize("-Os"))) 
-void Z80Bus::sendStackCommand(uint16_t addr, uint8_t action) {
+void Z80Bus::setStackCommand(uint16_t addr) {
 	
-  StackPacket pkt(addr, action);
+  StackPacket pkt(addr);
   Z80Bus::sendBytes( (uint8_t*) &pkt, sizeof(StackPacket) );
+
+  // The Z80-side routine finishes with a HALT. We wait for that HALT
+  // to confirm things have completed and release with NMI.
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }

@@ -34,7 +34,7 @@
 #include "Draw.h"
 #include "SdCardSupport.h"
 
-#include "CommandRegistry.h"
+//#include "CommandRegistry.h"
 #include "PacketTypes.h"
 #include "BufferManager.h"
 #include "Z80Bus.h"
@@ -107,7 +107,7 @@ void setup() {
   }
 
 //  Z80Bus::resetZ80();
-  CommandRegistry::initialize();
+ // CommandRegistry::initialize();
 
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
@@ -158,7 +158,7 @@ void handleSnaFile(FatFile* pFile) {
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
 
     // Set stack NOW before sending data over
-    Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // Store=1, Restore=0
+    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3); 
 
     uint8_t mark = BufferManager::getMark();
     uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
@@ -170,7 +170,7 @@ void handleSnaFile(FatFile* pFile) {
     Utils::waitForUserExit();
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
-    CommandRegistry::initialize();
+  //  CommandRegistry::initialize();
   }
 }
 
@@ -189,7 +189,7 @@ void handleZ80File(FatFile* pFile) {
     if (checkZ80FileValidity(pFile, &headerInfo)) {
 
       // Set stack NOW before sending data over
-      Z80Bus::sendStackCommand(ZX_SCREEN_ADDRESS_START + 3, 1);  // Store=1, Restore=0
+      Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);  
 
       uint8_t mark = BufferManager::getMark();
       uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
@@ -202,7 +202,7 @@ void handleZ80File(FatFile* pFile) {
       Utils::waitForUserExit();
       Z80Bus::setSnaRom();
       Z80Bus::resetZ80();
-      CommandRegistry::initialize();
+   //   CommandRegistry::initialize();
       return;  // load OK
     }
   }

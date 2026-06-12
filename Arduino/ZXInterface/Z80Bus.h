@@ -13,7 +13,7 @@ extern void sendBytes(uint8_t* data, uint16_t size);
 extern void sendSnaHeader(uint8_t* header);
 extern void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color);
 extern void sendWaitVBLCommand();
-extern void sendStackCommand(uint16_t addr, uint8_t action);
+extern void setStackCommand(uint16_t addr);
 extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
 
 extern uint8_t getKeyboard();

@@ -4,7 +4,7 @@
 #include "draw.h"
 #include "SdCardSupport.h"
 #include "BufferManager.h"
-#include "CommandRegistry.h"
+//#include "CommandRegistry.h"
 #include "z80bus.h"
 
 #include "PacketBuilder.h"

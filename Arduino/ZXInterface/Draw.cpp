@@ -5,7 +5,7 @@
 #include "utils.h"
 #include "RenderFont.h"
 #include "constants.h"
-#include "CommandRegistry.h"
+//#include "CommandRegistry.h"
 #include "PacketTypes.h"
 #include "BufferManager.h"
 
@@ -62,8 +62,8 @@ void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount, uint8_t *font
    // uint16_t mark = BufferManager::getMark();
     //CopyPacket* pkt = reinterpret_cast<CopyPacket*>(BufferManager::allocate(sizeof(CopyPacket)));
     CopyPacket pkt;
-    pkt.cmd_high = static_cast<uint8_t>(CommandRegistry::command_Copy >> 8);
-    pkt.cmd_low  = static_cast<uint8_t>(CommandRegistry::command_Copy & 0xFF);
+    pkt.cmd_high = static_cast<uint8_t>(cmd_addr(CMD_Copy) >> 8);
+    pkt.cmd_low  = static_cast<uint8_t>(cmd_addr(CMD_Copy) & 0xFF);
     const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;
     pkt.amount = byteWidth;
 
