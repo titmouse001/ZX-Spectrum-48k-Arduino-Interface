@@ -5,11 +5,11 @@
 #include "BufferManager.h"
 #include "draw.h"
 #include "Z80Bus.h"
-#include <string.h>  
+//#include <string.h>  
 
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
-uint16_t Menu::buttonDelay = Menu::MAX_REPEAT_KEY_DELAY;
+uint16_t Menu::buttonDelay = MAX_REPEAT_KEY_DELAY;
 bool     Menu::buttonHeld = false;
 
 uint16_t Menu::oldHighlightAddress = 0;
@@ -173,7 +173,7 @@ uint16_t Menu::scanFolder(bool reset) {
     // SD card removed?
     Draw::text_P(80, 90, F("NO FILES FOUND"));
     delay(100);
-    SdCardSupport::init(PIN_A4);  // A4: SD-CARD CS   
+    SdCardSupport::init(); 
   }
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
   displayItemList(startFileIndex);

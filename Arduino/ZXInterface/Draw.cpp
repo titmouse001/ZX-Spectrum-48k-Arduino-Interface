@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include "Draw.h"
-#include "PacketBuilder.h"
+//#include "PacketBuilder.h"
 #include "Z80Bus.h"
 #include "utils.h"
 #include "RenderFont.h"
@@ -9,6 +9,7 @@
 #include "PacketTypes.h"
 #include "BufferManager.h"
 
+#include "FontData.h"
 
 constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT) + sizeof(Copy32Packet);
 constexpr uint16_t PIX_INC = 0x0100;  // within same character -> +256 for next pixel line

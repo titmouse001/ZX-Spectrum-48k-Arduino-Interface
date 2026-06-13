@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 #include "Constants.h"
-#include "SdFat.h" 
+#include "FontData.h"
+//#include "SdFat.h" 
+
+class FatFile;
 
 class Menu {
 public:
@@ -21,15 +24,15 @@ public:
     ACTION_REFRESH_LIST
   };
 
-  static constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-  static constexpr uint8_t FONT_WIDTH_WITH_GAP = SmallFont::FNT_WIDTH + SmallFont::FNT_GAP;
-  static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
+  // static constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+  // static constexpr uint8_t FONT_WIDTH_WITH_GAP = SmallFont::FNT_WIDTH + SmallFont::FNT_GAP;
+  // static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
 
-  static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
+  // static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
 
-  static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
-  static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
-  static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
+  // static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
+  // static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
+  // static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
 
   static FatFile* handleMenu();
   static Button_t getButton();

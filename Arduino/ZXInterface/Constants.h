@@ -2,17 +2,8 @@
 
 #include <stdint.h>
 
-constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
-constexpr uint8_t MAX_FILENAME_LEN = 64; 
+#define VERSION ("0.26")  // Arduino firmware
 
-namespace SmallFont {
-    constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
-    constexpr uint8_t FNT_HEIGHT        = 7;   // character height in pixels
-    constexpr uint8_t FNT_GAP           = 1;   // horizontal spacing
-    constexpr uint8_t FNT_BUFFER_SIZE   = 32;  // size of the on‐screen text buffer
-    constexpr uint8_t FNT_CHAR_PITCH    = FNT_WIDTH + FNT_GAP; // 6 pixels per character slot
-    constexpr uint8_t FNT_HEADER_SIZE   = 6;
-}
 
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
@@ -58,6 +49,7 @@ constexpr uint16_t ZX_SCREEN_WIDTH_PIXELS        = 256;
 constexpr uint16_t ZX_SCREEN_HEIGHT_PIXELS       = 192;
 constexpr uint16_t ZX_SCREEN_WIDTH_BYTES        = ZX_SCREEN_WIDTH_PIXELS/8;
 constexpr uint16_t ZX_SCREEN_HEIGHT_BYTES        = ZX_SCREEN_HEIGHT_PIXELS/8;
+
 //-----------------------------------------
 // .Z80 FILE FORMAT - HEADER ver1
 //-----------------------------------------
@@ -146,6 +138,7 @@ constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL
 
 //-----------------------------------------
 
+
 enum BlockReadResult {
     BLOCK_SUCCESS = 0,
     BLOCK_END_OF_FILE = 1,
@@ -165,3 +158,47 @@ enum Z80HeaderVersion {
     Z80_VERSION_2 = 2,
     Z80_VERSION_3 = 3
 };
+
+
+//-----------------------------------------
+
+constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
+constexpr uint8_t MAX_FILENAME_LEN = 64; 
+
+namespace SmallFont {
+    constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
+    constexpr uint8_t FNT_HEIGHT        = 7;   // character height in pixels
+    constexpr uint8_t FNT_GAP           = 1;   // horizontal spacing
+    constexpr uint8_t FNT_BUFFER_SIZE   = 32;  // size of the on‐screen text buffer
+    constexpr uint8_t FNT_CHAR_PITCH    = FNT_WIDTH + FNT_GAP; // 6 pixels per character slot
+    constexpr uint8_t FNT_HEADER_SIZE   = 6;
+}
+
+static constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+static constexpr uint8_t FONT_WIDTH_WITH_GAP = SmallFont::FNT_WIDTH + SmallFont::FNT_GAP;
+static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
+
+static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
+
+static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
+static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
+static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
+
+
+//-----------------------------------------
+
+enum PauseMenu {
+  Resume,
+  SaveSNA,
+  SlowMo,
+  Cheats,
+  Screenshot,
+  MemView,
+  Exit
+};
+
+
+//-----------------------------------------
+
+
+static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";

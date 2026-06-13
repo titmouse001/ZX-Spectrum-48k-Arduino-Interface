@@ -14,7 +14,7 @@ static FatFile root;
 static FatFile file;
 
 public:
-static boolean init(uint8_t csPin) ;
+static boolean init(); //uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
 static void openFileByIndex(uint8_t searchIndex);
 

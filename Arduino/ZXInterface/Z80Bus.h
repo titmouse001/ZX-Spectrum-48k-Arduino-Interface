@@ -2,8 +2,9 @@
 #define Z80BUS_H
 
 #include <stdint.h>
-#include "pin.h"
+//#include "pin.h"
 #include "SdFat.h"
+
 
 namespace Z80Bus {
 

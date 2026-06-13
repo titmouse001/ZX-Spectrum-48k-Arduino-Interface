@@ -2,22 +2,22 @@
 #include "SdCardSupport.h"
 #include "BufferManager.h"
 #include "menu.h"
+#include "Pin.h"
 
 #include "SdFat.h"
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
-static char fileNameBuf[Menu::ZX_FILENAME_MAX_DISPLAY_LEN + 1];  // +1 null
+static char fileNameBuf[ZX_FILENAME_MAX_DISPLAY_LEN + 1];  // +1 null
 
 // NOTE: For SD cards
 // SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
 __attribute__((optimize("-Os")))
-boolean SdCardSupport::init(uint8_t csPin) {
+boolean SdCardSupport::init() { //uint8_t csPin) {
   closeRootIfOpen();
   sd.end();
-  
-  if (!sd.begin(csPin, SPI_HALF_SPEED)) return false;
+  if (!sd.begin(Pin::SD_CARD_CS, SPI_HALF_SPEED)) return false;
   return root.open("/");
 }
 

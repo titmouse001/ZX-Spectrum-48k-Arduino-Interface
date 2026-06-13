@@ -2,7 +2,7 @@
 #define PINS_H
 
 #include <stdint.h>
-#include "Arduino.h"
+//#include "Arduino.h"
 
 /* ====================================================
  * Pin Assignments: Arduino Nano to Z80 + Peripherals

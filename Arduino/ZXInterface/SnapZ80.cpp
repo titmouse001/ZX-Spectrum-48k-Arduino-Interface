@@ -1,12 +1,13 @@
 #include <stdint.h>
+#include "snapZ802SNA.h"
 #include "SnapZ80.h"
-#include "Z802SNA.h"
-#include "Constants.h"
-#include "SdCardSupport.h"
+//#include "Constants.h"
+//#include "SdCardSupport.h"
 #include "BufferManager.h" 
 #include "Z80Bus.h" 
 #include "PacketBuilder.h"
-#include "Utils.h"
+//#include "Utils.h"
+#include "PacketTypes.h" 
 
 /*
  *******************************************************************

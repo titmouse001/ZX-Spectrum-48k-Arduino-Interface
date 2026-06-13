@@ -4,20 +4,21 @@
 #include <stdint.h>
 #include "digitalWriteFast.h"
 #include "Constants.h"
-#include "Pin.h"
-#include "SdCardSupport.h"
+//#include "Pin.h"
+//#include "SdCardSupport.h"
+#include "SdFat.h" 
 
 namespace Utils {
 
-enum PauseMenu {
-  Resume,
-  SaveSNA,
-  SlowMo,
-  Cheats,
-  Screenshot,
-  MemView,
-  Exit
-};
+// enum PauseMenu {
+//   Resume,
+//   SaveSNA,
+//   SlowMo,
+//   Cheats,
+//   Screenshot,
+//   MemView,
+//   Exit
+// };
 
 
 void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
@@ -29,14 +30,14 @@ uint8_t readJoystick();
 
 void frameDelay(unsigned long start);
 void setupJoystick();
-void waitForUserExit();
+//void waitForUserExit();
 
 void storeZ80States();
 void restoreZ80States();
 
 void saveScreen(const char* filename);
 void restoreScreen(const char* filename);
-uint8_t pauseMenu();
+//uint8_t pauseMenu();
 
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
@@ -44,6 +45,9 @@ uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 bool exportScreenshot();
 void viewSpeccyMemory();
 void displayHexDump(uint16_t startAddr, uint16_t length);
+
+void stockRomBoot_Blocking();
+boolean isSdCardOK_Blocking();
 
 __attribute__((optimize("-Ofast"))) 
 inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
@@ -75,6 +79,7 @@ inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
   if (aligned) { output[byteIndex + 1] |= aligned; }
 }
 
+
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
 byte reverseBits(byte data);
@@ -82,5 +87,15 @@ void swap(byte &a, byte &b);
 */
 
 }  // namespace Utils
+
+
+#ifndef ARDUINO_AVR_NANO
+#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
+#endif
+#if (F_CPU != 16000000L)
+#warning "This sketch expects 16MHz clock speed."
+#endif
+
+
 
 #endif
