@@ -4,40 +4,22 @@
 #include <stdint.h>
 #include "digitalWriteFast.h"
 #include "Constants.h"
-//#include "Pin.h"
-//#include "SdCardSupport.h"
 #include "SdFat.h" 
 
 namespace Utils {
 
-// enum PauseMenu {
-//   Resume,
-//   SaveSNA,
-//   SlowMo,
-//   Cheats,
-//   Screenshot,
-//   MemView,
-//   Exit
-// };
-
-
-void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
 void clearScreen(uint8_t col);
 
 uint8_t readJoystick();
-//uint16_t get16bitPulseValue();
-//uint8_t get8bitPulseValue_NO_LONGER_USED();
 
 void frameDelay(unsigned long start);
 void setupJoystick();
-//void waitForUserExit();
 
 void storeZ80States();
 void restoreZ80States();
 
 void saveScreen(const char* filename);
 void restoreScreen(const char* filename);
-//uint8_t pauseMenu();
 
 void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
@@ -47,7 +29,8 @@ void viewSpeccyMemory();
 void displayHexDump(uint16_t startAddr, uint16_t length);
 
 void stockRomBoot_Blocking();
-boolean isSdCardOK_Blocking();
+void waitForSDCard_Blocking(bool clearScreen);
+void show5VoltRailStatus();
 
 __attribute__((optimize("-Ofast"))) 
 inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {

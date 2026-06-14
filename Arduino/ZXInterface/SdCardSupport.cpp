@@ -14,7 +14,7 @@ static char fileNameBuf[ZX_FILENAME_MAX_DISPLAY_LEN + 1];  // +1 null
 // NOTE: For SD cards
 // SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
 __attribute__((optimize("-Os")))
-boolean SdCardSupport::init() { //uint8_t csPin) {
+bool SdCardSupport::init() { //uint8_t csPin) {
   closeRootIfOpen();
   sd.end();
   if (!sd.begin(Pin::SD_CARD_CS, SPI_HALF_SPEED)) return false;
@@ -95,5 +95,15 @@ FatFile& SdCardSupport::closeRootIfOpen() {
 }
 
 
-
+__attribute__((optimize("-Os")))
+bool SdCardSupport::isInserted() {
+  cid_t cid; // 16-byte struct to hold the response
+  
+  // sd.card() gets the underlying hardware driver. 
+  // readCID() asks the card to identify itself.
+  if (!sd.card() || !sd.card()->readCID(&cid)) {
+    return false; // Card is gone or SPI communication failed!
+  }
+  return true; // Card is alive and well
+}
 

@@ -24,19 +24,8 @@ static uint8_t REG_IFF2;
 static uint8_t REG_IXL;
 static uint8_t REG_IXH;
 
-//static const char* SCRATCH_FILE = "scratch16384.SCR";
 
-__attribute__((optimize("-Os"))) 
-void Utils::highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress) {
-  const uint16_t fillAddr = ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * ZX_SCREEN_WIDTH_BYTES);
-  if (oldHighlightAddress != fillAddr) {  // Clear old highlight if it's different
-    Z80Bus::sendFillCommand(oldHighlightAddress, ZX_SCREEN_WIDTH_BYTES, COL::BLACK_WHITE);
-    oldHighlightAddress = fillAddr;
-  }
-  Z80Bus::sendFillCommand(fillAddr, ZX_SCREEN_WIDTH_BYTES, COL::CYAN_BLACK);
-}
-
-//__attribute__((optimize("-Os")))
+__attribute__((optimize("-Os")))
 void Utils::clearScreen(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
@@ -125,14 +114,12 @@ void Utils::restoreZ80States() {
 __attribute__((optimize("-Os"))) 
 void Utils::saveScreen(const char* filename) {
 
-  // send header detials first (request Spectrum to send all screen data)
-  RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
-  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
-
   FatFile& file = SdCardSupport::closeFileIfOpen();
   FatFile& root = SdCardSupport::closeRootIfOpen();
 
   // UnOptimised version
+  // RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+  // Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
   // if (root.open("/")) {
   //   file.open(filename, O_CREAT | O_WRONLY);
   //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
@@ -142,7 +129,19 @@ void Utils::saveScreen(const char* filename) {
   // }
 
   if (root.open("/")) {
-    file.open(filename, O_CREAT | O_WRONLY);
+    while (!file.open(filename, O_CREAT | O_WRONLY)) {
+      // Can't warn user here - need are in the middle of storing the screen!!!
+      while (!SdCardSupport::init()) { delay(20); }  // worst case - sd card removed, full reset needed.
+    }
+
+    // send header detials first (request Spectrum to send all screen data)
+    RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+    Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
+
+    // Above will be doing a final NMI to unhalt Z80
+    // We need to give it time to catch up before we slam the lines to input!
+    delay(1);  // todo - will do for now, but this is way to mutch time!
+
     DDRD = 0x00;   // make them inputs
     digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
     __asm__ __volatile__("nop; nop");
@@ -323,8 +322,6 @@ bool Utils::exportScreenshot() {
     file.close();  // exists - try next
   }
 
-// TODO - release save screen code
-
   // Copy the scratch file to the new filename
   uint16_t mark = BufferManager::getMark();
   uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
@@ -342,7 +339,7 @@ bool Utils::exportScreenshot() {
   dir.close();
   BufferManager::freeToMark(mark);
 
-  Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 15) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("Saved - any key"));
+  Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 15) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("SAVED - ANY KEY"));
 
   return true;
 }
@@ -363,18 +360,56 @@ void Utils::stockRomBoot_Blocking()
   }
 }
 
-boolean Utils::isSdCardOK_Blocking() {
+void Utils::waitForSDCard_Blocking(bool clearScreen) {
   if (!SdCardSupport::init()) { 
+    if (clearScreen) {
+      Utils::clearScreen(COL::BLACK_WHITE); 
+    }
     Draw::text_P(80, 90, F("INSERT SD CARD"));
     do {
       delay(20);
     } while (!SdCardSupport::init());  // keep looking
-  //  Utils::clearScreen(COL::BLACK_WHITE);
-    return false;
-  }else {
-    return true;  // SD card all good
+    Utils::clearScreen(COL::BLACK_WHITE);
   }
 }
+
+void Utils::show5VoltRailStatus() {
+  //constexpr uint16_t VOLTAGE_OK_MIN = 4850;    // 4.85V
+  //constexpr uint16_t VOLTAGE_OK_MAX = 5150;    // 5.15V
+  //constexpr uint16_t VOLTAGE_WARN_MIN = 4750;  // 4.75V
+  //constexpr uint16_t VOLTAGE_WARN_MAX = 5250;  // 5.25V
+
+  static uint32_t filtered_vcc = 5000;  // 5.00V
+
+  // ADC Read / Measure voltage - Nano's internal reference is around 1.1V
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  ADCSRA |= _BV(ADSC);
+  while (bit_is_set(ADCSRA, ADSC));
+
+  uint32_t raw_adc = ADCW;
+  uint32_t raw_vcc = 1105920 / raw_adc;
+  filtered_vcc = filtered_vcc - (filtered_vcc >> 6) + raw_vcc;
+  uint16_t display_vcc = filtered_vcc >> 6;
+  char voltageStr[] = { //'V','o','l','t','a','g','e',':',
+                        static_cast<char>('0' + (display_vcc / 1000)),
+                        '.',
+                        static_cast<char>('0' + ((display_vcc % 1000) / 100)),
+                        static_cast<char>('0' + ((display_vcc % 100) / 10)),
+                        ' ','V','o','l','t','s',
+                        '\0'};
+
+  Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + 32 - sizeof(voltageStr) + (((192-8)/8)*32), sizeof(voltageStr), COL::BLUE_WHITE);
+  Draw::text(256-(6*sizeof(voltageStr)), 192-8, voltageStr);  // top right corner
+}
+
+
+// // // ****** DEBUG ONLY *************
+// // char _c[8];
+// // //sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
+// // itoa(BufferManager::poolOffsetLastMax, _c, 10);
+// // Draw::text(256 - 64, 32, _c);
+// // // *******************************
+
 
 // ======================
 // ARCHIVED CODE SECTION:

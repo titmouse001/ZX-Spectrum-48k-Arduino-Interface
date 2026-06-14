@@ -48,12 +48,12 @@ void setup() {
   }
 
   // Display the version in the bottom right corner (on a Cyan background)
-  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::Paper5Ink0);
+  Utils::clearScreen(COL::CYAN_BLACK); 
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
-  if (!Utils::isSdCardOK_Blocking()) {
-     Utils::clearScreen(COL::BLACK_WHITE);  // clear "INSERT SD CARD" message
-  };
+  constexpr uint8_t clrScreenFlag(false);
+  Utils::waitForSDCard_Blocking(clrScreenFlag); // When blocking shows - "INSERT SD CARD"
+
 }
 
 void loop() {
@@ -63,8 +63,10 @@ void loop() {
     handleScrFile(pFile);
   } else if (strcasestr(fileName, ".sna")) {
     handleSnaFile(pFile);
+    Menu::resetToRoot();
   } else if (strcasestr(fileName, ".z80")) {
     handleZ80File(pFile);
+    Menu::resetToRoot();
   } else if (strcasestr(fileName, ".txt")) {
     handleTxtFile(pFile);
   }

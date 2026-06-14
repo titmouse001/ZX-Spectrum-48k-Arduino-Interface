@@ -3,11 +3,21 @@
 
 #include <stdint.h>
 
-namespace InGamePauseMenu
-{
+namespace InGamePauseMenu {
 
-    uint8_t pauseMenu();
+    uint8_t getSelectedMenuOption(uint8_t& selectedIndex);
     void waitForUserExit();
+    bool process();
+
+    enum OPTIONS_PM{
+        RESUME,
+        SAVE_SNA,
+        SLOWMO,
+        CHEATS,
+        SCREENSHOT,
+        MEM_VIEW,
+        EXIT
+    };
 
 }
 

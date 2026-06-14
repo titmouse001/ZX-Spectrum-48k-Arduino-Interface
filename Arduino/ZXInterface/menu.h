@@ -24,16 +24,6 @@ public:
     ACTION_REFRESH_LIST
   };
 
-  // static constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-  // static constexpr uint8_t FONT_WIDTH_WITH_GAP = SmallFont::FNT_WIDTH + SmallFont::FNT_GAP;
-  // static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
-
-  // static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
-
-  // static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
-  // static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
-  // static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
-
   static FatFile* handleMenu();
   static Button_t getButton();
 
@@ -42,20 +32,21 @@ public:
   __attribute__((optimize("-Os"), noinline)) 
   static inline void waitForAnyKey() { while (Menu::getButton() == Menu::BUTTON_NONE); waitForRelease(); }
 
+  static void resetToRoot();
+
 private:
   static uint32_t lastButtonPressTime;
   static uint32_t lastButtonHoldTime;
   static uint16_t buttonDelay;
-  static uint16_t oldHighlightAddress;
+  //static uint16_t oldHighlightAddress;
   static uint16_t currentFileIndex;
   static uint16_t startFileIndex;
   static bool buttonHeld;
   static bool inSubFolder;
 
-  static void displayItemList(uint16_t startFileIndex);
+  static void displayFileList();
   static uint16_t scanFolder(bool reset = false);
   static MenuAction_t getMenuAction(uint16_t totalFiles);
-  static void show5VoltRailStatus(Menu::MenuAction_t action);
 
 };
 

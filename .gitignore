@@ -4,3 +4,4 @@ Z80-Firmware/output/SnaLauncher.bin
 Arduino/.vscode/arduino.json
 Arduino/.vscode/c_cpp_properties.json
 /Arduino/build
+/build.tmp
