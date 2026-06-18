@@ -191,16 +191,16 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
       Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex-startFileIndex)*32), 32, MENU_TEXT_COLOUR);
 
-       // Move up or wrap to previous page
-      if (currentFileIndex > startFileIndex) {
+      // Move up or wrap to previous page
+      if (currentFileIndex > startFileIndex) { // still inside current page
         currentFileIndex--;
         action = ACTION_MOVE_UP;
       } else {
-        if (startFileIndex >= SCREEN_TEXT_ROWS) {
+        if (startFileIndex >= SCREEN_TEXT_ROWS) {  // valid previous page
           startFileIndex -= SCREEN_TEXT_ROWS;
           currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
-        } else {
-          startFileIndex = virtualTotalFiles - (virtualTotalFiles % SCREEN_TEXT_ROWS);
+        } else {  // 1st page wraps to last page
+          startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
           currentFileIndex = virtualTotalFiles - 1;
         }
         action = ACTION_REFRESH_LIST;

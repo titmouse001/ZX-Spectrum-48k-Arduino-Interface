@@ -39,20 +39,27 @@
 
     constexpr uint8_t BLACK_WHITE       = Attr(BLACK, WHITE);
     constexpr uint8_t BLACK_GREEN       = Attr(BLACK, GREEN);
+    constexpr uint8_t BLACK_MAGENTA       = Attr(BLACK, MAGENTA);
+    constexpr uint8_t BLACK_BLUE = Attr(BLACK, BLUE);    
     constexpr uint8_t BRIGHT_BLACK_GREEN       = Attr(BLACK, GREEN,true);
     constexpr uint8_t GREEN_WHITE       = Attr(GREEN, WHITE);   
-    constexpr uint8_t CYAN_BLACK        = Attr(CYAN, BLACK);       
+    constexpr uint8_t MAGENTA_BLACK        = Attr(MAGENTA, BLACK);  
+    constexpr uint8_t BLUE_BLACK        = Attr(BLUE, BLACK);       
+    constexpr uint8_t CYAN_BLACK        = Attr(CYAN, BLACK);    
     constexpr uint8_t BLACK_BLACK       = Attr(BLACK, BLACK);     //for hiding screen
     constexpr uint8_t FLASH_BLACK_RED   = Attr(BLACK, RED, false, true); 
     constexpr uint8_t FLASH_RED_WHITE   = Attr(RED, WHITE, false, true);
     constexpr uint8_t FLASH_RED_BLUE    = Attr(RED, BLUE, false, true);  
     constexpr uint8_t BLUE_WHITE        = Attr(BLUE, WHITE);
+    constexpr uint8_t BRIGHT_BLUE_WHITE        = Attr(BLUE, WHITE, true);
     constexpr uint8_t GREEN_BLACK       = Attr(GREEN, BLACK);
     constexpr uint8_t YELLOW_BLACK      = Attr(YELLOW, BLACK);
     constexpr uint8_t MAGENTA_WHITE     = Attr(MAGENTA, WHITE);
     constexpr uint8_t BRIGHT_BLACK_WHITE = Attr(BLACK, WHITE, true);    
     constexpr uint8_t BRIGHT_BLACK_BLUE = Attr(BLACK, BLUE, true);    
     constexpr uint8_t BRIGHT_CYAN_BLACK  = Attr(CYAN, BLACK, true);    
+    constexpr uint8_t BRIGHT_BLUE_BLACK  = Attr(BLUE, BLACK, true);    
+   constexpr uint8_t BRIGHT_MAGENTA_BLACK  = Attr(MAGENTA, BLACK, true);   
     constexpr uint8_t BRIGHT_YELLOW_RED  = Attr(YELLOW, RED, true);  
 }
 

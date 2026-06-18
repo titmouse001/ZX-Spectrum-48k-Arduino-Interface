@@ -185,7 +185,7 @@ mainloop:
 ;-------------------------------
 ; Jump Table
 ORG $00D0
-	jp command_NOP
+	jp command_NOP					; 1
 	jp command_TransmitKey			
 	jp command_Fill					
 	jp command_Transfer				
@@ -195,10 +195,11 @@ ORG $00D0
 	jp command_SetStack				
 	jp command_RestoreGameAndExecute				
 	jp command_fill_mem_bytecount	
-	jp command_SendData				
+	jp command_SendData				; 11
+	jp command_Poke					; 12
 
 ;------------------------------------------------------
-	IF $ > $00D0+(11*3)
+	IF $ > $00D0+(13*3)
 		.ERROR "CODE OVERLAPS"
 	ENDIF
 ;------------------------------------------------------
@@ -448,7 +449,7 @@ command_SetStack:
 command_UploadAndExec:
     halt
     in b,(c)                    ; B = Transfer size (0 means 256 bytes)
-    READ_PAIR_WITH_HALT e,d  
+    READ_PAIR_WITH_HALT d,e  
     
     ld h, d  
     ld l, e             
@@ -473,7 +474,7 @@ command_UploadAndExec:
 ;   1 Byte  : Value to write (A)
 ;------------------------------------------------------
 command_Poke:
-    READ_PAIR_WITH_HALT l,h
+    READ_PAIR_WITH_HALT h,l
     halt
     in a,(c)                    ; Read the value to POKE from Arduino
     ld (hl), a                  ; Perform the POKE: Write A to RAM address (HL)
@@ -505,9 +506,10 @@ command_RestoreGameAndExecute:
 	;-------------------------------------------------------------------------------------------
 	
 	;-------------------------------------------------------------------------------------------
+	; (Data from file, byte order is now in reverse)
 	; -- Restore Alternate Registers HL',DE',BC',AF' --
 	ld c,$1f  				 ; Just use C above for LDIR copy, setup again for pair read 
-	READ_PAIR_WITH_HALT L,H  ; future HL'
+	READ_PAIR_WITH_HALT L,H  ; future HL' 
 	READ_PAIR_WITH_HALT e,d  ; future DE'
 	READ_ACC_WITH_HALT		 ; C'
 	ld c,a

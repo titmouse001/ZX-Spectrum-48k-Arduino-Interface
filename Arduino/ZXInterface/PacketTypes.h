@@ -21,6 +21,7 @@ constexpr uint16_t CMD_Stack=7;
 constexpr uint16_t CMD_Execute=8;
 constexpr uint16_t CMD_Fill8=9;
 constexpr uint16_t CMD_SendData=10;
+constexpr uint16_t CMD_Poke=11;
 
 #pragma pack(push, 1)
 
@@ -35,6 +36,24 @@ struct NOP_Packet {
                    cmd_low(cmd_addr(CMD_NOP) & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
+
+
+struct Poke_Packet {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t addr_high;
+    uint8_t addr_low;
+    uint8_t value;
+    
+    Poke_Packet(uint16_t addr, uint8_t value) : 
+                    cmd_high(cmd_addr(CMD_Poke) >> 8), 
+                    cmd_low(cmd_addr(CMD_Poke) & 0xff),
+                    addr_high(static_cast<uint8_t>(addr >> 8)),
+                    addr_low(static_cast<uint8_t>(addr & 0xFF)),
+                    value(value) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
+
 
 struct ReceiveKeyboardPacket {
     uint8_t cmd_high;

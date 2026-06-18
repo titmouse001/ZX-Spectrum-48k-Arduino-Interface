@@ -107,6 +107,11 @@ void Utils::restoreZ80States() {
   Z80Bus::sendBytes(&REG_A, 1);
 
   delay(1);               // allow Z80 time to reach the next idle loop for the stock rom to take control.
+ 
+//  extra code need for SlowMo
+//  const uint8_t buttonData = Utils::readJoystick();
+//  PORTD = buttonData & INPUT_MASK; 
+
   Z80Bus::setStockRom();  // Stock rom escapes out of idle loop via it's NOP's
   delay(1);               // let the stock rom catch up
 }
