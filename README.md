@@ -1,6 +1,16 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
-Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
+Arduino-based ZX Spectrum 48K game loader.
+Loads the following from an SD card:
+- SNA (48K Snapshots)
+- Z80 (Supports v1/2/3 48K Snapshots)
+- SCR (Spectrum screenshots)
+- TXT (ASCII text files)
+
+On start-up gives an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
+Game loading times are around 1.4 seconds.
+Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!
+For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu or fire2 button during power-up.
 
 ### 2026 Update
 
@@ -40,15 +50,13 @@ The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navi
 
 The browser can also open **.scr** Spectrum screen files and **.txt** text files. These can be exited with the Enter key. 
 
-For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu button during power-up.
-
-    A 74HC574 latch has been added to allow the Z80 to pass data to the Arduino,
-    replacing the previous 1-bit pulse halt protocol.  While adequate for reading 
-    keyboard input, it was too slow for reading large blocks of data.
 
 ### PCB Design (Ver 2.40)
 <img src="Documents/Schematic/Schematic-v2.40_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-06-20.png" alt="Circuit Diagram" >
 
+    A 74HC574 latch has been added for the Z80 to pass data to the Arduino, replacing the previous 1-bit pulse halt protocol.  
+    While ok for reading keyboard input, it was too slow for reading large blocks of data (like taking screenshots).
+    
 ### Hardware Design (Ver 0.21)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
 
