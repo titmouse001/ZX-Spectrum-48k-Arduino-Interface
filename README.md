@@ -54,8 +54,9 @@ The browser can also open **.scr** Spectrum screen files and **.txt** text files
 ### PCB Design (Ver 2.40)
 <img src="Documents/Schematic/Schematic-v2.40_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-06-20.png" alt="Circuit Diagram" >
 
-    A 74HC574 latch has been added for the Z80 to pass data to the Arduino, replacing the previous 1-bit pulse halt protocol.  
-    While ok for reading keyboard input, it was too slow for reading large blocks of data (like taking screenshots).
+    A 74HC574 latch has been added for the Z80 to pass data to the Arduino, replacing the previous 
+    1-bit pulse halt protocol.  While ok for reading keyboard input, it was too slow for reading 
+    large blocks of data (like taking screenshots).
     
 ### Hardware Design (Ver 0.21)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
