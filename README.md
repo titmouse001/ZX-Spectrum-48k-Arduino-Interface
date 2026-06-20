@@ -2,35 +2,24 @@
 
 Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT files from SD card. Fast game loading, on-screen game menu, selectable with Spectrum keyboard or Kempston joystick.
 
-[TAG: Older Software Support for Legacy Circuit Designs (v0.xx)](https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/releases/tag/TAG-8BitPulseVersionFor0.xxPCBs)
-You can skip the ROM assembly; pre-compiled bins are here: [Ver0.24-27C256.bin](https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/tree/main/Z80-Firmware/output/Ver0.24)
+### 2026 Update
 
-### Lastest Update
-PCB Gerbers V2.30: [Download Gerber Files](/Documents/Gerbers/V2.30/Gerber_ZX-Spectrum-48k-Arduino-Interface-Game-Loader-V2_3_PCB_ZX-Spectrum-Interface_2026-03-21.zip)
-
-    // -----------------------------------------------------------------------------
-    // HARDWARE SYNC: /NMI TRIGGER LOGIC FOR IN-GAME-PAUSE MENU
-    // -----------------------------------------------------------------------------
-    // PCB UPDATE: Nano A2 monitors /RD and /IORQ via a passive resistor logic gate
-    // (4.7K per line). This acts as a hardware AND gate for active-low signals: A2
-    // only hits a Logic LOW when both Z80 lines are active, pinpointing the I/O
-    // Read cycle.
-    //
-    // WHY: Most games poll for input (IN) once the game logic is stable. Firing the
-    // NMI here ensures the stack is unlikely to be hijacked, preventing corruption
-    // and crashes from an interrupted stack-based memory move.
-    // -----------------------------------------------------------------------------
-    
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
-<img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="25%">
-<img align="right" src="/Documents/Pictures0.22/IngamePausedMenu.png" width="25%">
+<img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="35%">
 <div>
 
-Mini update 13th March 2026 - I'm in the middle of developing the in-game menu.
-Pressing the PCB button while in-game takes you to a new menu screen; currently, only
-Resume and Exit are functional. My plan is to have a feature-rich in-game sub-menu where
-you can select options like Poke, Slow-Mo, Remap Joystick (Fire to Jump), Take Screenshot,
-Continue, or Exit.   
+PCB Gerbers (latest V2.40) : [Download Gerber Files](/Documents/Gerbers/)
+
+I'm in the middle of developing a **in-game pause menu**.
+Pressing the PCB button while in-game takes you to a new pause menu screen.
+Currently it suppots:-
+- Resume 
+- Poke (enter game cheats)
+- Take screenshot of game
+- Memory Viewer
+- Exit Poke,
+
+<img src="/Documents/Pictures0.22/IngamePausedMenu.png" width="35%" alt="In-Game Pause Menu">
 
 #### Version 0.21 - with 90° cartridge design
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
@@ -84,6 +73,10 @@ The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which
 - EPROM 27C256 – Stores all the Z80 code, including the browser and game launch routines.
 
 https://oshwlab.com/titmouse001/zx-spectrum-interface (<i>link to older Ver 0.14</i>)
+
+
+[TAG: Older Software Support for Legacy Circuit Designs (v0.xx)](https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/releases/tag/TAG-8BitPulseVersionFor0.xxPCBs)
+You can skip the ROM assembly; pre-compiled bins are here: [Ver0.24-27C256.bin](https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/tree/main/Z80-Firmware/output/Ver0.24)
 
 ### Initial Prototypes...
  
