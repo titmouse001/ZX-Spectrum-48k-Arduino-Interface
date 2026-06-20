@@ -256,16 +256,18 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
  __attribute__((optimize("-Os"))) 
 void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
 
-  // For a short while we will re-enable the Spectrum's 50 Hz maskable interrupt (IM 1).
-  // This provides a safety gap before the next interrupt so the game's ISR won't corrupt the stack
-  // when the launch code is in the last stages of resuming the game. The Arduino needs to synchronize via NMI 
-  // to send data and that also uses the Z80's stack.
-  // NOTE: On the Z80 side - the SNA ROM does not execute 'EI' when exiting the maskable interrupt
-  // (IM 1) at vector 0x0038. This means IM 1 interrupts remain disabled when the ISR returns.
-
-  sendWaitVBLCommand();    // Ask Speccy to start 50Hz interrupt and halt itself.
-  waitHalt_syncWithZ80();  // Halt line has gone it's active low (Arduino sync point)
-  hasZ80Resumed();         // Wait for HALT to clear (50Hz interrupt occurred, Z80 running again)
+  // --------------------------------------------------------------------------------------------
+  // Create a safety gap around the Spectrum's 50Hz maskable interrupt (IM 1) at vector 0x0038.
+  // This prevents the game's ISR from corrupting the stack while the launch code is in the 
+  // final stages of resuming. The Arduino synchronizes with the Z80 via NMI.
+  //
+  // NOTE: The SNA ROM does not execute 'EI' upon exiting the IM 1 interrupt at 0x0038, 
+  // leaving maskable interrupts disabled after the ISR returns.
+  // --------------------------------------------------------------------------------------------
+  sendWaitVBLCommand();    // Trigger 50Hz interrupt and force Speccy into HALT
+  waitHalt_syncWithZ80();  // Synchronize execution until the HALT state is confirmed
+  hasZ80Resumed();         // Wait for the interrupt to clear and Z80 to resume
+  // ---------------------------------------------------------------------------------------------
 
   sendSnaHeader(snaHeaderPacket); // BufferManager::head27_Execute);
 

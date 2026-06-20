@@ -26,7 +26,6 @@
 #include "SnapZ80.h"
 #include "Debug.h"  // see #defines to enable
 
-
 __attribute__((optimize("-Os")))   
 void setup() {
 
@@ -43,7 +42,7 @@ void setup() {
 #endif
 
   // Use stock ROM when select button or fire held at power up
-  if (Utils::readJoystick() & (INPUT_FIRE | INPUT_SELECT)) {
+  if (Utils::readJoystick() & (INPUT_FIRE2 | INPUT_SELECT)) {
     Utils::stockRomBoot_Blocking();  // user pressing select again will exit
   }
 
@@ -53,7 +52,6 @@ void setup() {
 
   constexpr uint8_t clrScreenFlag(false);
   Utils::waitForSDCard_Blocking(clrScreenFlag); // When blocking shows - "INSERT SD CARD"
-
 }
 
 void loop() {
@@ -218,6 +216,17 @@ void handleTxtFile(FatFile* pFile) {
   Menu::waitForRelease();
 }
 
+
+
+// --------------------------------------
+  // roms debug_trap test at 0x3d00
+
+  // NOP_Packet pkt;
+  // pkt.cmd_high =0x3d00 >> 8;
+  // pkt.cmd_low = 0x3d00 & 0xff;
+  // Z80Bus::sendBytes((uint8_t*)&pkt, 2);
+
+// --------------------------------------
 
 // #ifdef SERIAL_DEBUG
 //   void setupSerial() {

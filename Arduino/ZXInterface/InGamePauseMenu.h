@@ -13,7 +13,7 @@ namespace InGamePauseMenu {
     enum OPTIONS_PM{
         RESUME,
         SAVE_SNA,
-        SLOWMO,
+   //     SLOWMO,
         POKE,
         SCREENSHOT,
         MEM_VIEW,

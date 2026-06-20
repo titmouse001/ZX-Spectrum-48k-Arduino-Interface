@@ -90,8 +90,8 @@ void Utils::storeZ80States() {
 
 void Utils::restoreZ80States() {
 
-  // 0x04AA:  Z80 code jumps to '.restoreInGameState' then idle loops. This allow time
-  // for the ROM to swap back to the stock ROM and start the restore process at 0x04AA.
+  // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
+  // This allows time for the ROM to swap back to the stock ROM and begin the restore process at 0x04AA.
   uint8_t addr0x04AA[] = { 0x04, 0xAA };
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
   Z80Bus::sendBytes(&REG_D, 1);
@@ -106,14 +106,17 @@ void Utils::restoreZ80States() {
   Z80Bus::sendBytes(&REG_F, 1);
   Z80Bus::sendBytes(&REG_A, 1);
 
-  delay(1);               // allow Z80 time to reach the next idle loop for the stock rom to take control.
- 
-//  extra code need for SlowMo
-//  const uint8_t buttonData = Utils::readJoystick();
-//  PORTD = buttonData & INPUT_MASK; 
+  // // About to restore the stock ROM and continue game
+  // // We need to put something useful on the output pins for joystick port 0x1F.
+  // const uint8_t buttonData = Utils::readJoystick();
+  // PORTD = buttonData & INPUT_MASK; 
 
-  Z80Bus::setStockRom();  // Stock rom escapes out of idle loop via it's NOP's
-  delay(1);               // let the stock rom catch up
+  // // Give Z80 time to reach the next idle loop so the stock ROM can take control.
+  // delay(1);               
+  // // Stock rom escapes the idle loop via its NOPs
+  // Z80Bus::setStockRom();  
+  // // let the stock rom catch up
+  // delay(1);               
 }
 
 __attribute__((optimize("-Os"))) 

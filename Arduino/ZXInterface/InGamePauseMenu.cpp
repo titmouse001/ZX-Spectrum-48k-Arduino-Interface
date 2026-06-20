@@ -29,11 +29,16 @@ __attribute__((optimize("-Os")))
 void InGamePauseMenu::waitForUserExit() {
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
   while (true) {
-    const uint8_t buttonData = Utils::readJoystick();
+    uint8_t buttonData = Utils::readJoystick();
+
+    if (buttonData & INPUT_FIRE2) {
+      buttonData |= 0b00001000;  //up  (BITS: XsfFUDLR)
+    }
 
     // Each frame the 'PORTD' Port register is updated with fresh joystick data.
     // (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
     PORTD = buttonData & INPUT_MASK;  // Kempston joystick interface + pcb select button
+
     if (buttonData & INPUT_SELECT) {
       if (process()) {
         break;  // back to game loader menu
@@ -41,9 +46,15 @@ void InGamePauseMenu::waitForUserExit() {
     }
 
 
-    // Reminder ... also see 'restoreZ80States' for extra code needed to make this work
-    // ... this slowmo will probably need to use stack in screen memory , it's going to be firing atlot
-    // and if any game's using all their stack space - this will find it and things will go bad!
+    // This SloMo kind of works .. but sooner or later games using it crash.
+    // I don't think it's the comms between the Arduino and Z80 (i.e. something like a bad jmp command)
+    // Think it's just the misuse of the stack .. even though it's only 2 deep.
+    // Guess using 4 bytes from the stack is bad - looks like 80s game's programmers new their stack and used all of it!!!
+
+
+    // // Reminder ... also see 'restoreZ80States' for extra code needed to make this work
+    // // ... this slowmo will probably need to use stack in screen memory , it's going to be firing atlot
+    // // and if any game's using all their stack space - this will find it and things will go bad!
     // bool slowMo_todo = true;
     // if (slowMo_todo) {
     //   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
@@ -56,13 +67,28 @@ void InGamePauseMenu::waitForUserExit() {
     //       : [pin] "I"(_SFR_IO_ADDR(PINC)), [port] "I"(_SFR_IO_ADDR(PORTC)));
     //   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);  // back to normal clock use
 
-    //   delay(20);  
+    //   delay(20);  // game slow down 
+
+    //   delay(1);
     //   Z80Bus::setSnaRom();
+
     //   delay(1);
     //   Utils::storeZ80States();
     //   Utils::restoreZ80States();
-    // }
 
+    //   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
+    //   delay(1);     
+    
+    //   // About to restore the stock ROM and continue game         
+    //   // We need to put something useful on the output pins for joystick port 0x1F.
+    //   PORTD = Utils::readJoystick() & INPUT_MASK; 
+
+    //   // Stock rom escapes the idle loop via its NOPs
+    //   Z80Bus::setStockRom();  
+      
+    //   // let the stock rom catch up
+    //   delay(1);       
+    // }
   }
 }
 
@@ -80,7 +106,7 @@ uint8_t InGamePauseMenu::getSelectedMenuOption(uint8_t& selectedIndex) {
   Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
   Draw::text_P(PAUSE_XPOS, getY(RESUME), F("Resume"));
   Draw::text_P(PAUSE_XPOS, getY(SAVE_SNA), F("*Save SNA"));
-  Draw::text_P(PAUSE_XPOS, getY(SLOWMO), F("*SlowMo"));
+  // Draw::text_P(PAUSE_XPOS, getY(SLOWMO), F("*SlowMo"));
   Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
   Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
   Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
@@ -264,7 +290,7 @@ bool InGamePauseMenu::process() {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
     uint8_t result = getSelectedMenuOption(selectedIndex);
 
-    if (result == SAVE_SNA || result == SLOWMO) {
+    if (result == SAVE_SNA ) { //|| result == SLOWMO) {
       Utils::clearScreen(COL::CYAN_BLACK);
       Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 19) / 2),
                    (ZX_SCREEN_HEIGHT_PIXELS / 2), F("*NOT IMPLEMENTED YET"));
@@ -345,6 +371,19 @@ bool InGamePauseMenu::process() {
   Menu::waitForRelease();
   Utils::restoreScreen(SCRATCH_FILE);
   Utils::restoreZ80States();
+
+  // Give Z80 time to reach the next idle loop so the stock ROM can take control.
+  delay(1);               
+  
+  // About to restore the stock ROM and continue game
+  // We need to put something useful on the output pins for joystick port 0x1F.
+  PORTD = Utils::readJoystick() & INPUT_MASK; 
+  
+  // Stock rom escapes the idle loop via its NOPs
+  Z80Bus::setStockRom();  
+  // let the stock rom catch up
+  delay(1);       
+
   Utils::readJoystick();  // flush junk
 
   return false;

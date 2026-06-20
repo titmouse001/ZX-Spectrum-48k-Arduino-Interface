@@ -408,7 +408,7 @@ command_VBL_Wait:
     EI 
     ; We use HALT here to pause execution until the next interrupt occurs. Giving us a 20ms delay 
 	; before continuing. The goal is to prevent an interrupt from interfering while
-	; restoring the final state.  Since the Arduino gave this "W" command it monitors halt and 
+	; restoring the final state.  Since the Arduino gave this wait command it monitors halt and 
 	; blocks until the Z80 resumes.
     HALT 			; enables the Z80 halt line
     jp mainloop 	; done - back for next transfer command
@@ -489,10 +489,7 @@ command_RestoreGameAndExecute:
 	;-------------------------------------------------------------------------------------------
 	; Setup - Copy code to screen memory, as we'll be switching ROMs later.
 	; After the ROM swap, we lose this sna ROM code in exchange for the stock ROM,
-	; so the launch code must now run from screen RAM.
-
-	; TODO - THIS RELOCATED CODE USED TO DO FAR MORE - NOW THIS COPY IS OVERKILL)
-
+	; so the launch code must now run (JP <GAME_ADDRESS>) from screen RAM.
 	LD HL,relocate
 	LD DE,SCREEN_START 
 	LD BC, relocateEnd - relocate
@@ -545,12 +542,15 @@ RestoreEI_IFFStateComplete:
 	;------------------------------------------------------------------------
 
 	;------------------------------------------------------------------------
-	; Restore R (refresh) register
-	READ_ACC_WITH_HALT      ; read R
-	ld r, a                 ; Sets R, but this won't match the original start value,
-	                        ; since we're restoring the state now, not at true game start.
-	                        ; Note: this could cause issues if a game uses R as part of a protection check.
-	                        ; So far, no known games are confirmed to use R this way???
+	; Restore R (Refresh) register.
+    ; NOTE: The R register cannot be perfectly restored because the act of 
+    ; executing the restoration code advances the internal counter. 
+    ; While the drift could be calculated by accounting for the CPU cycles 
+    ; consumed until the game starts, this is unnecessary as most software 
+    ; is unaffected. However, be aware that some games use R as a source 
+    ; of semi-random numbers, which may result in minor behavioral variations.
+    READ_ACC_WITH_HALT      ; Read saved R value from snapshot
+    ld r, a                 ; Update R register
 	;------------------------------------------------------------------------
 
 	;-----------------------------------------------
@@ -608,18 +608,6 @@ RestoreInterruptModeComplete:
 	pop af                   ; F = F_original (from stack), A = garbage (ignored)
 	dec sp                   ; Restore SP to its original position
 	READ_ACC_WITH_HALT       ; Load original A (accumulator) - AF is now fully restored
-
-
-; Change to use RET with 2 bytes in screen memory (ret addr keep safe, while using temp tiny stack)
-; To launch game, rather than 3 bytes for jp <addr> in screen memory ????
-; So screen would just keep 2 bytes <addr>, to be place back into the stack for the return.
-;??????????????
-
-;	PUSH HL          ; Save original HL to stack
-;    LD HL, (16385)   ; Load the new value into HL
-;    EX (SP), HL      ; HL is now original again, stack has the new value
-; above lets me use RET in the L16D4 mirror ROM  ????  NOT TESTED  ????
-
 
 	JP L16D4	; path to start game!
 ;-----------------------------------------------------------------------	
@@ -1020,25 +1008,32 @@ L16D4:
 	nop
 ;-------------------------------------------------------------------------
 
-	IF $ > $3ff0
+	IF $ > $3d00
 	.ERROR "CODE OVERLAPS"
 	ENDIF
 
 ;------------------------------------------------------------------------
 ; If we see border lines, we probably hit this debug trap.
-org $3fd0	  		
+org $3d00	  		
 debug_trap:  		
 	SET_BORDER 2
 
-    ; delay loop - about 1/2 second
-    ld bc, 0xFFFF    
-pause_loop:
+    ld bc, 0xFFFF      ;  about 1/2 second delay
+.pause_loop1: 
     dec bc          
     ld a, b       
     or c
-    jr nz, pause_loop 
+    jr nz, .pause_loop1 
 
 	SET_BORDER 0
+
+    ld bc, 0xFFFF    
+.pause_loop2:
+    dec bc          
+    ld a, b       
+    or c
+    jr nz, .pause_loop2 
+
 	jr debug_trap
 ;------------------------------------------------------------------------
 

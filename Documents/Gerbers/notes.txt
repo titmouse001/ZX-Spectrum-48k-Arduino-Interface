@@ -3,6 +3,10 @@ Some changes have been made to the Arduino software, which means PCBs earlier
 than v2.00 will no longer work correctly.
 Versions starting from v2.xx now use a latch to read from the I/O. 
 
+(If needed there is this tagged version (running v0.24) that will support older PCB's:-
+https://github.com/titmouse001/ZX-Spectrum-48k-Arduino-Interface/releases/tag/TAG-8BitPulseVersionFor0.xxPCBs)
+
+
 WHY THE CHANGE TO LATCHED "OUT" DATA (Z80->Arduino)
 ---------------------------------------------------
 Previously, a "HALT Fudge 1BIT Protocol" was used. Kind of hacky, but I’m proud it even worked! It relied 
