@@ -5,7 +5,7 @@ Arduino-based ZX Spectrum 48K game loader - Load .SNA, .Z80, .SCR, and .TXT file
 ### 2026 Update
 
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
-<img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="35%">
+<img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="55%">
 <div>
 
 PCB Gerbers (latest V2.40) : [Download Gerber Files](/Documents/Gerbers/)
@@ -17,7 +17,7 @@ Currently it suppots:-
 - Poke (enter game cheats)
 - Take screenshot of game
 - Memory Viewer
-- Exit Poke,
+- Exit Poke
 
 <img src="/Documents/Pictures0.22/IngamePausedMenu.png" width="35%" alt="In-Game Pause Menu">
 
@@ -46,7 +46,9 @@ For compatibility, the interface can also start up in the standard Spectrum ROM 
     replacing the previous 1-bit pulse halt protocol.  While adequate for reading 
     keyboard input, it was too slow for reading large blocks of data.
 
-   
+### PCB Design (Ver 2.40)
+<img src="Documents/Schematic/Schematic-v2.40_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-06-20.png" alt="Circuit Diagram" >
+
 ### Hardware Design (Ver 0.21)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
 
@@ -54,10 +56,7 @@ I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyED
 <img src="/Documents/Pictures0.21/PCB_Back_v0.21.png" alt="Back" width="28%" >
 <img src="/Documents/Pictures0.21/PCB_Front_v0.21.png" alt="Photo view" width="26%" >
 
-### Hardware Design (Ver 2.30)
-<img src="Documents/Schematic/Schematic-v2.30_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-04-17.png" alt="Circuit Diagram" >
-
-### Hardware Design (Ver 0.21)
+### PCB Design (Ver 0.21)
 <img align="right" src="Documents/Schematic/Schematic-v0.21_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2025-07-27.png" alt="Circuit Diagram" width="50%" height="50%">
 
 The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which holds the Z80 machine code for accepting data and restoring the snapshot state. The Arduino manages data transfer to the ZX Spectrum, coordinating the interface. The interface primarily utilizes the data bus, with glue logic enabling the external ROM’s function.
