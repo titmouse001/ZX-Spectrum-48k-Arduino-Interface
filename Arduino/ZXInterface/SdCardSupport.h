@@ -16,7 +16,7 @@ static FatFile file;
 public:
 static bool init(); //uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
-static void openFileByIndex(uint8_t searchIndex);
+static void openFileByIndex(uint16_t searchIndex);
 
 static uint8_t getFileName(FatFile* pFile, char* pFileNameBuffer);
 static char* getFileName(FatFile* pFile);
@@ -28,6 +28,8 @@ static FatFile& getFile() { return file; }
 static FatFile& closeFileIfOpen();
 static FatFile& closeRootIfOpen();
 static bool isInserted();
+static bool copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName);
+static bool findFreeFilename(FatFile& dir,  char* filename);
 
 };
 

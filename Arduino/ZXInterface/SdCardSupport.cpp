@@ -3,6 +3,7 @@
 #include "BufferManager.h"
 #include "menu.h"
 #include "Pin.h"
+#include "Utils.h"
 
 #include "SdFat.h"
 
@@ -13,7 +14,7 @@ static char fileNameBuf[ZX_FILENAME_MAX_DISPLAY_LEN + 1];  // +1 null
 
 // NOTE: For SD cards
 // SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
-__attribute__((optimize("-Os")))
+
 bool SdCardSupport::init() { //uint8_t csPin) {
   closeRootIfOpen();
   sd.end();
@@ -21,10 +22,9 @@ bool SdCardSupport::init() { //uint8_t csPin) {
   return root.open("/");
 }
 
-__attribute__((optimize("-Os"))) 
-void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
+void SdCardSupport::openFileByIndex(uint16_t searchIndex) {
   root.rewind();
-  uint8_t index = 0;
+  uint16_t index = 0;
   while (closeFileIfOpen().openNext(&root, O_RDONLY)) {
     //if (!file.isHidden() &&  (file.isFile() || file.isDir())) {
     if (!file.isHidden()) {
@@ -33,7 +33,7 @@ void SdCardSupport::openFileByIndex(uint8_t searchIndex) {
   }
 }
 
-__attribute__((optimize("-Os"))) // Changed from Ofast to Os to save space
+ // Changed from Ofast to Os to save space
 uint16_t SdCardSupport::countSnapshotFiles() {
   closeFileIfOpen();
   root.rewind();
@@ -71,7 +71,7 @@ char* SdCardSupport::getFileName(FatFile* pFile) {
   return fileNameBuf;
 }
 
-__attribute__((optimize("-Os")))
+
 char* SdCardSupport::getFileNameWithSlash(FatFile* pFile) {
   getFileName(pFile,&fileNameBuf[1]);
   fileNameBuf[0]='/';
@@ -95,7 +95,7 @@ FatFile& SdCardSupport::closeRootIfOpen() {
 }
 
 
-__attribute__((optimize("-Os")))
+
 bool SdCardSupport::isInserted() {
   cid_t cid; // 16-byte struct to hold the response
   
@@ -107,3 +107,46 @@ bool SdCardSupport::isInserted() {
   return true; // Card is alive and well
 }
 
+
+bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
+  FatFile file;
+  
+  for (uint16_t i = 0; i < 9999; i++) {
+    // Ripple-carry "0000" -> "9999"
+    uint8_t idx = 7;
+    while (++fileName[idx] > '9') {
+      fileName[idx--] = '0';
+    }
+
+    if (!file.open(&dir, fileName, O_READ)) {
+      return true;  // found one
+    }
+    file.close();
+  }
+  
+  return false; // All 9999 slots full
+}
+
+
+bool SdCardSupport::copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName) {
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+  bool success = false;
+  FatFile srcFile;
+
+  if (srcFile.open(&root, fromFileName, O_READ)) {
+    FatFile destFile;
+    if (destFile.open(&dir, toFileName, O_CREAT | O_WRONLY)) {
+      int bytesRead;
+      while ((bytesRead = srcFile.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
+        destFile.write(buf, bytesRead);
+      }
+      destFile.close();
+      success = true;
+    }
+    srcFile.close();
+  }
+
+  BufferManager::freeToMark(mark);
+  return success;
+}

@@ -967,6 +967,123 @@ cleanup:
 
     RET  ; return OK as using Detect128K inside game menu's stack
 
+
+
+;-----------------------------------------------------------------------
+; SaveZ80State – Save FULL Z80 state (entered via NMI)
+; The original NMI return address stays on the game's stack 
+;-----------------------------------------------------------------------
+.SaveZ80State:
+
+    out  ($1F),a	; A
+    halt
+
+    ld   a,i		; I
+    out  ($1F),a
+    halt
+
+    ld   a,b		; B
+    out  ($1F),a
+    halt
+    ld   a,c		; C
+    out  ($1F),a
+    halt
+
+    push af
+    pop  bc
+    ld   a,c        ; F
+    out  ($1F),a
+    halt
+
+    ld   a,d
+    out  ($1F),a  	; D
+    halt
+    ld   a,e
+    out  ($1F),a	; E
+    halt
+    ld   a,h
+    out  ($1F),a	; H
+    halt
+    ld   a,l
+    out  ($1F),a	; L
+    halt
+    ;---- Save SP ----
+    ld   hl,0
+    add  hl,sp
+    ld   a,l
+    out  ($1F),a
+    halt
+    ld   a,h
+    out  ($1F),a
+    halt
+    ;---- Save IX ----
+    ld   a,ixh
+    out  ($1F),a
+    halt
+    ld   a,ixl
+    out  ($1F),a
+    halt
+    ;---- Save IY ----
+    ld   a,iyh
+    out  ($1F),a
+    halt
+    ld   a,iyl
+    out  ($1F),a
+    halt
+
+    ;---- Save alternate registers ----
+    ex   af,af'
+    exx
+    out  ($1F),a	; A'
+    halt
+    push af
+    pop  bc
+    ld   a,c      	; F'
+    out  ($1F),a
+    halt
+    ld   a,b
+    out  ($1F),a  	; B'
+    halt
+    ld   a,c
+    out  ($1F),a	; C'
+    halt
+    ld   a,d
+    out  ($1F),a	; D'
+    halt
+    ld   a,e
+    out  ($1F),a	; E'
+    halt
+    ld   a,h
+    out  ($1F),a	; H'
+    halt
+    ld   a,l
+    out  ($1F),a	; L'
+    halt
+
+    exx
+    ex   af,af'
+
+    ;---- Save I + IFF2 (bit 7 encodes IFF2) ----
+    ld   a,i
+    jp   po,.iffOff
+.iffOn:
+    or   %10000000
+    out  ($1F),a
+    halt
+    jr   .saveR
+.iffOff:
+    and  %01111111
+    out  ($1F),a
+    halt
+
+.saveR:
+    ld   a,r		; R
+    out  ($1F),a
+    halt
+
+    jp   mainloop
+
+
 ; -------------------------------------------------------------------------
 	IF $ > $16D4
 	.ERROR "CODE OVERLAPS"

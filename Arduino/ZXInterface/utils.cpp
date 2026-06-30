@@ -4,38 +4,20 @@
 #include "draw.h"
 #include "SdCardSupport.h"
 #include "BufferManager.h"
-//#include "CommandRegistry.h"
 #include "z80bus.h"
-#include "PacketBuilder.h"
 #include "menu.h"
-//#include "constants.h"
 #include "PacketTypes.h"
 #include "pin.h"
 
-static uint8_t REG_A;
-static uint8_t REG_F;
-static uint8_t REG_D;
-static uint8_t REG_E;
-static uint8_t REG_B;
-static uint8_t REG_C;
-static uint8_t REG_H;
-static uint8_t REG_L;
-static uint8_t REG_IFF2;
-static uint8_t REG_IXL;
-static uint8_t REG_IXH;
-
-
-__attribute__((optimize("-Os")))
 void Utils::clearScreen(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
   Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
 }
 
-__attribute__((optimize("-Os"))) 
 void Utils::frameDelay(unsigned long start) {
   const unsigned long timeSpent = millis() - start;
   if (timeSpent < MAX_BUTTON_READ_MILLISECONDS) {
-    delay(MAX_BUTTON_READ_MILLISECONDS - timeSpent);  // aiming for 50 FPS
+    Utils::delay16(MAX_BUTTON_READ_MILLISECONDS - timeSpent);  // aiming for 50 FPS
   }
 }
 
@@ -45,7 +27,7 @@ void Utils::frameDelay(unsigned long start) {
 //    A 74HC32 combines the /IORQ, /RD, and /A7 signals to detect when the joystick port is being accessed.
 //    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
 
-__attribute__((optimize("-Ofast")))
+//__attribute__((optimize("-Ofast")))
 uint8_t Utils::readJoystick() {
   digitalWriteFast(Pin::ShiftRegLatchPin, LOW);   // snapshot joystick
   delayMicroseconds(1);                           // let the latch IC complete
@@ -64,7 +46,6 @@ uint8_t Utils::readJoystick() {
   // bit 0 to 7: Right,Left,Down,Up,Fire1,Fire2, Select (PCB button) and last bit is not used.
 }
 
-__attribute__((optimize("-Os"))) 
 void Utils::setupJoystick() {
   // Setup pins for "74HC165" shift register
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
@@ -72,54 +53,47 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
-__attribute__((optimize("-Os"))) 
-void Utils::storeZ80States() {
-  // note: for each get_IO_Byte the Z80 will 'OUT' then 'HALT'
-  REG_A = Z80Bus::get_IO_Byte();
-  REG_B = Z80Bus::get_IO_Byte();
-  REG_C = Z80Bus::get_IO_Byte();
-  REG_F = Z80Bus::get_IO_Byte();
-  REG_IFF2 = Z80Bus::get_IO_Byte();
-  REG_D = Z80Bus::get_IO_Byte();
-  REG_E = Z80Bus::get_IO_Byte();
-  REG_H = Z80Bus::get_IO_Byte();
-  REG_L = Z80Bus::get_IO_Byte();
-  REG_IXH = Z80Bus::get_IO_Byte();
-  REG_IXL = Z80Bus::get_IO_Byte();
+Z80Registers* Utils::storeZ80States() {
+  uint16_t mark = BufferManager::getMark();
+  Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
+
+  regs->a = Z80Bus::get_IO_Byte();
+  regs->b = Z80Bus::get_IO_Byte();
+  regs->c = Z80Bus::get_IO_Byte();
+  regs->f = Z80Bus::get_IO_Byte();
+  regs->iff2 = Z80Bus::get_IO_Byte();
+  regs->d = Z80Bus::get_IO_Byte();
+  regs->e = Z80Bus::get_IO_Byte();
+  regs->h = Z80Bus::get_IO_Byte();
+  regs->l = Z80Bus::get_IO_Byte();
+  regs->ixh = Z80Bus::get_IO_Byte();
+  regs->ixl = Z80Bus::get_IO_Byte();
+
+  regs->AllocMark = mark;
+  return regs;
 }
 
-void Utils::restoreZ80States() {
 
+void Utils::restoreZ80States(Z80Registers* regs) {
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
   // This allows time for the ROM to swap back to the stock ROM and begin the restore process at 0x04AA.
   uint8_t addr0x04AA[] = { 0x04, 0xAA };
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
-  Z80Bus::sendBytes(&REG_D, 1);
-  Z80Bus::sendBytes(&REG_E, 1);
-  Z80Bus::sendBytes(&REG_B, 1);
-  Z80Bus::sendBytes(&REG_C, 1);
-  Z80Bus::sendBytes(&REG_H, 1);
-  Z80Bus::sendBytes(&REG_L, 1);
-  Z80Bus::sendBytes(&REG_IXH, 1);
-  Z80Bus::sendBytes(&REG_IXL, 1);
-  Z80Bus::sendBytes(&REG_IFF2, 1);
-  Z80Bus::sendBytes(&REG_F, 1);
-  Z80Bus::sendBytes(&REG_A, 1);
+  Z80Bus::sendBytes(&regs->d, 1);
+  Z80Bus::sendBytes(&regs->e, 1);
+  Z80Bus::sendBytes(&regs->b, 1);
+  Z80Bus::sendBytes(&regs->c, 1);
+  Z80Bus::sendBytes(&regs->h, 1);
+  Z80Bus::sendBytes(&regs->l, 1);
+  Z80Bus::sendBytes(&regs->ixh, 1);
+  Z80Bus::sendBytes(&regs->ixl, 1);
+  Z80Bus::sendBytes(&regs->iff2, 1);
+  Z80Bus::sendBytes(&regs->f, 1);
+  Z80Bus::sendBytes(&regs->a, 1);
 
-  // // About to restore the stock ROM and continue game
-  // // We need to put something useful on the output pins for joystick port 0x1F.
-  // const uint8_t buttonData = Utils::readJoystick();
-  // PORTD = buttonData & INPUT_MASK; 
-
-  // // Give Z80 time to reach the next idle loop so the stock ROM can take control.
-  // delay(1);               
-  // // Stock rom escapes the idle loop via its NOPs
-  // Z80Bus::setStockRom();  
-  // // let the stock rom catch up
-  // delay(1);               
+  BufferManager::freeToMark(regs->AllocMark);
 }
 
-__attribute__((optimize("-Os"))) 
 void Utils::saveScreen(const char* filename) {
 
   FatFile& file = SdCardSupport::closeFileIfOpen();
@@ -139,7 +113,7 @@ void Utils::saveScreen(const char* filename) {
   if (root.open("/")) {
     while (!file.open(filename, O_CREAT | O_WRONLY)) {
       // Can't warn user here - need are in the middle of storing the screen!!!
-      while (!SdCardSupport::init()) { delay(20); }  // worst case - sd card removed, full reset needed.
+      while (!SdCardSupport::init()) { Utils::delay16(20); }  // worst case - sd card removed, full reset needed.
     }
 
     // send header detials first (request Spectrum to send all screen data)
@@ -148,7 +122,7 @@ void Utils::saveScreen(const char* filename) {
 
     // Above will be doing a final NMI to unhalt Z80
     // We need to give it time to catch up before we slam the lines to input!
-    delay(1);  // todo - will do for now, but this is way to mutch time!
+    Utils::delay16(1);  // todo - will do for now, but this is way to mutch time!
 
     DDRD = 0x00;   // make them inputs
     digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
@@ -167,8 +141,6 @@ void Utils::saveScreen(const char* filename) {
   }
 }
 
-
-__attribute__((optimize("-Os"))) 
 void Utils::restoreScreen(const char* filename) {
 
   FatFile& file = SdCardSupport::closeFileIfOpen();
@@ -221,21 +193,27 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
 }
 
 
-static inline char hexChar(uint8_t nibble) {
-  nibble &= 0x0F;
-  return nibble < 10 ? '0' + nibble : 'A' + (nibble - 10);
-}
-
-__attribute__((optimize("-Os"))) 
 void Utils::viewSpeccyMemory() {
-  constexpr uint8_t MAX_CHARS_PER_LINE = 42;  // (256pixels/6)
-  constexpr uint8_t BYTES_TO_SHOW_PER_LINE = 8;
+  constexpr uint8_t MAX_CHARS_PER_LINE = 38; // max 42 chars;  // (256pixels/6)
+  constexpr uint8_t HEX_TO_SHOW_PER_LINE = 8;
   int32_t currentBaseAddr = 0x5B00;  // start of program mem
   uint16_t mark = BufferManager::getMark();
- // uint8_t* buf = BufferManager::allocate(sizeof(RequestSendDataPacket));
-  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1);
+  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1); // 0 to 38
 
-  memset(lineBuffer, '\0', MAX_CHARS_PER_LINE + 1);
+ // memset(lineBuffer, '\0', MAX_CHARS_PER_LINE + 1);
+ // Utils::memsetZero((uint8_t*)&lineBuffer[0], MAX_CHARS_PER_LINE + 1);
+  
+ // layout: "XXXX: XX XX XX XX XX XX XX XX ........\0"
+  
+  // lineBuffer[5] = ' ';
+  // for (uint8_t s = 0; s < 8; s++) {
+  //   lineBuffer[8 + (s * 3)] = ' ';  
+  // }
+  memset(lineBuffer, ' ', MAX_CHARS_PER_LINE );
+  lineBuffer[4] = ':';
+  lineBuffer[MAX_CHARS_PER_LINE] = '\0';
+
+  const char hexDigits[] = "0123456789ABCDEF";
 
   while (true) {
     uint16_t tempBaseAddr = currentBaseAddr;
@@ -243,27 +221,41 @@ void Utils::viewSpeccyMemory() {
 
       uint8_t pos = 0;
       // Use 6 chars for formatting address i.e. "AEFF: "
-      lineBuffer[pos++] = hexChar(tempBaseAddr >> 12);
-      lineBuffer[pos++] = hexChar(tempBaseAddr >> 8);
-      lineBuffer[pos++] = hexChar(tempBaseAddr >> 4);
-      lineBuffer[pos++] = hexChar(tempBaseAddr & 0x0F);
-      lineBuffer[pos++] = ':';
-      lineBuffer[pos++] = ' ';
+      lineBuffer[0] = hexDigits[(tempBaseAddr >> 12) & 0x0F ];
+      lineBuffer[1] = hexDigits[(tempBaseAddr >> 8)  & 0x0F];
+      lineBuffer[2] = hexDigits[(tempBaseAddr >> 4)  & 0x0F];
+      lineBuffer[3] = hexDigits[(tempBaseAddr & 0x0F) ];
+      //lineBuffer[pos++] = hexChar(tempBaseAddr >> 12);
+     // lineBuffer[pos++] = hexChar(tempBaseAddr >> 8);
+     // lineBuffer[pos++] = hexChar(tempBaseAddr >> 4);
+     // lineBuffer[pos++] = hexChar(tempBaseAddr & 0x0F);
+   //   lineBuffer[pos++] = ':';
+  //    lineBuffer[pos++] = ' ';
+      pos+=2;  // skip pre filled
 
-      RequestSendDataPacket pkt (BYTES_TO_SHOW_PER_LINE, tempBaseAddr);
+      // ASK FOR 8 BYTES
+      RequestSendDataPacket pkt (HEX_TO_SHOW_PER_LINE, tempBaseAddr);
+      // START receiving process from z80 (we will render what we get and send it back as graphics)
       Z80Bus::sendBytes((uint8_t*) &pkt, sizeof(RequestSendDataPacket));
 
-      for (uint8_t k = 0; k < 8; ++k) {
+      uint8_t hexPos = 6;   // start of hex field (after "XXXX: ")
+      for (uint8_t k = 0; k < HEX_TO_SHOW_PER_LINE; ++k) {
         uint8_t b = Z80Bus::get_IO_Byte();
-        // Use 3 chars for formatting byte data i.e ("1B ")
-        lineBuffer[pos++] = hexChar(b >> 4);
-        lineBuffer[pos++] = hexChar(b & 0x0F);
-        lineBuffer[pos++] = ' ';
-        // ascii text far right - "." for unknown (+30 draws past previous chars)
-        lineBuffer[6 + (3 * 8) + k] = (b >= 32 && b <= 126) ? b : '.';
+        // Use 3 chars including space for formatting hex e.g. ("1B ")
+        // lineBuffer[pos++] = hexChar(b >> 4);
+        // lineBuffer[pos++] = hexChar(b & 0x0F);
+        // pos++;  // skip pre filled
+
+        // hex pair + space
+        lineBuffer[hexPos]     = hexDigits[(b >> 4) & 0x0f];
+        lineBuffer[hexPos + 1] = hexDigits[(b & 0x0F) ];
+        hexPos += 3;
+
+        // ASCII on the far right, "." for unknown
+        lineBuffer[6 + (3 * HEX_TO_SHOW_PER_LINE) + k] = (b >= 32 && b <= 126) ? b : '.';
       }
       Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels
-      tempBaseAddr += BYTES_TO_SHOW_PER_LINE;
+      tempBaseAddr += HEX_TO_SHOW_PER_LINE;
     }
 
     while (true) {
@@ -290,71 +282,44 @@ void Utils::viewSpeccyMemory() {
   }
 }
 
-constexpr char SHOTS[] = "SHOTS";   // Folder name (5 chars) & filename prefix (4 chars)
-constexpr char SCR_EXT[] = ".SCR";  // Extension
-
-__attribute__((optimize("-Os"))) 
-bool Utils::exportScreenshot() {
+bool Utils::exportScreenshot(const char* folderName) {
   FatFile& root = SdCardSupport::getRoot();
   if (!root.isOpen() && !root.open("/")) {
     return false;
   }
-
-  // make sure "SHOTS" folder exists
   FatFile dir;
-  if (!dir.open(&root, SHOTS, O_READ)) {
-    if (!dir.mkdir(&root, SHOTS) || !dir.open(&root, SHOTS, O_READ)) {
+  if (!dir.open(&root, folderName, O_READ)) {
+    if (!dir.mkdir(&root, folderName) || !dir.open(&root, folderName, O_READ)) {
       return false;
     }
   }
 
-  // Search for the first free number slot
-  FatFile file;
-  char filename[] = "SHOT0000.SCR";  // sizeof(filename) == 13, null included
-  for (uint16_t i = 0; i < 9999; i++) {
-    if (++filename[7] > '9') {
-      filename[7] = '0';
-      if (++filename[6] > '9') {
-        filename[6] = '0';
-        if (++filename[5] > '9') {
-          filename[5] = '0';
-          ++filename[4];  // thousands digit
-        }
-      }
-    }
-    if (!file.open(&dir, filename, O_READ)) {
-      Draw::text((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 12) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 8, filename);
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 6) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("Saving"));
-      break;  // name found
-    }
-    file.close();  // exists - try next
+  char filename[] = "SHOT0000.SCR";  // 0000 is the search start
+  bool success = false;
+  if (SdCardSupport::findFreeFilename(dir, filename)) {
+    Draw::text((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 12) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 8, filename);
+   // Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 6) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("Saving"));  // to quick to read
+    success = SdCardSupport::copyFile(root, dir, SCRATCH_FILE, filename);
   }
 
-  // Copy the scratch file to the new filename
-  uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
-  if (file.open(&root, SCRATCH_FILE, O_READ)) {
-    FatFile destFile;
-    if (destFile.open(&dir, filename, O_CREAT | O_WRONLY)) {
-      int bytesRead;
-      while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
-        destFile.write(buf, bytesRead);
-      }
-      destFile.close();
-    }
-    file.close();
-  }
   dir.close();
-  BufferManager::freeToMark(mark);
-
-  Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 15) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("SAVED - ANY KEY"));
-
-  return true;
+  return success;
 }
 
-__attribute__((optimize("-Os"))) 
-void Utils::stockRomBoot_Blocking()
-{
+void Utils::resetSystem() {
+  pinModeFast(Pin::Z80_REST, OUTPUT);
+  digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
+
+  Z80Bus::setupPins();
+  Utils::setupJoystick();
+
+  Utils::delay16(Z80_RESET_TIME);
+
+  digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
+  Utils::delay16(1);
+}
+
+void Utils::stockRomBoot_Blocking() {
   Z80Bus::setStockRom();
   Z80Bus::resetZ80(); // Resets Z80 for a clean boot from internal ROM.
   while ((Utils::readJoystick() & INPUT_SELECT) != 0){} // Debounces button release.
@@ -375,7 +340,7 @@ void Utils::waitForSDCard_Blocking(bool clearScreen) {
     }
     Draw::text_P(80, 90, F("INSERT SD CARD"));
     do {
-      delay(20);
+      Utils::delay16(20);
     } while (!SdCardSupport::init());  // keep looking
     Utils::clearScreen(COL::BLACK_WHITE);
   }
@@ -409,6 +374,46 @@ void Utils::show5VoltRailStatus() {
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + 32 - sizeof(voltageStr) + (((192-8)/8)*32), sizeof(voltageStr), COL::BLUE_WHITE);
   Draw::text(256-(6*sizeof(voltageStr)), 192-8, voltageStr);  // top right corner
 }
+
+// replacing delay() with delay16()
+// Before : Sketch uses 28072 bytes (91%) of program storage space. Maximum is 30720 bytes.
+// after  : Sketch uses 27874 bytes (90%) of program storage space. Maximum is 30720 bytes.
+
+void Utils::delay16(uint16_t ms) {
+    const uint32_t start = millis();
+    while ((uint16_t)(millis() - start) < ms) {
+    }
+}
+
+uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
+  uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
+  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
+  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part +
+         (x >> 3);  // x/8 gives 32 columns
+}
+
+uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
+  const uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
+  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
+  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part;
+}
+
+void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
+  constexpr uint8_t bitWidth = 6;
+  uint16_t byteIndex = bitPosition >> 3;  // /8
+  uint8_t bitIndex = bitPosition & 7;     // %8
+  uint8_t maskedInput = input & ((1U << bitWidth) - 1);
+  uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
+  output[byteIndex] |= aligned >> 8;
+  if (aligned) { output[byteIndex + 1] |= aligned; }
+}
+
+void Utils::memsetZero(byte* b, uint16_t len) {
+  for (; len != 0; len--) { *b++ = 0; }
+}
+
+// 27708
+
 
 
 // // // ****** DEBUG ONLY *************

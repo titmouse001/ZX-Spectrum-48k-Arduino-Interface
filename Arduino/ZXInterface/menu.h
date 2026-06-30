@@ -33,16 +33,15 @@ public:
   static inline void waitForAnyKey() { while (Menu::getButton() == Menu::BUTTON_NONE); waitForRelease(); }
 
   static void resetToRoot();
-
+  static bool inSubFolder;
 private:
   static uint32_t lastButtonPressTime;
   static uint32_t lastButtonHoldTime;
   static uint16_t buttonDelay;
-  //static uint16_t oldHighlightAddress;
   static uint16_t currentFileIndex;
   static uint16_t startFileIndex;
   static bool buttonHeld;
-  static bool inSubFolder;
+
 
   static void displayFileList();
   static uint16_t scanFolder(bool reset = false);

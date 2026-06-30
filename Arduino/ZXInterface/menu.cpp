@@ -9,58 +9,126 @@
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = MAX_REPEAT_KEY_DELAY;
-bool     Menu::buttonHeld = false;
-
-//uint16_t Menu::oldHighlightAddress = 0;
 uint16_t Menu::currentFileIndex = 0;
 uint16_t Menu::startFileIndex = 0;
+bool     Menu::buttonHeld = false;
 bool     Menu::inSubFolder = false;
 
-//constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_GREEN; 
 constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_WHITE; 
 
 
-__attribute__((optimize("-Os"))) 
+static uint16_t menuPathHistory[FOLDER_NAV_DEPTH]; 
+static uint8_t  menuPathDepth = 0;
+
+
+static void syncRootToDepth() {
+  //FatFile& root = SdCardSupport::getRoot();
+  //root.close();
+  //root.open("/"); // Start at true hardware root
+
+  FatFile& root = SdCardSupport::closeRootIfOpen();
+  root.open("/"); 
+  
+  if (menuPathDepth > 0) {
+    uint16_t mark = BufferManager::getMark();
+// TODO ... HOW MUCH TO ALLOC - what would be largest dir? ... maybe upgrade allocator (min/max kind of ask) no sure will have spare to give  ???
+    uint8_t* localPath = BufferManager::allocate(100);  
+    localPath[0] = '/';
+    localPath[1] = '\0';
+//    char localPath[110] = "/";  
+    for (uint8_t i = 0; i < menuPathDepth; i++) {
+      SdCardSupport::openFileByIndex(menuPathHistory[i]);
+      FatFile& file = SdCardSupport::getFile();
+      char* name = SdCardSupport::getFileNameWithSlash(&file);
+      if (name != nullptr) {
+        strcat((char*)localPath, name);
+      }
+      root.close();
+      if (!root.open((char*)localPath)) {
+        menuPathDepth = 0;
+        root.open("/");   // Fallback 
+        break;
+      }
+    }
+    BufferManager::freeToMark(mark);
+  }
+  Menu::inSubFolder = (menuPathDepth > 0);
+}
+
 FatFile* Menu::handleMenu() {
+ 
+  syncRootToDepth();    // Re-synchronize the menu
 
   Utils::clearScreen(MENU_TEXT_COLOUR);
   uint16_t totalFiles = scanFolder();
 
+  // did the folder contents grow
+  uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);
+  if (virtualTotalFiles > 0 && currentFileIndex >= virtualTotalFiles) {
+    currentFileIndex = virtualTotalFiles - 1;
+    startFileIndex = (currentFileIndex / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
+  }
+
   displayFileList();
+
   Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
 
   while (true) {
+
+#ifdef _DEBUG_POOL_SIZE_ENABLED_
+    char _c[8];
+    itoa(BufferManager::poolOffsetLastMax, _c, 10);
+    Draw::text(256 - 64, 32, _c);
+
+    itoa(BufferManager::poolOffset, _c, 10);
+    Draw::text(256 - 64, 32+16, _c);
+#endif
+
     const uint32_t start = millis();
     uint16_t lastIndex = currentFileIndex;
     MenuAction_t action = getMenuAction(totalFiles);
 
     if (!SdCardSupport::isInserted()) {
-      constexpr uint8_t clrScreenFlag(true);
+      static constexpr uint8_t clrScreenFlag(true);
       Utils::waitForSDCard_Blocking(clrScreenFlag);  // shows message "INSERT SD CARD"
       action = ACTION_REFRESH_LIST;
     }
 
     if (action == ACTION_SELECT_FILE) {
-      FatFile& root = SdCardSupport::getRoot();
-      bool backToRoot = (inSubFolder && currentFileIndex == 0);  // Inside folder - first item shows "[/]"
+      bool backOneLevel = (inSubFolder && currentFileIndex == 0);  // Inside folder - first item shows "[/]"
 
-      if (backToRoot) {
-        root.close();
-        inSubFolder = false;
-        root.open("/");
-        totalFiles = scanFolder(false);  
+      if (backOneLevel) {
+        if (menuPathDepth > 0) {
+          menuPathDepth--;
+          uint16_t exitedFolderIndex = menuPathHistory[menuPathDepth];
+          
+          syncRootToDepth();
+          totalFiles = scanFolder(false);  
+          
+          // back to the folder we just exited
+          currentFileIndex = inSubFolder ? (exitedFolderIndex + 1) : exitedFolderIndex;
+          startFileIndex = (currentFileIndex / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
+        }
       } else {
-        // File or Folder
-        SdCardSupport::openFileByIndex(inSubFolder ? currentFileIndex - 1 : currentFileIndex);
+        // Regular File or Folder selection
+        uint16_t selectedIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
+        SdCardSupport::openFileByIndex(selectedIndex);
         FatFile& file = SdCardSupport::getFile();
+        
         if (file.isDir()) {
-          char* path = SdCardSupport::getFileNameWithSlash(&file);
-          root.close();
-          inSubFolder = root.open(path);
-          if (!inSubFolder) root.open("/");  // Fallback on failure
-          totalFiles = scanFolder(true);  // refresh for nav change
+          // Check if we are allowed to go deeper
+          if (menuPathDepth < FOLDER_NAV_DEPTH) { 
+            menuPathHistory[menuPathDepth] = selectedIndex;
+            menuPathDepth++;
+            syncRootToDepth();
+            totalFiles = scanFolder(true);  // new subfolder
+          } else {
+            file.close();
+            Menu::waitForRelease();
+            continue;     // DO NOTHING! Max depth reached!
+          }
         } else {
-          return &file;  // Selection confirmed
+          return &file;  // Selection confirmed. Handing execution off to game launcher.
         }
       }
       Menu::waitForRelease();
@@ -77,19 +145,18 @@ FatFile* Menu::handleMenu() {
     if (action != ACTION_NONE) {
       Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
     }
+
     Utils::frameDelay(start);
   }
 }
 
-__attribute__((optimize("-Ofast"))) 
+//__attribute__((optimize("-Ofast")))
 void Menu::displayFileList() {
-
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
   uint16_t mark = BufferManager::getMark();
-  constexpr uint8_t BRACKETS_AND_TERMINATOR = 3;
-  char* nameBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + BRACKETS_AND_TERMINATOR);
+  char* nameBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
   uint16_t linesDrawn = 0;
   uint16_t filesSkipped = 0;
 
@@ -104,7 +171,7 @@ void Menu::displayFileList() {
   }
 
   FatFile& file = SdCardSupport::getFile();
-    while (file.openNext(&root, O_RDONLY)) {
+  while (file.openNext(&root, O_RDONLY)) {
     if (file.isHidden()) {
       file.close();
       continue;
@@ -117,20 +184,30 @@ void Menu::displayFileList() {
     }
 
     if (linesDrawn < SCREEN_TEXT_ROWS) {
-      char* displayName = nameBuffer;
-
-      if (file.isDir()) {
-        nameBuffer[0] = '[';  // directory "[" prefix
-        displayName = &nameBuffer[1];
+      bool isDirectory = file.isDir();
+      char* fetchDest;
+      if (isDirectory) {
+        nameBuffer[0] = '[';  //  directory indicator
+        fetchDest = &nameBuffer[1];
+      } else {
+        fetchDest = nameBuffer;
       }
 
-      uint8_t len = SdCardSupport::getFileName(&file, displayName);  // names are null terminated
-      if (len > ZX_FILENAME_MAX_DISPLAY_LEN) {                       // Trim long names
-        displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
-        displayName[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
-        displayName[ZX_FILENAME_MAX_DISPLAY_LEN] = '\0';
-      } else if (file.isDir()) {
-        nameBuffer[len + 1] = ']';  // directory "]" suffix
+      uint8_t len = SdCardSupport::getFileName(&file, fetchDest);
+      uint8_t totalVisualLen = isDirectory ? (len + 2) : len;
+
+      if (totalVisualLen > ZX_FILENAME_MAX_DISPLAY_LEN) {
+        // clip long filenames
+        nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
+        if (isDirectory) {
+          nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 3] = '.';
+          nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = ']';  
+        } else {
+          nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
+        }
+        nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN] = '\0';
+      } else if (isDirectory) {
+        nameBuffer[len + 1] = ']';  //  directory indicator
         nameBuffer[len + 2] = '\0';
       }
 
@@ -138,20 +215,21 @@ void Menu::displayFileList() {
       linesDrawn++;
     }
     file.close();
-    if (linesDrawn >= SCREEN_TEXT_ROWS) break; // screen is full
+    if (linesDrawn >= SCREEN_TEXT_ROWS) break;  // screen is full
   }
 
   // Use blank textLine to clear remaining rows
-  for (uint8_t i = linesDrawn * FONT_HEIGHT_WITH_GAP; i < SCREEN_TEXT_ROWS * FONT_HEIGHT_WITH_GAP; i += FONT_HEIGHT_WITH_GAP) {
-    Draw::textLine(i, " ");
+  for (uint8_t i = linesDrawn * FONT_HEIGHT_WITH_GAP;
+       i < SCREEN_TEXT_ROWS * FONT_HEIGHT_WITH_GAP; i += FONT_HEIGHT_WITH_GAP) {
+    Draw::textLine(i, NULL);
   }
 
   BufferManager::freeToMark(mark);
 }
 
-__attribute__((optimize("-Os")))
+
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
- 
+
   // +1 to account for when [/] is added to top of list for navigating back to root
   uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);  
   const Button_t button = getButton();
@@ -216,7 +294,7 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
   return ACTION_NONE;
 }
 
-__attribute__((optimize("-Os"))) 
+ 
 uint16_t Menu::scanFolder(bool reset) {
   if (reset) {
     currentFileIndex = 0;
@@ -228,9 +306,9 @@ uint16_t Menu::scanFolder(bool reset) {
     if (SdCardSupport::isInserted()) {
       Draw::text_P(80, 90, F("NO FILES FOUND"));
     } else {
-      Utils::waitForSDCard_Blocking(false);
+      Utils::waitForSDCard_Blocking();
     }
-    delay(20);
+    Utils::delay16(20);
     clr = true;
   }
   if (clr) {
@@ -240,7 +318,7 @@ uint16_t Menu::scanFolder(bool reset) {
   return totalFiles;
 }
 
-__attribute__((optimize("-Os")))
+
 Menu::Button_t Menu::getButton() {
 
   const uint8_t joy = Utils::readJoystick();
@@ -260,4 +338,5 @@ void Menu::resetToRoot() {
   currentFileIndex = 0;
   startFileIndex = 0;
   inSubFolder = false;
+  menuPathDepth = 0;
 }

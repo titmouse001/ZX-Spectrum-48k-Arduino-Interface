@@ -2,7 +2,6 @@
 #include "Arduino.h"
 #include "FontData.h"
 #include "utils.h"
-//#include "constants.h"
 #include "RenderFont.h"
 
 
@@ -33,23 +32,26 @@ void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, 
 }
 
 __attribute__((optimize("-Ofast"))) 
-uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char *message) {
-    Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-    uint8_t charCount = 0;
+uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char* message) {
+  Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
+  uint8_t charCount = 0;
+  if (message != NULL) {
     uint16_t basePos = 0;
     while (true) {
-        const char ch = message[charCount];
-        if (!ch) break;   // end line early on null char
-        const uint8_t idx = (ch - 0x20);
-        const uint8_t* fontPtr = &fudged_Adafruit5x7[(idx << 2) + idx + SmallFont::FNT_HEADER_SIZE];  // trick for 5 x idx
-        processCharacter(finalOutput, fontPtr, basePos);
-        charCount++;
-        basePos += SmallFont::FNT_CHAR_PITCH;  
+      const char ch = message[charCount];
+      if (!ch) break;  // end line early on null char
+      const uint8_t idx = (ch - 0x20);
+      const uint8_t* fontPtr = &fudged_Adafruit5x7[(idx << 2) + idx +
+                              SmallFont::FNT_HEADER_SIZE];  // trick for 5 x idx
+      processCharacter(finalOutput, fontPtr, basePos);
+      charCount++;
+      basePos += SmallFont::FNT_CHAR_PITCH;
     }
-    return charCount;
+  }
+  return charCount;
 }
 
-__attribute__((optimize("-Os"))) 
+ 
 uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper *flashStr) {
     Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
     const char *message = (const char *)flashStr;

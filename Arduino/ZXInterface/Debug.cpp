@@ -21,7 +21,7 @@
 SSD1306AsciiAvrI2c oled;
 
 // debugging with a 128x32 pixel oled
-__attribute__((optimize("-Os")))
+
 bool Debug::setupOled() {  // DEBUG USE ONLY
   Wire.begin(); 
   Wire.beginTransmission(I2C_ADDRESS);

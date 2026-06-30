@@ -4,7 +4,8 @@
 #include <stdint.h>
 //#include "pin.h"
 #include "SdFat.h"
-
+#include "digitalWriteFast.h"
+#include "pin.h"
 
 namespace Z80Bus {
 
@@ -31,9 +32,9 @@ extern void setStockRom();
 extern void waitHalt_syncWithZ80();
 extern void triggerZ80NMI();
 extern void hasZ80Resumed();
-extern void waitRelease_NMI();
 
 extern void Z80_NOP();
+
 
 }
 

@@ -14,6 +14,9 @@
 //see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
 //https://zadig.akeo.ie/  (for drivers - I used winusb )
 
+// Generate Map file
+// >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt
+
 
 #include <Arduino.h>
 #include "Utils.h"
@@ -26,16 +29,13 @@
 #include "SnapZ80.h"
 #include "Debug.h"  // see #defines to enable
 
-__attribute__((optimize("-Os")))   
 void setup() {
 
 #ifdef SERIAL_DEBUG 
   Debug::setupSerial(); // For debugging
 #endif
 
-  Z80Bus::setupPins();
-  Z80Bus::resetZ80();
-  Utils::setupJoystick();
+  Utils::resetSystem();
 
 #ifdef DEBUG_OLED
   Debug::setupOled(); // For debugging
@@ -46,30 +46,42 @@ void setup() {
     Utils::stockRomBoot_Blocking();  // user pressing select again will exit
   }
 
-  // Display the version in the bottom right corner (on a Cyan background)
+  // Display the version (remove sd card to view version)
   Utils::clearScreen(COL::CYAN_BLACK); 
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
 
-  constexpr uint8_t clrScreenFlag(false);
-  Utils::waitForSDCard_Blocking(clrScreenFlag); // When blocking shows - "INSERT SD CARD"
+  Utils::waitForSDCard_Blocking(); // When blocking shows - "INSERT SD CARD"
 }
 
 void loop() {
   FatFile* pFile = Menu::handleMenu();
   const char* fileName = SdCardSupport::getFileName(pFile);
-  if (strcasestr(fileName, ".scr")) {
-    handleScrFile(pFile);
-  } else if (strcasestr(fileName, ".sna")) {
-    handleSnaFile(pFile);
-    Menu::resetToRoot();
-  } else if (strcasestr(fileName, ".z80")) {
-    handleZ80File(pFile);
-    Menu::resetToRoot();
-  } else if (strcasestr(fileName, ".txt")) {
-    handleTxtFile(pFile);
+  const char* ext = strrchr(fileName, '.');
+  if (ext) {
+    ext++;  // skip the '.'
+    if (strcasecmp(ext, "scr") == 0) {
+      handleScrFile(pFile);
+    } else if (strcasecmp(ext, "sna") == 0) {
+      handleSnaFile(pFile);
+    } else if (strcasecmp(ext, "z80") == 0) {
+      handleZ80File(pFile);
+    } else if (strcasecmp(ext, "txt") == 0) {
+      handleTxtFile(pFile);
+    }
   }
   pFile->close();
 }
+
+// notes: compiled program
+// 27258
+// 27222
+// 27218  
+// 27222
+// map file or a quick...
+// > avr-nm -S --size-sort --radix=d ZXInterface.ino.elf | grep strrchr    
+// 00027102 00000022 T strrchr
+// 00027042 00000038 T strcasecmp
+
 
 // ---------------------
 // .SCR FILE 
@@ -156,7 +168,6 @@ void handleZ80File(FatFile* pFile) {
 // ---------------------
 // .TXT FILE
 // ---------------------
-__attribute__((optimize("-Os")))
 void handleTxtFile(FatFile* pFile) {
   constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
   constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
@@ -238,7 +249,6 @@ void handleTxtFile(FatFile* pFile) {
 
 
 // #ifdef DEBUG_OLED
-// __attribute__((optimize("-Os")))
 // bool setupOled() {  // DEBUG USE ONLY
 //   Wire.begin(); 
 //   Wire.beginTransmission(I2C_ADDRESS);

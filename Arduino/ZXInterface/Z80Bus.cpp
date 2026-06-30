@@ -1,14 +1,10 @@
-//#include <stdint.h>
+#include <stdint.h>
 #include "digitalWriteFast.h"
-//#include "SdCardSupport.h"
 #include "pin.h"
 #include "Z80Bus.h"
-#include "PacketBuilder.h"
-//#include "CommandRegistry.h"
 #include "PacketTypes.h"
 #include "BufferManager.h"
-//#include "Utils.h"
-//#include "draw.h"
+#include "Utils.h"
 #include "Constants.h"
 
 constexpr uint8_t COMMAND_ADDR_SIZE = 2;
@@ -17,7 +13,7 @@ constexpr uint8_t COMMAND_ADDR_SIZE = 2;
 // Z80 Data Transfer and Control Routines
 //-------------------------------------------------
 
-__attribute__((optimize("-Os")))
+
 void Z80Bus::setupPins() {
  
   pinModeFast(Pin::ROM_HALF, OUTPUT);  // set ROM_HALF first
@@ -29,31 +25,27 @@ void Z80Bus::setupPins() {
   pinModeFast(Pin::Z80_HALT, INPUT);
   pinModeFast(Pin::Z80_NMI, OUTPUT);
   pinModeFast(Pin::Z80_REST, OUTPUT);
-  pinModeFast(Pin::Z80_D0Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D1Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D2Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D3Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D4Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D5Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D6Pin, OUTPUT);
-  pinModeFast(Pin::Z80_D7Pin, OUTPUT);
+
+  // pinModeFast(Pin::Z80_D0Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D1Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D2Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D3Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D4Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D5Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D6Pin, OUTPUT);
+  // pinModeFast(Pin::Z80_D7Pin, OUTPUT);
+  DDRD = 0xFF;                     // Set all PORTD pins as outputs
 
   // setup /NMI - Z80 /NMI, used to trigger a 'HALT' so the Z80 can be released and resume
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
 
-// TODO - reset timing for 128k machines
-__attribute__((optimize("-Os")))
+
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
-  delay(250);   // best guess !!! TO-DO maybe self detect pause needed and also have a config override
- // delay(10);
-  //delay(250);  
-  // Noticed a 48K Spectrum will boot with a very short reset pulse less than 10ms,
-  // but a Spectrum +2B needs a much longer hold time, around 250ms.
+  Utils::delay16(Z80_RESET_TIME); 
   digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
-  delay(10);
- // delay(50);
+  Utils::delay16(1);
 }
 
 void Z80Bus::setSnaRom() {
@@ -66,7 +58,7 @@ void Z80Bus::setStockRom() {
 
 __attribute__((optimize("-Ofast")))
 void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
-  // cli();  // maybe saves a tiny bit, guess it depends on number on interrupts during this send.
+  // cli();  // maybe save a tiny bit, guess it depends on number on interrupts during this send.
   for (uint16_t i = 0; i < size; i++) {
     waitHalt_syncWithZ80();
     PORTD = data[i];  // data on lines ready for Z80s 'IN'
@@ -75,11 +67,10 @@ void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
   //  sei();
 }
 
-__attribute__((optimize("-Os")))
+
 void Z80Bus::sendSnaHeader(uint8_t* header) {
-  ExecutePacket pkt;
-  uint8_t* buf = (uint8_t*)&pkt;
-  sendBytes(buf, sizeof(ExecutePacket));
+  RestoreGameAndExecute pkt;
+  sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
   // Execute Command expects registers to follow in this order
   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
@@ -93,17 +84,17 @@ void Z80Bus::sendSnaHeader(uint8_t* header) {
 }
 
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
-  FillPacket pkt(amount, address, color);
+  FillPacket pkt(address, amount, color);
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(FillPacket));
 }
 
-__attribute__((optimize("-Os"))) 
+ 
 void Z80Bus::sendWaitVBLCommand() {
   WaitVBLPacket pkt;
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(WaitVBLPacket));
 }
 
-__attribute__((optimize("-Os"))) 
+ 
 void Z80Bus::setStackCommand(uint16_t addr) {
 	
   StackPacket pkt(addr);
@@ -118,7 +109,6 @@ void Z80Bus::setStackCommand(uint16_t addr) {
 // ASM> OUT ($1F), A    		  ; Game cart latches value (latch ic: 74HC574PW)
 // ASM> halt	
 
-//__attribute__((optimize("-Os"))) 
 uint8_t Z80Bus::get_IO_Byte() {
   DDRD = 0x00;                    // Nano data pins to input
 
@@ -137,14 +127,14 @@ uint8_t Z80Bus::get_IO_Byte() {
   return byte;
 }
 
- __attribute__((optimize("-Os"))) 
+  
 uint8_t Z80Bus::getKeyboard() {
     ReceiveKeyboardPacket pkt;
     Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
     return get_IO_Byte();
 }
 
- __attribute__((optimize("-Os"))) 
+  
 void Z80Bus::Z80_NOP() {
     NOP_Packet pkt;
     Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
@@ -159,7 +149,7 @@ void Z80Bus::Z80_NOP() {
 // instruction. When no compression is found raw bytes are sent instead.
 // NOTE: The transfer assumes memory to fill is zeroed
 //
-__attribute__((optimize("-Ofast")))
+//__attribute__((optimize("-Ofast")))
 void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* input, bool borderLoadingEffect) {
 
 #if 0
@@ -177,12 +167,15 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
   constexpr uint16_t MAX_RAW_LENGTH = 255;
   constexpr uint8_t MIN_RUN_LENGTH = 3;  // about where RLE pays off over raw
 
-  Fill8Packet pkt;
-  union {
-        TransferPacket trans;
-        CopyPacket copy;
-  } header;
-  uint8_t* pHeader = (uint8_t*)&header;
+ // Fill8Packet pkt;
+ // union {
+ //       TransferPacket trans;
+ //       CopyPacket copy;
+ // } header;
+ // uint8_t* pHeader = (uint8_t*)&header;
+
+ //TransferPacket trans;
+ //uint8_t* pHeader = (uint8_t*)&trans;
 
   if (input_len == 0) return;
   uint16_t i = 0;
@@ -197,8 +190,12 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       run_len++;
     }
     if (run_len >= MIN_RUN_LENGTH) {  // run found (with payoff)
-      uint8_t packetLen = PacketBuilder::build_command_fill8((uint8_t*) &pkt, addr, run_len, value);
-      Z80Bus::sendBytes((uint8_t*) &pkt, packetLen);
+
+//TODO  -  CHANGE THIS .... BETTER IF THE Z80 SIDE WAS TO ADDW AMOUNT !!!!!
+      // NOTE: !!! Amount added to address because the Z80 routine fills backwards !!!
+      Fill8Packet pkt(addr+run_len, run_len, value);  
+
+      Z80Bus::sendBytes((uint8_t*) &pkt, sizeof(Fill8Packet)); 
       addr += run_len;
       i += run_len;
     } else {
@@ -218,22 +215,17 @@ void Z80Bus::rleOptimisedTransfer(uint16_t input_len, uint16_t addr, uint8_t* in
       }
 
       uint8_t* dataSrc = &input[raw_start];
-      uint8_t headerLen;
-      if (borderLoadingEffect) {
-        headerLen = PacketBuilder::buildTransferCommand((uint8_t*)&header, addr, raw_len);
-      } else {
-        headerLen = PacketBuilder::buildCopyCommand((uint8_t*)&header, addr, raw_len);
-      }
+      uint16_t selectedCmd = borderLoadingEffect ? cmd_addr(CMD_Transfer) : cmd_addr(CMD_Copy);
+      MemoryPacket pkt(selectedCmd, addr, raw_len);
 
-      Z80Bus::sendBytes(pHeader, headerLen);
+      Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(MemoryPacket));
       Z80Bus::sendBytes(dataSrc, raw_len);
+
       addr += raw_len;
     }
   }
 }
 
-// Note: Since snapshots (*.SNA files) include the screen we can reuse this for things like loading *.SCR files
-__attribute__((optimize("-Os")))
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 
   const uint16_t mark = BufferManager::getMark();
@@ -253,7 +245,7 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
  * stock ROM to continue execution into RAM to jump back into game code. 
  * (Previously this needed an extra messy HALT and a precise wait for the NMI to complete)
  */
- __attribute__((optimize("-Os"))) 
+  
 void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
 
   // --------------------------------------------------------------------------------------------
@@ -271,17 +263,17 @@ void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
 
   sendSnaHeader(snaHeaderPacket); // BufferManager::head27_Execute);
 
-  delay(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
+  Utils::delay16(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
   Z80Bus::setStockRom();
 }
 
-__attribute__((optimize("-Os"))) 
+ 
  void Z80Bus::waitHalt_syncWithZ80() {
    // Wait until the Z80 enters the HALT state (active low).
    while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
  }
 
-__attribute__((optimize("-Os"))) 
+ 
 void Z80Bus::triggerZ80NMI() {
   digitalWriteFast(Pin::Z80_NMI, LOW);
   // delayMicroseconds(1);     // other Arduino platforms may need a pause
@@ -289,7 +281,7 @@ void Z80Bus::triggerZ80NMI() {
   hasZ80Resumed();
 }
 
-__attribute__((optimize("-Os"))) 
+ 
 void Z80Bus::hasZ80Resumed() {
   // wait until HALT goes HIGH (Z80 resumes)
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};

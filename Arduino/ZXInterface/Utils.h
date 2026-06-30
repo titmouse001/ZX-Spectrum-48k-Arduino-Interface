@@ -6,6 +6,15 @@
 #include "Constants.h"
 #include "SdFat.h" 
 
+struct Z80Registers {
+    uint8_t a, f, d, e, b, c, h, l;
+    uint8_t iff2;
+    uint8_t ixh, ixl;
+
+    uint16_t AllocMark;
+};
+
+
 namespace Utils {
 
 void clearScreen(uint8_t col);
@@ -15,53 +24,28 @@ uint8_t readJoystick();
 void frameDelay(unsigned long start);
 void setupJoystick();
 
-void storeZ80States();
-void restoreZ80States();
+Z80Registers* storeZ80States();
+void restoreZ80States(Z80Registers* regs);
 
 void saveScreen(const char* filename);
 void restoreScreen(const char* filename);
 
-void skipLineTxt(FatFile* f);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 
-bool exportScreenshot();
+bool exportScreenshot(const char* folderName);
 void viewSpeccyMemory();
-void displayHexDump(uint16_t startAddr, uint16_t length);
 
 void stockRomBoot_Blocking();
-void waitForSDCard_Blocking(bool clearScreen);
+void waitForSDCard_Blocking(bool clearScreen= false);
 void show5VoltRailStatus();
+void resetSystem();
 
-__attribute__((optimize("-Ofast"))) 
-inline uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y) {
-  uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part + (x >> 3);  // x/8 gives 32 columns
-}
+uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
+uint16_t zx_spectrum_screen_address(uint8_t y);
 
-__attribute__((optimize("-Ofast"))) 
-inline uint16_t zx_spectrum_screen_address(uint8_t y) {
-  const uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part;
-}
-
-__attribute__((optimize("-Ofast"))) 
-inline void memsetZero(byte* b, unsigned int len) {
-  for (; len != 0; len--) { *b++ = 0; }
-}
-
-__attribute__((optimize("-Ofast"))) 
-inline void join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
-  constexpr uint8_t bitWidth = 6;
-  uint16_t byteIndex = bitPosition >> 3;  // /8
-  uint8_t bitIndex = bitPosition & 7;     // %8
-  uint8_t maskedInput = input & ((1U << bitWidth) - 1);
-  uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
-  output[byteIndex] |= aligned >> 8;
-  if (aligned) { output[byteIndex + 1] |= aligned; }
-}
-
+void memsetZero(byte* b, uint16_t len);
+void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
+void delay16(uint16_t ms);
 
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);

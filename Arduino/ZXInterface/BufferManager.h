@@ -4,10 +4,13 @@
 #include <stdint.h>
 #include <stddef.h>
 
+constexpr uint16_t POOL_SIZE = 450;
+// seeing  449
+  
 namespace BufferManager {
-  constexpr uint16_t POOL_SIZE = 255+128+7+128; 
-
-  extern uint16_t poolOffsetLastMax ; // DEBUG 
+  extern uint8_t pool[POOL_SIZE];
+  extern uint16_t poolOffset;
+  extern uint16_t poolOffsetLastMax;  // BEBUG ONLY
 
   uint8_t* allocate(size_t size);
   uint16_t getMark();

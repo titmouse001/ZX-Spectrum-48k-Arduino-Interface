@@ -4,6 +4,19 @@
 
 #define VERSION ("0.26")  // Arduino firmware
 
+// Comment out '_DEBUG_POOL_SIZE_ENABLED_' for release
+#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
+
+// Z80 CPU: Noticed 48K Spectrums will reset OK with a pulse around 10ms, but a 
+// 128k spectrum like a +2B needs a longer time around 250ms.
+constexpr uint16_t Z80_RESET_TIME = 250;  // milliseconds
+
+// How deep we can navigate into sub-folders
+constexpr uint8_t FOLDER_NAV_DEPTH = 5;
+
+// Saves the current game state when navigating to the in-game pause menu
+static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
+
 
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
@@ -238,4 +251,3 @@ enum PauseMenu {
 //-----------------------------------------
 
 
-static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";

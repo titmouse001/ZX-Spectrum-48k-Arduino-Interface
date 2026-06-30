@@ -64,21 +64,33 @@ struct ReceiveKeyboardPacket {
 };
 ASSERT_Z80_PACKET_SIZE(2,ReceiveKeyboardPacket);
 
-struct ExecutePacket {
+// command_RestoreGameAndExecute
+struct RestoreGameAndExecute {
     uint8_t cmd_high;
     uint8_t cmd_low;
 
-    ExecutePacket() : cmd_high(cmd_addr(CMD_Execute) >> 8), 
+    RestoreGameAndExecute() : cmd_high(cmd_addr(CMD_Execute) >> 8), 
                       cmd_low(cmd_addr(CMD_Execute) & 0xff) {}
 };
-ASSERT_Z80_PACKET_SIZE(2,ExecutePacket);
+ASSERT_Z80_PACKET_SIZE(2,RestoreGameAndExecute);
 
 struct TransferPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
-    uint8_t cmd_amount;
+    uint8_t amount;
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
+
+    TransferPacket(){};
+
+    TransferPacket(uint16_t address, uint8_t len) {
+        cmd_high = static_cast<uint8_t>(cmd_addr(CMD_Transfer) >> 8);
+        cmd_low  = static_cast<uint8_t>(cmd_addr(CMD_Transfer) & 0xFF);
+        dest_addr_high = static_cast<uint8_t>(address >> 8);
+        dest_addr_low  = static_cast<uint8_t>(address & 0xFF);
+        amount = len;
+    }
+
 };
 ASSERT_Z80_PACKET_SIZE(5,TransferPacket);
 
@@ -88,6 +100,20 @@ struct CopyPacket {
     uint8_t amount;
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
+
+    CopyPacket(){
+        cmd_high = static_cast<uint8_t>(cmd_addr(CMD_Copy) >> 8);
+        cmd_low  = static_cast<uint8_t>(cmd_addr(CMD_Copy) & 0xFF);
+    };
+
+    CopyPacket(uint16_t address, uint8_t len) {
+        cmd_high = static_cast<uint8_t>(cmd_addr(CMD_Copy) >> 8);
+        cmd_low  = static_cast<uint8_t>(cmd_addr(CMD_Copy) & 0xFF);
+        dest_addr_high = static_cast<uint8_t>(address >> 8);
+        dest_addr_low  = static_cast<uint8_t>(address & 0xFF);
+        amount = len;
+    }
+
 };
 ASSERT_Z80_PACKET_SIZE(5,CopyPacket);
 
@@ -100,7 +126,7 @@ struct FillPacket {
     uint8_t start_addr_low;
     uint8_t fill_value;
 
-    FillPacket(uint16_t amount, uint16_t address, uint8_t value) : 
+    FillPacket(uint16_t address, uint16_t amount, uint8_t value) : 
                 cmd_high(cmd_addr(CMD_Fill) >> 8), 
                 cmd_low(cmd_addr(CMD_Fill) & 0xff),
                 amount_high(static_cast<uint8_t>(amount >> 8)),
@@ -119,8 +145,23 @@ struct Fill8Packet {
     uint8_t amount;
     uint8_t fill_value;
 
-    Fill8Packet() : cmd_high(cmd_addr(CMD_Fill8) >> 8), 
-                    cmd_low(cmd_addr(CMD_Fill8) & 0xff) {}
+    Fill8Packet() {
+        cmd_high = cmd_addr(CMD_Fill8) >> 8;
+        cmd_low = cmd_addr(CMD_Fill8) & 0xff;
+    };
+     // NOTE: Amount added to address because the Z80 routine fills backwards.
+     // caller must add amount to the address
+    Fill8Packet(uint16_t address, uint16_t amount, uint8_t value) : 
+                cmd_high(cmd_addr(CMD_Fill8) >> 8), 
+                cmd_low(cmd_addr(CMD_Fill8) & 0xff),
+                addr_high(static_cast<uint8_t>((address) >> 8)),
+                addr_low(static_cast<uint8_t>((address) & 0xFF)),
+                amount(amount),
+                fill_value(value) {}
+
+
+  //  Fill8Packet() : cmd_high(cmd_addr(CMD_Fill8) >> 8), 
+    //                cmd_low(cmd_addr(CMD_Fill8) & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(6,Fill8Packet);
 
@@ -174,6 +215,28 @@ struct RequestSendDataPacket {
         {}
 };
 ASSERT_Z80_PACKET_SIZE(6,RequestSendDataPacket);
+
+
+// Allows Unified:-
+//  CMD_Transfer
+//  CMD_Copy
+struct MemoryPacket {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t amount;
+    uint8_t dest_addr_high;
+    uint8_t dest_addr_low;
+
+
+    MemoryPacket(uint16_t cmdAddr, uint16_t destAddr, uint8_t len) {
+        cmd_high = (cmdAddr >> 8);
+        cmd_low  = (cmdAddr & 0xFF);
+        dest_addr_high = (destAddr >> 8);
+        dest_addr_low  = (destAddr & 0xFF);
+        amount = len;
+    }
+};
+ASSERT_Z80_PACKET_SIZE(5,MemoryPacket);
 
 
 #pragma pack(pop)
