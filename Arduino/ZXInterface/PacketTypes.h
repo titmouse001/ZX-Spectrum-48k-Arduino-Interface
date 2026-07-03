@@ -28,7 +28,7 @@ constexpr uint16_t CMD_Poke=11;
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
 
-struct NOP_Packet {
+struct __attribute__ ((packed)) NOP_Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
     
@@ -38,7 +38,7 @@ struct NOP_Packet {
 ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
 
 
-struct Poke_Packet {
+struct  __attribute__ ((packed))  Poke_Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t addr_high;
@@ -55,7 +55,7 @@ struct Poke_Packet {
 ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
 
 
-struct ReceiveKeyboardPacket {
+struct  __attribute__ ((packed))  ReceiveKeyboardPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     
@@ -65,7 +65,7 @@ struct ReceiveKeyboardPacket {
 ASSERT_Z80_PACKET_SIZE(2,ReceiveKeyboardPacket);
 
 // command_RestoreGameAndExecute
-struct RestoreGameAndExecute {
+struct __attribute__ ((packed))  RestoreGameAndExecute {
     uint8_t cmd_high;
     uint8_t cmd_low;
 
@@ -74,7 +74,7 @@ struct RestoreGameAndExecute {
 };
 ASSERT_Z80_PACKET_SIZE(2,RestoreGameAndExecute);
 
-struct TransferPacket {
+struct  __attribute__ ((packed)) TransferPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t amount;
@@ -94,7 +94,7 @@ struct TransferPacket {
 };
 ASSERT_Z80_PACKET_SIZE(5,TransferPacket);
 
-struct CopyPacket {
+struct  __attribute__ ((packed)) CopyPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t amount;
@@ -117,7 +117,7 @@ struct CopyPacket {
 };
 ASSERT_Z80_PACKET_SIZE(5,CopyPacket);
 
-struct FillPacket {
+struct  __attribute__ ((packed))  FillPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t amount_high;
@@ -137,7 +137,7 @@ struct FillPacket {
 };
 ASSERT_Z80_PACKET_SIZE(7,FillPacket);
 
-struct Fill8Packet {
+struct  __attribute__ ((packed)) Fill8Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t addr_high;
@@ -165,7 +165,7 @@ struct Fill8Packet {
 };
 ASSERT_Z80_PACKET_SIZE(6,Fill8Packet);
 
-struct StackPacket {
+struct __attribute__ ((packed))  StackPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t sp_addr_high;
@@ -179,7 +179,7 @@ struct StackPacket {
 ASSERT_Z80_PACKET_SIZE(4,StackPacket);
 
 // copies a fixed amount of 32 bytes
-struct Copy32Packet {
+struct  __attribute__ ((packed)) Copy32Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t dest_addr_high;
@@ -190,7 +190,7 @@ struct Copy32Packet {
 };
 ASSERT_Z80_PACKET_SIZE(4,Copy32Packet);
 
-struct WaitVBLPacket {
+struct __attribute__ ((packed))  WaitVBLPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     
@@ -199,7 +199,7 @@ struct WaitVBLPacket {
 };
 ASSERT_Z80_PACKET_SIZE(2,WaitVBLPacket);
 
-struct RequestSendDataPacket {
+struct  __attribute__ ((packed)) RequestSendDataPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t amount_high;
@@ -210,8 +210,10 @@ struct RequestSendDataPacket {
     RequestSendDataPacket(uint16_t amount, uint16_t address) : 
         cmd_high(cmd_addr(CMD_SendData) >> 8), 
         cmd_low(cmd_addr(CMD_SendData) & 0xff), 
-        amount_high(static_cast<uint8_t>(amount >> 8)), amount_low(static_cast<uint8_t>(amount & 0xFF)),
-        start_addr_high(static_cast<uint8_t>(address >> 8)), start_addr_low(static_cast<uint8_t>(address & 0xFF))
+        amount_high(static_cast<uint8_t>(amount >> 8)), 
+        amount_low(static_cast<uint8_t>(amount & 0xFF)),
+        start_addr_high(static_cast<uint8_t>(address >> 8)), 
+        start_addr_low(static_cast<uint8_t>(address & 0xFF))
         {}
 };
 ASSERT_Z80_PACKET_SIZE(6,RequestSendDataPacket);
@@ -220,21 +222,20 @@ ASSERT_Z80_PACKET_SIZE(6,RequestSendDataPacket);
 // Allows Unified:-
 //  CMD_Transfer
 //  CMD_Copy
-struct MemoryPacket {
+struct  __attribute__ ((packed)) MemoryPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
     uint8_t amount;
     uint8_t dest_addr_high;
     uint8_t dest_addr_low;
 
-
-    MemoryPacket(uint16_t cmdAddr, uint16_t destAddr, uint8_t len) {
-        cmd_high = (cmdAddr >> 8);
-        cmd_low  = (cmdAddr & 0xFF);
-        dest_addr_high = (destAddr >> 8);
-        dest_addr_low  = (destAddr & 0xFF);
-        amount = len;
-    }
+    MemoryPacket(uint8_t cmd, uint16_t destAddr, uint8_t len) :
+        cmd_high(cmd_addr(cmd) >> 8),
+        cmd_low (cmd_addr(cmd) & 0xFF),
+        dest_addr_high (destAddr >> 8),
+        dest_addr_low (destAddr & 0xFF),
+        amount (len)
+    {}
 };
 ASSERT_Z80_PACKET_SIZE(5,MemoryPacket);
 

@@ -6,10 +6,27 @@
 #include "Constants.h"
 #include "SdFat.h" 
 
+// struct Z80Registers {
+//     uint8_t a, f, d, e, b, c, h, l;
+//     uint8_t iff2;
+//     uint8_t ixh, ixl;
+
+//     uint16_t AllocMark;
+// };
+
 struct Z80Registers {
-    uint8_t a, f, d, e, b, c, h, l;
-    uint8_t iff2;
+    uint8_t a, f, b, c, d, e, h, l;
+    uint8_t a_prime, f_prime, b_prime, c_prime, d_prime, e_prime, h_prime, l_prime;
+    
     uint8_t ixh, ixl;
+    uint8_t iyh, iyl;
+   
+    uint8_t sp_hi;
+    uint8_t sp_lo;
+    
+    uint8_t i;
+    uint8_t r;
+    uint8_t iff2;
 
     uint16_t AllocMark;
 };

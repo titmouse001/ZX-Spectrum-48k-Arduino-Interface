@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-constexpr uint16_t POOL_SIZE = 450;
+constexpr uint16_t POOL_SIZE = 512;
 // seeing  449
   
 namespace BufferManager {

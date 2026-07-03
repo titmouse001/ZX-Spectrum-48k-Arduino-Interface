@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "Constants.h"
 #include "FontData.h"
-//#include "SdFat.h" 
 
 class FatFile;
 
@@ -27,9 +26,7 @@ public:
   static FatFile* handleMenu();
   static Button_t getButton();
 
-  __attribute__((optimize("-Os"), noinline)) 
   static inline void waitForRelease() { while (Menu::getButton() != Menu::BUTTON_NONE);  }
-  __attribute__((optimize("-Os"), noinline)) 
   static inline void waitForAnyKey() { while (Menu::getButton() == Menu::BUTTON_NONE); waitForRelease(); }
 
   static void resetToRoot();

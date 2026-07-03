@@ -5,7 +5,7 @@
 #define VERSION ("0.26")  // Arduino firmware
 
 // Comment out '_DEBUG_POOL_SIZE_ENABLED_' for release
-#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
+//#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
 
 // Z80 CPU: Noticed 48K Spectrums will reset OK with a pulse around 10ms, but a 
 // 128k spectrum like a +2B needs a longer time around 250ms.

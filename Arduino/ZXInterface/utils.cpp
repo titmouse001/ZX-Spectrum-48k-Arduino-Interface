@@ -155,7 +155,9 @@ void Utils::restoreScreen(const char* filename) {
       uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
       while (totalRemaining > 0) {
         uint16_t bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE);
-        Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, false);
+        
+        Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, CMD_Copy);
+
         currentAddress += bytesRead;
         totalRemaining -= bytesRead;
       }
