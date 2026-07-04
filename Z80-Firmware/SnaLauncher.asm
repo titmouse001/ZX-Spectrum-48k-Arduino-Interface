@@ -170,7 +170,7 @@ L0066:
     NOP
     NOP
     
-    JP .IngameHook
+    JP .IngameHook_SaveState
 
 ;------------------------------------------------------
 ;******************
@@ -194,7 +194,7 @@ ORG $00D0
 	jp command_VBL_Wait				
 	jp command_SetStack				
 	jp command_RestoreGameAndExecute				
-	jp command_fill_mem_bytecount	
+	jp command_reverse_fill8	
 	jp command_SendData				; 11
 	jp command_Poke					; 12
 
@@ -236,12 +236,11 @@ command_SendData:
 
 ;------------------------------------------------------
 
-
 ;------------------------------------------------------
 ; Small Memory Fill (byte amount)
 ; Input: Buffer end address, total fill count (byte), fill byte value (byte)
 ;------------------------------------------------------
-command_fill_mem_bytecount:  
+command_reverse_fill8:  
 
     READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
     halt                     ; Synchronization 
@@ -270,7 +269,7 @@ StartEvenFill:
 FillLoopOptimized:
     PUSH HL                  ; x2 byte fill
     DJNZ FillLoopOptimized   
-        
+   
 RestoreSP:
 	LD SP,IX               
     jp mainloop             
@@ -735,7 +734,7 @@ ORG $04AA  ; *** KEEP THIS 24 bytes long to match the stock ROM ***
 ; unused stock rom location - ROM SWAP LOCATION
 L04AA: 
 	;----------------------------------------------------------------
-	JR .restoreInGameState
+	Jr .restoreInGameState
 	;----------------------------------------------------------------
 .restoreInGameStateCompletedWithEI:  ; jp return point - avoid stack usage
 .ContinueGameIdle: jr .ContinueGameIdle   ; ROM sync, swapping back to stock
@@ -746,7 +745,7 @@ L04AA:
 L04B0:  
 	;----------------------------------------------------------------
 .restoreInGameStateCompletedWithDI: 
-.ContinueGameIdle2: jr .ContinueGameIdle2   ; ROM sync, swapping back to stock
+.ContinueGameIdle2: Jr .ContinueGameIdle2   ; ROM sync, swapping back to stock
 	NOP ; 2nd rom -> 'RET'
 	;----------------------------------------------------------------
 	NOP
@@ -763,113 +762,115 @@ L04B0:
 	nop
 	nop
 	nop
-	nop
-
-;------------------------------------------------------------------------
-; Ingame NMI hook - save game state
-.IngameHook:
-
-	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
-	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
-	; We must keep IFF2 and when done manually restore IFF (call EI or DI) to resume the game.
-
-	; Here we use OUTs to save registers and minimize stack usage.
-	out  (0x1F), a			; A
-	halt					; Nano triggers a NMI to release halt (this processs will use stack)
-	ld   a,b				; B
-	out  (0x1F), a
-	halt
-	ld   a,c				; C
-	out  (0x1F), a
-	halt
-	; OK to grow/Strink stack in one go - we just need to avoid multiple pushes
-	push af		
-	pop bc
-	ld   a,c				; F
-	out  (0x1F), a
-	halt
-
-	ld   a,i                ; IFF2 state is copied to the parity flag
-	; capture IFF2 
-	jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
-.WasOn:
-	or  %10000000 ; 128                ; set bit7
-	out  (0x1F), a          ;
-	halt					; Sync with Arduino
-	di                      ; Disable interrupts (Explicit intent, NMI does handle it)
-	jr   .SendRegs
-.WasOff:
-	and  %01111111 ; 127                ; clear bit7
-	out  (0x1F), a          ;
-	halt					; Sync
-
-.SendRegs:
-	ld   a,d				; D
-	out  (0x1F), a
-	halt
-	ld   a,e				; E
-	out  (0x1F), a
-	halt
-	ld   a,h				; H
-	out  (0x1F), a
-	halt
-	ld   a,l				; L
-	out  (0x1F), a
-	halt
-
-	ld   a,ixh				; IXH
-	out  (0x1F), a
-	halt
-	ld   a,ixl				; IXL
-	out  (0x1F), a
-	halt
-
-	; We've already been forced to used the GAMES STACK above
-	; using the luxury of a call/return here will not matter now!
-	call command_MuteAY; // Prevent audio looping (machines with AY chip)
-
-    jp mainloop         
-
+	nop     ;  L04AA section must be 24 bytes
 ;------------------------------------------------------------------------
 
+	IF $ > ($04AA + 24)
+	.ERROR "CODE OVERLAPS"
+	ENDIF
+
+;------------------------------------------------------------------------
 .restoreInGameState: 
- 
- 	halt 
+;------------------------------------------------------------------------
+
+	halt 
+    in a, ($1f) 	
+	ld h,a			
+	halt 
     in a, ($1f) 
+	ld l,a			
+	ld sp,hl		;sp
+
+	halt 
+	in a, ($1f) 
 	ld d,a			; D
+
 	halt 
     in a, ($1f) 
 	ld e,a			; E
+
 	halt 
     in a, ($1f) 
 	ld b,a			; B
+
 	halt 
     in a, ($1f) 
 	ld c,a			; C
+
 	halt 
     in a, ($1f) 	
 	ld h,a			; H
+
 	halt 
     in a, ($1f) 
 	ld l,a			; L
 
 	halt 
+    in a, ($1f) 
+	ld i,a			; I
+
+	halt 
     in a, ($1f) 	
 	ld ixh,a			; IXH
+
 	halt 
     in a, ($1f) 
 	ld ixl,a			; IXL
 
 	halt 
-    in a, ($1f)   	
-	bit 7,a			; IFF2
+    in a, ($1f) 	
+	ld iyh,a			; IYH
 
+	halt 
+    in a, ($1f) 
+	ld iyl,a			; IYL
+
+    ex   af,af'
+    exx
+
+    halt
+    in   a,($1F)  	; B'
+    ld   b,a
+
+    halt
+    in   a,($1F)	; C'
+	ld   c,a  
+
+    halt
+    in   a,($1F)	; 
+    ld   e,a
+	push de
+    pop  af			; 'f saved
+
+    halt
+    in   a,($1F)	; D'
+    ld   d,a
+
+	halt
+    in   a,($1F)	; E'
+    ld   e,a
+    halt
+    in   a,($1F)	; H'
+    ld   h,a
+
+    halt
+    in   a,($1F)	; L'
+	ld   l,a
+
+	halt
+    in   a,($1F)	; A'
+
+    exx
+    ex   af,af'
+
+
+	halt
+    in a, ($1f)   	 ; IFF2
+	bit 2,a			 ; same bit as SNA format
 	jr  z,.disablePath
-	;;;.ExitEnabled:
-
 	; -------------------------------------------------------
 	; Enable Maskable Interrupts Path
-	halt 
+	halt
     in a, ($1f)   ; F
 
 	push af                  ; get F onto stack!
@@ -877,8 +878,9 @@ L04B0:
 	pop af                   ; F now good (ignoring A holding junk)
 	dec sp                   ; re-align SP 
 
-	halt 
+	halt
     in a, ($1f)   			 ; A - now we have 'AF'
+
 	jp .restoreInGameStateCompletedWithEI
 	; -------------------------------------------------------
 
@@ -899,6 +901,150 @@ L04B0:
 	jp .restoreInGameStateCompletedWithDI
 	; -------------------------------------------------------
 
+
+;------------------------------------------------------------------------
+
+
+;------------------------------------------------------------------------
+; Ingame NMI hook - save game state
+.IngameHook_SaveState:
+
+	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
+	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
+	; We must keep IFF2 and when done manually restore IFF (call EI or DI) to resume the game.
+
+	; Here we use OUTs to save registers and minimize stack usage.
+	out  (0x1F), a			; A
+	halt					; Nano triggers a NMI to release halt (this processs will use stack)
+
+	ld   a,b				; B
+	out  (0x1F), a
+	halt
+
+	ld   a,c				; C
+	out  (0x1F), a
+	halt
+
+	push af 
+    pop bc  
+
+	ld hl, 0   
+	add hl, sp 
+
+	ld   a,h				; 
+	out  (0x1F), a
+	halt
+	ld   a,l				; SP
+	out  (0x1F), a
+	halt
+
+	ld   a,c                ; F (from C)
+    out  (0x1F), a
+    halt
+
+;;	push af		
+;;	pop bc
+;;	ld   a,c				; F
+;;	out  (0x1F), a
+;;	halt
+
+	ld   a,i				; i
+	out  (0x1F), a
+	halt
+
+	; no point doing R
+
+	ld   a,i                ; IFF2 state is copied to the parity flag
+	jp   po, .WasOff        ; IFF2 OFF (interrupt enable flip-flop)
+.WasOn:
+	ld   a, %00000100       ; Bit 2 for IFF2 (SNA file format)
+	out  (0x1F), a          ;
+	halt					; Sync with Arduino
+	di                      ; Disable interrupts (Explicit intent, NMI does handle it)
+	jr   .SendRegs
+.WasOff:
+	ld   a, 0               ; Clear bit 2  (SNA file format)
+	out  (0x1F), a          ;
+	halt					; Sync
+
+.SendRegs:
+	ld   a,d				; D
+	out  (0x1F), a
+	halt
+
+	ld   a,e				; E
+	out  (0x1F), a
+	halt
+
+	ld   a,h				; H
+	out  (0x1F), a
+	halt
+
+	ld   a,l				; L
+	out  (0x1F), a
+	halt
+
+	ld   a,ixh				; IXH
+	out  (0x1F), a
+	halt
+
+	ld   a,ixl				; IXL
+	out  (0x1F), a
+	halt
+
+	ld   a,iyh				; IYH
+	out  (0x1F), a
+	halt
+
+	ld   a,iyl				; IYL
+	out  (0x1F), a
+	halt
+
+    ex   af,af'
+    exx
+	out  (0x1F), a			; a'
+	halt
+
+	ld   a,b				; B'
+	out  (0x1F), a
+	halt
+
+	ld   a,c				; C'
+	out  (0x1F), a
+	halt
+
+	push af		
+	pop bc
+	ld   a,c				; F'
+	out  (0x1F), a
+	halt
+
+	ld   a,d				; D'
+	out  (0x1F), a
+	halt
+
+	ld   a,e				; E'
+	out  (0x1F), a
+	halt
+
+	ld   a,h				; H'
+	out  (0x1F), a
+	halt
+
+	ld   a,l				; L'
+	out  (0x1F), a
+	halt
+
+    exx
+    ex   af,af'
+
+
+
+	; We've already been forced to used the GAMES STACK above
+	; using the luxury of a call/return here will not matter now!
+	call command_MuteAY; // Prevent audio looping (machines with AY chip)
+
+    jp mainloop         
 
 ;------------------------------------------------------------------------
 
@@ -969,119 +1115,119 @@ cleanup:
 
 
 
-;-----------------------------------------------------------------------
-; SaveZ80State – Save FULL Z80 state (entered via NMI)
-; The original NMI return address stays on the game's stack 
-;-----------------------------------------------------------------------
-.SaveZ80State:
+; ;-----------------------------------------------------------------------
+; ; SaveZ80State – Save FULL Z80 state (entered via NMI)
+; ; The original NMI return address stays on the game's stack 
+; ;-----------------------------------------------------------------------
+; .SaveZ80State:
 
-    out  ($1F),a	; A
-    halt
+;     out  ($1F),a	; A
+;     halt
 
-    ld   a,i		; I
-    out  ($1F),a
-    halt
+;     ld   a,i		; I
+;     out  ($1F),a
+;     halt
 
-    ld   a,b		; B
-    out  ($1F),a
-    halt
-    ld   a,c		; C
-    out  ($1F),a
-    halt
+;     ld   a,b		; B
+;     out  ($1F),a
+;     halt
+;     ld   a,c		; C
+;     out  ($1F),a
+;     halt
 
-    push af
-    pop  bc
-    ld   a,c        ; F
-    out  ($1F),a
-    halt
+;     push af
+;     pop  bc
+;     ld   a,c        ; F
+;     out  ($1F),a
+;     halt
 
-    ld   a,d
-    out  ($1F),a  	; D
-    halt
-    ld   a,e
-    out  ($1F),a	; E
-    halt
-    ld   a,h
-    out  ($1F),a	; H
-    halt
-    ld   a,l
-    out  ($1F),a	; L
-    halt
-    ;---- Save SP ----
-    ld   hl,0
-    add  hl,sp
-    ld   a,l
-    out  ($1F),a
-    halt
-    ld   a,h
-    out  ($1F),a
-    halt
-    ;---- Save IX ----
-    ld   a,ixh
-    out  ($1F),a
-    halt
-    ld   a,ixl
-    out  ($1F),a
-    halt
-    ;---- Save IY ----
-    ld   a,iyh
-    out  ($1F),a
-    halt
-    ld   a,iyl
-    out  ($1F),a
-    halt
+;     ld   a,d
+;     out  ($1F),a  	; D
+;     halt
+;     ld   a,e
+;     out  ($1F),a	; E
+;     halt
+;     ld   a,h
+;     out  ($1F),a	; H
+;     halt
+;     ld   a,l
+;     out  ($1F),a	; L
+;     halt
+;     ;---- Save SP ----
+;     ld   hl,0
+;     add  hl,sp
+;     ld   a,l
+;     out  ($1F),a
+;     halt
+;     ld   a,h
+;     out  ($1F),a
+;     halt
+;     ;---- Save IX ----
+;     ld   a,ixh
+;     out  ($1F),a
+;     halt
+;     ld   a,ixl
+;     out  ($1F),a
+;     halt
+;     ;---- Save IY ----
+;     ld   a,iyh
+;     out  ($1F),a
+;     halt
+;     ld   a,iyl
+;     out  ($1F),a
+;     halt
 
-    ;---- Save alternate registers ----
-    ex   af,af'
-    exx
-    out  ($1F),a	; A'
-    halt
-    push af
-    pop  bc
-    ld   a,c      	; F'
-    out  ($1F),a
-    halt
-    ld   a,b
-    out  ($1F),a  	; B'
-    halt
-    ld   a,c
-    out  ($1F),a	; C'
-    halt
-    ld   a,d
-    out  ($1F),a	; D'
-    halt
-    ld   a,e
-    out  ($1F),a	; E'
-    halt
-    ld   a,h
-    out  ($1F),a	; H'
-    halt
-    ld   a,l
-    out  ($1F),a	; L'
-    halt
+;     ;---- Save alternate registers ----
+;     ex   af,af'
+;     exx
+;     out  ($1F),a	; A'
+;     halt
+;     push af
+;     pop  bc
+;     ld   a,c      	; F'
+;     out  ($1F),a
+;     halt
+;     ld   a,b
+;     out  ($1F),a  	; B'
+;     halt
+;     ld   a,c
+;     out  ($1F),a	; C'
+;     halt
+;     ld   a,d
+;     out  ($1F),a	; D'
+;     halt
+;     ld   a,e
+;     out  ($1F),a	; E'
+;     halt
+;     ld   a,h
+;     out  ($1F),a	; H'
+;     halt
+;     ld   a,l
+;     out  ($1F),a	; L'
+;     halt
 
-    exx
-    ex   af,af'
+;     exx
+;     ex   af,af'
 
-    ;---- Save I + IFF2 (bit 7 encodes IFF2) ----
-    ld   a,i
-    jp   po,.iffOff
-.iffOn:
-    or   %10000000
-    out  ($1F),a
-    halt
-    jr   .saveR
-.iffOff:
-    and  %01111111
-    out  ($1F),a
-    halt
+;     ;---- Save I + IFF2 (bit 7 encodes IFF2) ----
+;     ld   a,i
+;     jp   po,.iffOff
+; .iffOn:
+;     or   %10000000
+;     out  ($1F),a
+;     halt
+;     jr   .saveR
+; .iffOff:
+;     and  %01111111
+;     out  ($1F),a
+;     halt
 
-.saveR:
-    ld   a,r		; R
-    out  ($1F),a
-    halt
+; .saveR:
+;     ld   a,r		; R
+;     out  ($1F),a
+;     halt
 
-    jp   mainloop
+;     jp   mainloop
 
 
 ; -------------------------------------------------------------------------

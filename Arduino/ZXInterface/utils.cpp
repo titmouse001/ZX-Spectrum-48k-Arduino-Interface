@@ -53,14 +53,25 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
+
+
+//static  Z80Registers reg;
+
 Z80Registers* Utils::storeZ80States() {
   uint16_t mark = BufferManager::getMark();
   Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
 
+//  Z80Registers* regs = &reg;
+
+
   regs->a = Z80Bus::get_IO_Byte();
   regs->b = Z80Bus::get_IO_Byte();
   regs->c = Z80Bus::get_IO_Byte();
+  regs->sp_hi = Z80Bus::get_IO_Byte();
+  regs->sp_lo = Z80Bus::get_IO_Byte();
   regs->f = Z80Bus::get_IO_Byte();
+  regs->i = Z80Bus::get_IO_Byte();
+  // ignore storing r
   regs->iff2 = Z80Bus::get_IO_Byte();
   regs->d = Z80Bus::get_IO_Byte();
   regs->e = Z80Bus::get_IO_Byte();
@@ -68,6 +79,16 @@ Z80Registers* Utils::storeZ80States() {
   regs->l = Z80Bus::get_IO_Byte();
   regs->ixh = Z80Bus::get_IO_Byte();
   regs->ixl = Z80Bus::get_IO_Byte();
+  regs->iyh = Z80Bus::get_IO_Byte();
+  regs->iyl = Z80Bus::get_IO_Byte();
+  regs->a_prime = Z80Bus::get_IO_Byte();  // not same order as restore
+  regs->b_prime = Z80Bus::get_IO_Byte();
+  regs->c_prime = Z80Bus::get_IO_Byte();
+  regs->f_prime = Z80Bus::get_IO_Byte();
+  regs->d_prime = Z80Bus::get_IO_Byte();
+  regs->e_prime = Z80Bus::get_IO_Byte();
+  regs->h_prime = Z80Bus::get_IO_Byte();
+  regs->l_prime = Z80Bus::get_IO_Byte();
 
   regs->AllocMark = mark;
   return regs;
@@ -75,60 +96,211 @@ Z80Registers* Utils::storeZ80States() {
 
 
 void Utils::restoreZ80States(Z80Registers* regs) {
+
+//regs = &reg;
+
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
   // This allows time for the ROM to swap back to the stock ROM and begin the restore process at 0x04AA.
   uint8_t addr0x04AA[] = { 0x04, 0xAA };
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
+   
+  Z80Bus::sendBytes(&regs->sp_hi, 1);
+  Z80Bus::sendBytes(&regs->sp_lo, 1);
+
   Z80Bus::sendBytes(&regs->d, 1);
   Z80Bus::sendBytes(&regs->e, 1);
   Z80Bus::sendBytes(&regs->b, 1);
   Z80Bus::sendBytes(&regs->c, 1);
   Z80Bus::sendBytes(&regs->h, 1);
   Z80Bus::sendBytes(&regs->l, 1);
+  Z80Bus::sendBytes(&regs->i, 1);
   Z80Bus::sendBytes(&regs->ixh, 1);
   Z80Bus::sendBytes(&regs->ixl, 1);
+  Z80Bus::sendBytes(&regs->iyh, 1);
+  Z80Bus::sendBytes(&regs->iyl, 1);
+  Z80Bus::sendBytes(&regs->b_prime, 1);
+  Z80Bus::sendBytes(&regs->c_prime, 1);
+  Z80Bus::sendBytes(&regs->f_prime, 1);
+  Z80Bus::sendBytes(&regs->d_prime, 1);
+  Z80Bus::sendBytes(&regs->e_prime, 1);
+  Z80Bus::sendBytes(&regs->h_prime, 1);
+  Z80Bus::sendBytes(&regs->l_prime, 1);
+  Z80Bus::sendBytes(&regs->a_prime, 1);
   Z80Bus::sendBytes(&regs->iff2, 1);
+  // no point doing R
   Z80Bus::sendBytes(&regs->f, 1);
   Z80Bus::sendBytes(&regs->a, 1);
 
   BufferManager::freeToMark(regs->AllocMark);
 }
 
-void Utils::saveScreen(const char* filename) {
+
+// Z80Registers* Utils::storeZ80States() {
+//   uint16_t mark = BufferManager::getMark();
+//   Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
+
+//   regs->a = Z80Bus::get_IO_Byte();
+//   regs->b = Z80Bus::get_IO_Byte();
+//   regs->c = Z80Bus::get_IO_Byte();
+//   regs->f = Z80Bus::get_IO_Byte();
+//   regs->iff2 = Z80Bus::get_IO_Byte();
+//   regs->d = Z80Bus::get_IO_Byte();
+//   regs->e = Z80Bus::get_IO_Byte();
+//   regs->h = Z80Bus::get_IO_Byte();
+//   regs->l = Z80Bus::get_IO_Byte();
+//   regs->ixh = Z80Bus::get_IO_Byte();
+//   regs->ixl = Z80Bus::get_IO_Byte();
+
+//   regs->AllocMark = mark;
+//   return regs;
+// }
+
+
+// void Utils::restoreZ80States(Z80Registers* regs) {
+//   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
+//   // This allows time for the ROM to swap back to the stock ROM and begin the restore process at 0x04AA.
+//   uint8_t addr0x04AA[] = { 0x04, 0xAA };
+//   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
+//   Z80Bus::sendBytes(&regs->d, 1);
+//   Z80Bus::sendBytes(&regs->e, 1);
+//   Z80Bus::sendBytes(&regs->b, 1);
+//   Z80Bus::sendBytes(&regs->c, 1);
+//   Z80Bus::sendBytes(&regs->h, 1);
+//   Z80Bus::sendBytes(&regs->l, 1);
+//   Z80Bus::sendBytes(&regs->ixh, 1);
+//   Z80Bus::sendBytes(&regs->ixl, 1);
+//   Z80Bus::sendBytes(&regs->iff2, 1);
+//   Z80Bus::sendBytes(&regs->f, 1);
+//   Z80Bus::sendBytes(&regs->a, 1);
+
+//   BufferManager::freeToMark(regs->AllocMark);
+// }
+
+
+
+// todo - hacked together for, needs to be streamlined
+// hardcoded "saved001.sna filename for now
+// maybe name it after original  in its own folder with 001 numbering ?
+void Utils::saveSnapshot(Z80Registers* regs) {
+
+  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
 
   FatFile& file = SdCardSupport::closeFileIfOpen();
   FatFile& root = SdCardSupport::closeRootIfOpen();
 
-  // UnOptimised version
-  // RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
-  // Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
-  // if (root.open("/")) {
-  //   file.open(filename, O_CREAT | O_WRONLY);
-  //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
-  //     file.write(Z80Bus::get_IO_Byte());
-  //   }
-  //   file.close();
-  // }
-
   if (root.open("/")) {
-    while (!file.open(filename, O_CREAT | O_WRONLY)) {
-      // Can't warn user here - need are in the middle of storing the screen!!!
+    while (!file.open("saved001.sna", O_CREAT | O_WRONLY)) {
+      // Can't warn user here - need are in the middle of storing memory!!!
       while (!SdCardSupport::init()) { Utils::delay16(20); }  // worst case - sd card removed, full reset needed.
     }
 
-    // send header detials first (request Spectrum to send all screen data)
-    RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+    // Z80 stores 16-bit values in Little-Endian order (Low byte first).
+    // For AF, F is the low byte, A is the high byte.
+    
+    file.write(regs->i);         // 00: I
+
+    file.write(regs->l_prime);   // 01: HL'
+    file.write(regs->h_prime);
+
+    file.write(regs->e_prime);   // 03: DE'
+    file.write(regs->d_prime);
+
+    file.write(regs->c_prime);   // 05: BC'
+    file.write(regs->b_prime);
+
+    file.write(regs->f_prime);   // 07: AF' (F' then A')
+    file.write(regs->a_prime);
+
+    file.write(regs->l);         // 09: HL
+    file.write(regs->h);
+
+    file.write(regs->e);         // 11: DE
+    file.write(regs->d);
+
+    file.write(regs->c);         // 13: BC
+    file.write(regs->b);
+
+    file.write(regs->iyl);       // 15: IY
+    file.write(regs->iyh);
+
+    file.write(regs->ixl);       // 17: IX
+    file.write(regs->ixh);
+
+    file.write(regs->iff2);      // 19: IFF2
+regs->r = 0xff;
+    file.write(regs->r);         // 20: R
+
+    file.write(regs->f);         // 21: AF (F then A)
+    file.write(regs->a);
+
+    file.write(regs->sp_lo);     // 23: SP
+    file.write(regs->sp_hi);
+
+    uint8_t im = 2;  // i.e. something like 0xfe uses im2 for most games
+    if (regs->i == 0x3f) {
+      im = 1;   // The Speccys default ROM's startup
+    }
+    file.write(im);               // 25: Interrupt Mode (0, 1, or 2)
+    uint8_t borderCol = 0;
+    file.write(borderCol);               // 26: Border Color (0-7)
+
+
+
+
+    //----
+    uint16_t address =  ZX_SCREEN_ADDRESS_START;
+    uint16_t size= 1024U*48;
+
+
+    // send header details first (request Z80 to send the memory data)
+    RequestSendDataPacket pkt(size, address);
     Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
 
     // Above will be doing a final NMI to unhalt Z80
     // We need to give it time to catch up before we slam the lines to input!
-    Utils::delay16(1);  // todo - will do for now, but this is way to mutch time!
+    Utils::delay16(1);  // todo - will do for now, but this is way too much time!
 
     DDRD = 0x00;   // make them inputs
     digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
     __asm__ __volatile__("nop; nop");
 
-    for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+    for (uint16_t i = 0; i < size; i++) {
+      Z80Bus::waitHalt_syncWithZ80();
+      uint8_t byte = PIND;  // Capture latched data
+      Z80Bus::triggerZ80NMI();
+      file.write(byte);
+    }
+    file.close();
+
+    digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
+    DDRD = 0xFF;                     // Set all PORTD pins as outputs
+
+  }
+}
+
+void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
+  FatFile& file = SdCardSupport::closeFileIfOpen();
+  FatFile& root = SdCardSupport::closeRootIfOpen();
+
+  if (root.open("/")) {
+    while (!file.open(filename, O_CREAT | O_WRONLY)) {
+      // Can't warn user here - need are in the middle of storing memory!!!
+      while (!SdCardSupport::init()) { Utils::delay16(20); }  // worst case - sd card removed, full reset needed.
+    }
+
+    // send header details first (request Z80 to send the memory data)
+    RequestSendDataPacket pkt(size, address);
+    Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
+
+    // Above will be doing a final NMI to unhalt Z80
+    // We need to give it time to catch up before we slam the lines to input!
+    Utils::delay16(1);  // todo - will do for now, but this is way too much time!
+
+    DDRD = 0x00;   // make them inputs
+    digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
+    __asm__ __volatile__("nop; nop");
+
+    for (uint16_t i = 0; i < size; i++) {
       Z80Bus::waitHalt_syncWithZ80();
       uint8_t byte = PIND;  // Capture latched data
       Z80Bus::triggerZ80NMI();
@@ -141,8 +313,7 @@ void Utils::saveScreen(const char* filename) {
   }
 }
 
-void Utils::restoreScreen(const char* filename) {
-
+void Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
   FatFile& file = SdCardSupport::closeFileIfOpen();
   FatFile& root = SdCardSupport::closeRootIfOpen();
 
@@ -151,10 +322,15 @@ void Utils::restoreScreen(const char* filename) {
 
       const uint16_t mark = BufferManager::getMark();
       uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
-      uint16_t currentAddress = 0x4000;
-      uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
+      uint16_t currentAddress = address;
+      uint16_t totalRemaining = size; 
+      
       while (totalRemaining > 0) {
-        uint16_t bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE);
+        // Prevent reading beyond the requested size if the file is larger than expected
+        uint16_t bytesToRead = (totalRemaining < FILE_READ_BUFFER_SIZE) ? totalRemaining : FILE_READ_BUFFER_SIZE;
+        uint16_t bytesRead = file.read(buf, bytesToRead);
+        
+        if (bytesRead == 0) break; 
         
         Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, CMD_Copy);
 
@@ -167,6 +343,81 @@ void Utils::restoreScreen(const char* filename) {
     }
   }
 }
+
+
+// void Utils::saveScreen(const char* filename) {
+
+//   FatFile& file = SdCardSupport::closeFileIfOpen();
+//   FatFile& root = SdCardSupport::closeRootIfOpen();
+
+//   // UnOptimised version
+//   // RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+//   // Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
+//   // if (root.open("/")) {
+//   //   file.open(filename, O_CREAT | O_WRONLY);
+//   //   for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+//   //     file.write(Z80Bus::get_IO_Byte());
+//   //   }
+//   //   file.close();
+//   // }
+
+//   if (root.open("/")) {
+//     while (!file.open(filename, O_CREAT | O_WRONLY)) {
+//       // Can't warn user here - need are in the middle of storing the screen!!!
+//       while (!SdCardSupport::init()) { Utils::delay16(20); }  // worst case - sd card removed, full reset needed.
+//     }
+
+//     // send header detials first (request Spectrum to send all screen data)
+//     RequestSendDataPacket pkt (ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE, 0x4000);
+//     Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket)); 
+
+//     // Above will be doing a final NMI to unhalt Z80
+//     // We need to give it time to catch up before we slam the lines to input!
+//     Utils::delay16(1);  // todo - will do for now, but this is way to mutch time!
+
+//     DDRD = 0x00;   // make them inputs
+//     digitalWriteFast(PIN_A5, LOW);  //Enable Latch for reading
+//     __asm__ __volatile__("nop; nop");
+
+//     for (uint16_t i = 0; i < ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE; i++) {
+//       Z80Bus::waitHalt_syncWithZ80();
+//       uint8_t byte = PIND;  // Capture latched data
+//       Z80Bus::triggerZ80NMI();
+//       file.write(byte);
+//     }
+//     file.close();
+
+//     digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
+//     DDRD = 0xFF;                     // Set all PORTD pins as outputs
+//   }
+// }
+
+// void Utils::restoreScreen(const char* filename) {
+
+//   FatFile& file = SdCardSupport::closeFileIfOpen();
+//   FatFile& root = SdCardSupport::closeRootIfOpen();
+
+//   if (root.open("/")) {
+//     if (file.open(filename, O_READ)) {
+
+//       const uint16_t mark = BufferManager::getMark();
+//       uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+//       uint16_t currentAddress = 0x4000;
+//       uint16_t totalRemaining = ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE;  // 6912 bytes
+//       while (totalRemaining > 0) {
+//         uint16_t bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE);
+        
+//         Z80Bus::rleOptimisedTransfer(bytesRead, currentAddress, buf, CMD_Copy);
+
+//         currentAddress += bytesRead;
+//         totalRemaining -= bytesRead;
+//       }
+//       file.close();
+
+//       BufferManager::freeToMark(mark);
+//     }
+//   }
+// }
 
 // ---------------------
 // .TXT FILE - Support

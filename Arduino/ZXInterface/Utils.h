@@ -17,17 +17,12 @@
 struct Z80Registers {
     uint8_t a, f, b, c, d, e, h, l;
     uint8_t a_prime, f_prime, b_prime, c_prime, d_prime, e_prime, h_prime, l_prime;
-    
-    uint8_t ixh, ixl;
-    uint8_t iyh, iyl;
-   
-    uint8_t sp_hi;
-    uint8_t sp_lo;
-    
+    uint8_t ixh, ixl, iyh, iyl;
+    uint8_t sp_hi, sp_lo;
     uint8_t i;
     uint8_t r;
     uint8_t iff2;
-
+    
     uint16_t AllocMark;
 };
 
@@ -44,8 +39,11 @@ void setupJoystick();
 Z80Registers* storeZ80States();
 void restoreZ80States(Z80Registers* regs);
 
-void saveScreen(const char* filename);
-void restoreScreen(const char* filename);
+//void saveScreen(const char* filename);
+//void restoreScreen(const char* filename);
+void saveMemory(const char* filename, uint16_t address, uint16_t size);
+void loadMemory(const char* filename, uint16_t address, uint16_t size);
+void saveSnapshot(Z80Registers* regs);
 
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 

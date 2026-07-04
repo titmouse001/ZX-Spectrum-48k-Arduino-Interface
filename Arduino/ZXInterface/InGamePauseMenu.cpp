@@ -59,7 +59,7 @@ void InGamePauseMenu::waitForUserExit() {
 uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) {
   Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
   Draw::text_P(PAUSE_XPOS, getY(RESUME), F("Resume"));
-  Draw::text_P(PAUSE_XPOS, getY(SAVE_SNA), F("*Save SNA"));
+  Draw::text_P(PAUSE_XPOS, getY(SAVE_SNA), F("Save"));
   Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
   Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
   Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
@@ -145,7 +145,12 @@ bool InGamePauseMenu::process() {
   // If exiting without calling restoreZ80States, free structs marker manually.
   Z80Registers* z80Registers = Utils::storeZ80States();
 
-  Utils::saveScreen(SCRATCH_FILE);
+  //Utils::saveScreen(SCRATCH_FILE);
+//  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, 1024U*48);// ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
+//  Utils::saveHeader(z80Registers);
+
+  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
+  
   Menu::waitForRelease();
 
   do {
@@ -156,9 +161,10 @@ bool InGamePauseMenu::process() {
     Menu::waitForRelease();   
 
     if (result == SAVE_SNA ) { 
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 19) / 2),
-                   (ZX_SCREEN_HEIGHT_PIXELS / 2), F("*NOT IMPLEMENTED YET"));
-      Utils::delay16(2000);
+      Utils::saveSnapshot(z80Registers);
+      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + ((192/2/8) * 32), 32, COL::CYAN_BLACK);
+      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));
+      Utils::delay16(1500);
     }
     if (result == POKE) {
       handlePokeMenu();
@@ -180,8 +186,24 @@ bool InGamePauseMenu::process() {
     }
   } while (true);
 
+
+// // -------------------- DEBUG
+// Utils::clearScreen(COL::BRIGHT_MAGENTA_BLACK);
+// if (z80Registers->i == 0xfe) {  // Zynaps "I" value
+//    Draw::text_P(80, 90, F("I=fe, IM 2"));
+// }else {
+//    Draw::text_P(80, 90, F("I=3f, IM 1"));
+// }
+// delay(1000);
+// // ------------------------------
+
+
   Menu::waitForRelease();
-  Utils::restoreScreen(SCRATCH_FILE);
+
+  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+  //Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, 1024U*48) ; //ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+  //Utils::restoreScreen(SCRATCH_FILE);
+
   Utils::restoreZ80States(z80Registers);
 
   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
