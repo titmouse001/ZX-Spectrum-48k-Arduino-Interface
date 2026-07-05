@@ -6,8 +6,8 @@
 namespace InGamePauseMenu {
 
     uint8_t getSelectedMenuOption_Blocking(uint8_t& selectedIndex);
-    void waitForUserExit();
-    bool process();
+    void waitForUserExit(uint8_t borderColour);
+    bool process(uint8_t borderColour);
     int32_t readNumericInput(uint8_t maxDigits, int xPos, int yPos, const char* name,  uint16_t min, uint16_t max) ;
 
     void handlePokeMenu();

@@ -54,11 +54,18 @@ void setup() {
 }
 
 void loop() {
+  
   FatFile* pFile = Menu::handleMenu();
-  const char* fileName = SdCardSupport::getFileName(pFile);
-  const char* ext = strrchr(fileName, '.');
+ // const char* fileName = SdCardSupport::getFileName(pFile);
+  //const char* ext = strrchr(fileName, '.');
+
+
+  char extBuff[4];
+  pFile->getExtension((char*)&extBuff, sizeof(extBuff));
+  char* ext = extBuff;
+
   if (ext) {
-    ext++;  // skip the '.'
+  //  ext++;  // skip the '.'
     if (strcasecmp(ext, "scr") == 0) {
       handleScrFile(pFile);
     } else if (strcasecmp(ext, "sna") == 0) {
@@ -110,6 +117,7 @@ void handleScrFile(FatFile* pFile) {
 // .SNA FILE 
 // ---------------------
 void handleSnaFile(FatFile* pFile) {
+  uint8_t borderColour;
   Utils::clearScreen(0);
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
     // Set stack NOW before sending data over
@@ -120,9 +128,10 @@ void handleSnaFile(FatFile* pFile) {
       pFile->read((void *)(snaHeaderPacket), SNA_TOTAL_ITEMS);
       Z80Bus::transferSnaData(pFile, true);
       Z80Bus::executeSnapshot(snaHeaderPacket);
-    }
+      borderColour =  snaHeaderPacket[SNA_BORDER_COLOUR];
+    } 
     BufferManager::freeToMark(mark);
-    InGamePauseMenu::waitForUserExit();
+    InGamePauseMenu::waitForUserExit(borderColour);
     Z80Bus::setSnaRom();
     Z80Bus::resetZ80();
   }
@@ -132,11 +141,10 @@ void handleSnaFile(FatFile* pFile) {
 // .Z80 FILE 
 // ---------------------
 void handleZ80File(FatFile* pFile) {
-
+  uint8_t borderColour;
   Utils::clearScreen(0);
   SnapZ80::Z80HeaderInfo headerInfo;
   uint8_t ver = readZ80Header(pFile, &headerInfo);
-
   if (ver != Z80_VERSION_UNKNOWN) {
     if (checkZ80FileValidity(pFile, &headerInfo)) {
       // Set stack NOW before sending data over
@@ -146,9 +154,10 @@ void handleZ80File(FatFile* pFile) {
         uint8_t *snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
         SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, snaHeaderPacket);
         Z80Bus::executeSnapshot(snaHeaderPacket);
+        borderColour =  snaHeaderPacket[SNA_BORDER_COLOUR];
       }
       BufferManager::freeToMark(mark);
-      InGamePauseMenu::waitForUserExit();
+      InGamePauseMenu::waitForUserExit(borderColour);
       Z80Bus::setSnaRom();
       Z80Bus::resetZ80();
       return;  // load OK
@@ -158,7 +167,7 @@ void handleZ80File(FatFile* pFile) {
   // drop down to report load error
   Utils::clearScreen(COL::BLACK_WHITE);
   Draw::text_P(0, 40, F("Can't load:"));
-  Draw::text(0, 50, SdCardSupport::getFileName(pFile));
+  Draw::text(0, 50, SdCardSupport::getDisplayFileName(pFile));
   if (SnapZ80::getMachineDetails(headerInfo.version, headerInfo.hw_mode) == MACHINE_128K) {
     Draw::text_P(80, 90, F("128K not supported (yet)"));
   }
@@ -226,6 +235,137 @@ void handleTxtFile(FatFile* pFile) {
   BufferManager::freeToMark(mark);
   Menu::waitForRelease();
 }
+
+
+
+
+
+
+#if 0 
+
+!!!!FOR NOW - ADD THESE TO THE FatLib library (i.e. #include "SdFat.h")!!!!
+
+//------------------------------------------------------------------------------
+C:\Users\Admin\Documents\Arduino\libraries\SdFat\src\FatLib\FatName.h
+//------------------------------------------------------------------------------
+class FatFile {
+ public:
+  size_t getNameLength() ;  // ADDED by PO
+  size_t getExtension(char* extBuf, size_t extSize) ;  // ADDED by PO
+  size_t getDisplayName7(char* name, size_t size) ;  // ADDED by PO
+...
+}
+
+//------------------------------------------------------------------------------
+C:\Users\Admin\Documents\Arduino\libraries\SdFat\src\FatLib\FatName.cpp  
+//------------------------------------------------------------------------------
+size_t FatFile::getDisplayName7(char* name, size_t size) {
+  FatFile dir;
+ // const DirLfn_t* ldir;
+  size_t n = 0;
+  // if (!isOpen()) {
+  //   DBG_FAIL_MACRO;
+  //   goto fail;
+  // }
+  if (!isLFN()) {
+    return getSFN(name, size);  // needed - this path is for short filenames
+  }
+  dir.openCluster(this);
+  //if (!dir.openCluster(this)) {
+  //  DBG_FAIL_MACRO;
+  //  goto fail;
+ // }
+
+  for (uint8_t order = 1; order <= m_lfnOrd; order++) {
+    const DirLfn_t* ldir = reinterpret_cast<DirLfn_t*>(dir.cacheDir(m_dirIndex - order));
+
+    // if (!ldir) {
+    //   DBG_FAIL_MACRO;
+    //   goto fail;
+    // }
+    // if (ldir->attributes != FAT_ATTRIB_LONG_NAME ||
+    //     order != (ldir->order & 0X1F)) {
+    //   DBG_FAIL_MACRO;
+    //   goto fail;
+    // }
+
+
+    for (uint8_t i = 0; i < 13; i++) {
+      uint16_t c = getLfnChar(ldir, i);
+      if (c == 0) {
+        goto done;
+      }
+      if ((n + 1) >= size ) {
+        if (n>2) {
+          name[n-2] = '.';
+          name[n-1] = '.';
+        }
+         goto done;
+       // DBG_FAIL_MACRO;
+      //  goto fail;
+      }
+      name[n++] = c >= 0X7F ? '?' : c;
+    }
+  }
+done:
+  name[n] = 0;
+  return n;
+
+fail:
+  name[0] = '\0';
+  return 0;
+}
+
+size_t FatFile::getExtension(char *extBuf, size_t extSize)
+{
+ // if (!isOpen() || extBuf == nullptr || extSize == 0)
+ //   return 0;
+
+  char sfn[13]; // 8.3 format + dot + null terminator
+  if (getSFN(sfn, sizeof(sfn))) {
+    char *dot = strchr(sfn, '.');
+    if (dot != nullptr && *(dot + 1) != '\0') {
+      dot++; // past the '.'
+      strncpy(extBuf, dot, extSize - 1);
+      extBuf[extSize - 1] = '\0';
+      return strlen(extBuf);
+    }
+  }
+  extBuf[0] = '\0';
+  return 0; // nothing found
+}
+
+size_t FatFile::getNameLength() {
+   //  if (!isOpen()) return 0;
+    if (!isLFN()) {
+        char buf[13];  // short file names, always <= 12
+        return getSFN(buf, sizeof(buf));
+    }
+
+    FatFile dir;
+    size_t n = 0;
+    if (dir.openCluster(this)) {
+      const DirLfn_t* ldir;
+      for (uint8_t order = 1; order <= m_lfnOrd; order++) {
+          ldir = reinterpret_cast<DirLfn_t*>(dir.cacheDir(m_dirIndex - order));
+          if (!ldir) return 0;
+          for (uint8_t i = 0; i < 13; i++) {
+              uint16_t c = getLfnChar(ldir, i);
+              if (c == 0) return n; 
+              n++;
+          }
+      }
+    }
+    return n;
+}
+
+
+#endif
+
+
+
+
+
 
 
 

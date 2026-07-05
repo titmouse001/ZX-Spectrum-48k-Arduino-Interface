@@ -44,16 +44,17 @@ namespace COL {
     constexpr uint8_t FLASH = 0x80;   // Bit 7: Flashing
 
     constexpr uint8_t Attr(uint8_t paper, uint8_t ink, bool bright = false,
-                        bool flash = false) {
-    return (flash ? FLASH : 0) | (bright ? BRIGHT : 0) | ((paper & 0x07) << 3) |
-            (ink & 0x07);
+                           bool flash = false) {
+      return (flash ? FLASH : 0) | (bright ? BRIGHT : 0) |
+             ((paper & 0x07) << 3) | (ink & 0x07);
     }
 
+    //                <BRIGHT>_PAPER_INK
     constexpr uint8_t BLACK_WHITE = Attr(BLACK, WHITE);
     constexpr uint8_t BLACK_GREEN = Attr(BLACK, GREEN);
     constexpr uint8_t BLACK_MAGENTA = Attr(BLACK, MAGENTA);
     constexpr uint8_t BLACK_BLUE = Attr(BLACK, BLUE);
-    constexpr uint8_t BRIGHT_BLACK_GREEN = Attr(BLACK, GREEN, true);
+    
     constexpr uint8_t GREEN_WHITE = Attr(GREEN, WHITE);
     constexpr uint8_t MAGENTA_BLACK = Attr(MAGENTA, BLACK);
     constexpr uint8_t BLUE_BLACK = Attr(BLUE, BLACK);
@@ -73,6 +74,7 @@ namespace COL {
     constexpr uint8_t BRIGHT_BLUE_BLACK = Attr(BLUE, BLACK, true);
     constexpr uint8_t BRIGHT_MAGENTA_BLACK = Attr(MAGENTA, BLACK, true);
     constexpr uint8_t BRIGHT_YELLOW_RED = Attr(YELLOW, RED, true);
+    constexpr uint8_t BRIGHT_BLACK_GREEN = Attr(BLACK, GREEN, true);
 }  // namespace COL
 
 //-----------------------------------------
@@ -207,11 +209,8 @@ enum Z80HeaderVersion {
     Z80_VERSION_3 = 3
 };
 
-
 //-----------------------------------------
 
-constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
-constexpr uint8_t MAX_FILENAME_LEN = 64; 
 
 namespace SmallFont {
     constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
@@ -226,11 +225,15 @@ static constexpr uint8_t FONT_HEIGHT_WITH_GAP = SmallFont::FNT_HEIGHT + SmallFon
 static constexpr uint8_t FONT_WIDTH_WITH_GAP = SmallFont::FNT_WIDTH + SmallFont::FNT_GAP;
 static constexpr uint8_t SCREEN_TEXT_ROWS = ZX_SCREEN_HEIGHT_PIXELS / FONT_HEIGHT_WITH_GAP; //24;
 
-static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
-
 static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
 static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
 static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
+
+//-----------------------------------------
+
+static constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
+static constexpr uint8_t MAX_FILENAME_LEN = 64; 
+static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
 
 
 //-----------------------------------------

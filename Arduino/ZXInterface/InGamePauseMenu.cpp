@@ -34,7 +34,7 @@ constexpr uint8_t getY(int8_t line) { return PAUSE_YPOS_START + (line * 8); }
 //    Each frame the 'PORTD' Port register is updated with fresh joystick data.
 //    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
 // ----------------------------------------------------------------------------------------------
-void InGamePauseMenu::waitForUserExit() {
+void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
 
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
   while (true) {
@@ -49,7 +49,7 @@ void InGamePauseMenu::waitForUserExit() {
     PORTD = buttonData & INPUT_MASK; 
 
     if (buttonData & INPUT_SELECT) {
-      if (process()) {
+      if (process(borderColour)) {
         break;  // back to game loader menu
       }
     }
@@ -109,7 +109,7 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
   }
 }
 
-bool InGamePauseMenu::process() {
+bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
 
   // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's combined /RD AND /IORQ lines
@@ -144,6 +144,7 @@ bool InGamePauseMenu::process() {
   // storeZ80States allocates memory, and restoreZ80States frees it.
   // If exiting without calling restoreZ80States, free structs marker manually.
   Z80Registers* z80Registers = Utils::storeZ80States();
+  z80Registers->borderCol = borderColour; // used the original snapshot value, we can't extract this at game time!
 
   //Utils::saveScreen(SCRATCH_FILE);
 //  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, 1024U*48);// ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
@@ -162,7 +163,12 @@ bool InGamePauseMenu::process() {
 
     if (result == SAVE_SNA ) { 
       Utils::saveSnapshot(z80Registers);
-      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + ((192/2/8) * 32), 32, COL::CYAN_BLACK);
+      // clear a thin window for text
+      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS)/2/8) * (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
+      for (uint8_t i=0; i<8; i++) {
+        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address((ZX_SCREEN_HEIGHT_PIXELS/2) + i), ZX_SCREEN_WIDTH_BYTES, 0);
+      }
+
       Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));
       Utils::delay16(1500);
     }

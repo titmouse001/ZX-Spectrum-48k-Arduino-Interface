@@ -6,22 +6,30 @@
 #include "Constants.h"
 #include "SdFat.h" 
 
-// struct Z80Registers {
-//     uint8_t a, f, d, e, b, c, h, l;
-//     uint8_t iff2;
-//     uint8_t ixh, ixl;
-
-//     uint16_t AllocMark;
-// };
-
-struct Z80Registers {
-    uint8_t a, f, b, c, d, e, h, l;
-    uint8_t a_prime, f_prime, b_prime, c_prime, d_prime, e_prime, h_prime, l_prime;
-    uint8_t ixh, ixl, iyh, iyl;
-    uint8_t sp_hi, sp_lo;
+// SNAPSHOT (.SNA) FILE HEADER (27 bytes, no PC value stored):
+//      REG_I  =00, REG_HL'=01, REG_DE'=03, REG_BC'=05
+//      REG_AF'=07, REG_HL =09, REG_DE =11, REG_BC =13
+//      REG_IY =15, REG_IX =17, REG_IFF=19, REG_R  =20
+//      REG_AF =21, REG_SP =23, REG_IM =25, REG_BDR=26
+struct __attribute__ ((packed)) Z80Registers {
+    // This wil be raw copied to SNA file header so must be Little-Endian order (Low byte first).
     uint8_t i;
-    uint8_t r;
+    uint8_t l_prime,h_prime;
+    uint8_t e_prime,d_prime;
+    uint8_t c_prime,b_prime;
+    uint8_t f_prime,a_prime; 
+    uint8_t l,h;
+    uint8_t e,d;
+    uint8_t c,b;
+    uint8_t iyl,iyh;
+    uint8_t ixl,ixh;
     uint8_t iff2;
+    uint8_t r;  // included, not not true value at capture (pain and not really needed)
+    uint8_t f;
+    uint8_t a;
+    uint8_t sp_lo,sp_hi;
+    uint8_t im;
+    uint8_t borderCol; // included, not tue at capture time
     
     uint16_t AllocMark;
 };

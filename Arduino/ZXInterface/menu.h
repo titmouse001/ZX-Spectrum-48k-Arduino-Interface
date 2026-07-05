@@ -39,6 +39,7 @@ private:
   static uint16_t startFileIndex;
   static bool buttonHeld;
 
+  static void highlightFileList();
 
   static void displayFileList();
   static uint16_t scanFolder(bool reset = false);

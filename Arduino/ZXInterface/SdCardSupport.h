@@ -16,11 +16,14 @@ static FatFile file;
 public:
 static bool init(); //uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
-static void openFileByIndex(uint16_t searchIndex);
+static FatFile*  openFileByIndex(uint16_t searchIndex);
 
 static uint8_t getFileName(FatFile* pFile, char* pFileNameBuffer);
 static char* getFileName(FatFile* pFile);
-static char* getFileNameWithSlash(FatFile* pFile);
+//static char* getFileNameWithSlash(FatFile* pFile);
+static char* getDisplayFileName(FatFile* pFile);
+
+static uint8_t  getDisplayFileName(FatFile* pFile, char* pFileNameBuffer);  // totdo : path !!!! >255
 
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }
