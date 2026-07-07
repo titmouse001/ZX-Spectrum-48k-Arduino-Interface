@@ -2,8 +2,7 @@
 #define Z80BUS_H
 
 #include <stdint.h>
-//#include "pin.h"
-#include "SdFat.h"
+#include "src/fatlib/SdFat.h"
 #include "digitalWriteFast.h"
 #include "pin.h"
 
@@ -19,7 +18,7 @@ extern void sendSnaHeader(uint8_t* header);
 extern void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color);
 extern void sendWaitVBLCommand();
 extern void setStackCommand(uint16_t addr);
-extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
+//extern void highlightSelection(uint16_t currentFileIndex, uint16_t startFileIndex, uint16_t& oldHighlightAddress);
 
 extern uint8_t getKeyboard();
 extern uint8_t get_IO_Byte();

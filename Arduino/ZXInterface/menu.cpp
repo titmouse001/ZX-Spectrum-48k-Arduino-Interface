@@ -6,6 +6,7 @@
 #include "draw.h"
 #include "Z80Bus.h"
 
+
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = MAX_REPEAT_KEY_DELAY;
@@ -20,30 +21,27 @@ constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_WHITE;
 static uint16_t menuPathHistory[FOLDER_NAV_DEPTH]; 
 static uint8_t  menuPathDepth = 0;
 
+
 static void syncRootToDepth() {
   FatFile& root = SdCardSupport::closeRootIfOpen();
   root.open("/");
 
   if (menuPathDepth > 0) {
-    // 1. Calculate exact size needed
     size_t totalPathLen = 1;  // Start with root '/'
     for (uint8_t i = 0; i < menuPathDepth; i++) {
       FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
       if (file) {
-        // Add name length + 1 for the slash
-        totalPathLen += (file->getNameLength() + 1);
+        totalPathLen += (file->getNameLength() + 1);  //  + 1 for the slash
       }
     }
     totalPathLen += 1;  // +1 for null terminator
 
-    // 2. Perform precise allocation
     uint16_t mark = BufferManager::getMark();
     char* localPath = (char*)BufferManager::allocate(totalPathLen);
 
     localPath[0] = '/';
     localPath[1] = '\0';
 
-    // 3. Populate path
     for (uint8_t i = 0; i < menuPathDepth; i++) {
       FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
       if (file) {
@@ -65,35 +63,6 @@ static void syncRootToDepth() {
   Menu::inSubFolder = (menuPathDepth > 0);
 }
 
-// static void syncRootToDepth() {
-//   FatFile& root = SdCardSupport::closeRootIfOpen();
-//   root.open("/"); 
-  
-//   if (menuPathDepth > 0) {
-//     uint16_t mark = BufferManager::getMark();
-// // TODO ... HOW MUCH TO ALLOC - what would be largest dir? ... maybe upgrade allocator (min/max kind of ask) no sure will have spare to give  ???
-//     uint8_t* localPath = BufferManager::allocate(200);
-//     localPath[0] = '/';
-//     localPath[1] = '\0';
-// //    char localPath[110] = "/";  
-//     for (uint8_t i = 0; i < menuPathDepth; i++) {
-//      FatFile* file= SdCardSupport::openFileByIndex(menuPathHistory[i]);
-//   //    FatFile& file = SdCardSupport::getFile();
-//       char* name = SdCardSupport::getFileNameWithSlash(file);
-//       if (name != nullptr) {
-//         strcat((char*)localPath, name);
-//       }
-//       root.close();
-//       if (!root.open((char*)localPath)) {
-//         menuPathDepth = 0;
-//         root.open("/");   // Fallback 
-//         break;
-//       }
-//     }
-//     BufferManager::freeToMark(mark);
-//   }
-//   Menu::inSubFolder = (menuPathDepth > 0);
-// }
 
 FatFile* Menu::handleMenu() {
   syncRootToDepth();    // Re-synchronize the menu
@@ -170,15 +139,14 @@ FatFile* Menu::handleMenu() {
         }
       }
       Menu::waitForRelease();
-      Utils::clearScreen(MENU_TEXT_COLOUR); // new folder - clear old page
+      Utils::clearScreen(MENU_TEXT_COLOUR); // clear old page
       highlightFileList();
       displayFileList();
       Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
       continue;
     }
 
-    if (action == ACTION_REFRESH_LIST) {
-   //   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, MENU_TEXT_COLOUR);
+    if (action == ACTION_REFRESH_LIST) {    
       highlightFileList();
       displayFileList();
     }
@@ -192,8 +160,11 @@ FatFile* Menu::handleMenu() {
   }
 }
 
-
 void Menu::highlightFileList() {
+
+  // Not a full page, selector will not be wiped - we just clear the selector every time
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((192-8)/8)*32, 32, MENU_TEXT_COLOUR);
+
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
@@ -202,7 +173,8 @@ void Menu::highlightFileList() {
 
   // Highlight the parent directory indicator row if we are at the top of a subfolder
   if (inSubFolder && startFileIndex == 0) {
-    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, 32, COL::BRIGHT_BLACK_GREEN);
+    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, 32,
+                            COL::BRIGHT_BLACK_GREEN);
     linesDrawn = 1;
   }
 
@@ -221,21 +193,25 @@ void Menu::highlightFileList() {
     if (filesSkipped < actualFilesToSkip) {  // Skip until start index
       filesSkipped++;
       file.close();
-      continue; 
+      continue;
     }
 
     if (linesDrawn < SCREEN_TEXT_ROWS) {
       // Paint the row green where this file exists
       if (file.isDir()) {
-        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn * 32), 32, COL::BRIGHT_BLACK_GREEN);
+        Z80Bus::sendFillCommand(
+            ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn * 32), 32,
+            COL::BRIGHT_BLACK_GREEN);
       } else {
-          Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn * 32), 32, MENU_TEXT_COLOUR);
+        Z80Bus::sendFillCommand(
+            ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn * 32), 32,
+            MENU_TEXT_COLOUR);
       }
       linesDrawn++;
     }
-    
+
     file.close();
-    
+
     if (linesDrawn >= SCREEN_TEXT_ROWS) break;  // Stop if screen is full
   }
 }
@@ -255,7 +231,7 @@ void Menu::displayFileList() {
     linesDrawn = 1;
   }
 
-  uint16_t actualFilesToSkip = startFileIndex;
+  uint32_t actualFilesToSkip = startFileIndex;
   if (inSubFolder && startFileIndex > 0) {
     actualFilesToSkip--;
   }
@@ -274,40 +250,14 @@ void Menu::displayFileList() {
     }
 
     if (linesDrawn < SCREEN_TEXT_ROWS) {
-     bool isDirectory = file.isDir();
- //     char* fetchDest;
-//      if (isDirectory) {
- //       nameBuffer[0] = '[';  //  directory indicator
- //       fetchDest = &nameBuffer[1];
-  //    } else {
-      //  fetchDest = nameBuffer;
-   //   }
-
-      //uint8_t len = SdCardSupport::getDisplayFileName(&file, fetchDest);
-      uint8_t len =file.getDisplayName7(nameBuffer, ZX_FILENAME_MAX_DISPLAY_LEN+1);  
-  //    uint8_t totalVisualLen = isDirectory ? (len + 2) : len;
-
-      // if (totalVisualLen > ZX_FILENAME_MAX_DISPLAY_LEN) {
-      //   // clip long filenames
-      //   nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 2] = '.';
-         if (isDirectory) {
-      //     nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 3] = '.';
-          if (len+1 < ZX_FILENAME_MAX_DISPLAY_LEN+1) {
-           nameBuffer[len] = '/';  
-           nameBuffer[len+1] = '\0';  
-          }
-
-    //      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn * 32), 32, COL::BRIGHT_BLACK_GREEN);
-
-         } //else {
-      //     nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN - 1] = '.';
-      //   }
-      //   nameBuffer[ZX_FILENAME_MAX_DISPLAY_LEN] = '\0';
-      // } else if (isDirectory) {
-      //   nameBuffer[len + 1] = ']';  //  directory indicator
-      //   nameBuffer[len + 2] = '\0';
-      // }
-
+      bool isDirectory = file.isDir();
+      uint8_t len = file.getDisplayName7(nameBuffer, ZX_FILENAME_MAX_DISPLAY_LEN + 1);
+      if (isDirectory) {
+        if (len + 1 < ZX_FILENAME_MAX_DISPLAY_LEN + 1) {
+          nameBuffer[len] = '/';
+          nameBuffer[len + 1] = '\0';
+        }
+      }
 
       Draw::textLine(linesDrawn * FONT_HEIGHT_WITH_GAP, nameBuffer);
       linesDrawn++;

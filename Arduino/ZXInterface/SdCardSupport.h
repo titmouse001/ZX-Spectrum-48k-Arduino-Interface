@@ -2,7 +2,10 @@
 #define SDCARD_SUPPORT_H
 
 #include <stdint.h>
-#include "SdFat.h" 
+
+#include "src/fatlib/SdFat.h"
+
+
 // "SdFatConfig.h" options, I'm using "USE_LONG_FILE_NAMES 1"
 // Leaving SdFatConfig.h as default will do this already, see note at EOF to free up some flash memory.
 
@@ -18,12 +21,7 @@ static bool init(); //uint8_t csPin) ;
 static uint16_t countSnapshotFiles();
 static FatFile*  openFileByIndex(uint16_t searchIndex);
 
-static uint8_t getFileName(FatFile* pFile, char* pFileNameBuffer);
-static char* getFileName(FatFile* pFile);
-//static char* getFileNameWithSlash(FatFile* pFile);
-static char* getDisplayFileName(FatFile* pFile);
-
-static uint8_t  getDisplayFileName(FatFile* pFile, char* pFileNameBuffer);  // totdo : path !!!! >255
+static char* getDisplayFileName(char* buff);
 
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }

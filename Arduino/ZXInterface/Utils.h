@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "digitalWriteFast.h"
 #include "Constants.h"
-#include "SdFat.h" 
+#include "src/fatlib/SdFat.h"
 
 // SNAPSHOT (.SNA) FILE HEADER (27 bytes, no PC value stored):
 //      REG_I  =00, REG_HL'=01, REG_DE'=03, REG_BC'=05

@@ -1,22 +1,16 @@
-// -------------------------------------------------------------------------------------
 // This is an Arduino-Based ZX Spectrum Game Loader (by Paul Overy)
-// -------------------------------------------------------------------------------------
+//
 // This software uses the Arduino's ATmega328P Nano (2K SRAM, 32K flash & 1K EEPROM)
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
+//
 // -------------------------------------------------------------------------------------
-// For ref: My default compiler optimise setting is located around here (optimise='-O2'):-
-//          C:\Users\Admin\AppData\Local\Arduino15\packages\arduino\hardware\avr\1.8.8\platform.txt
-//          I like to override with "__attribute__((optimize("...")))"
-// -------------------------------------------------------------------------------------
-
 // To upload via an external programmer instead of USB. Useful if the USB interface fails, and
-// saves flash memory (though the code currently fits onto the Nano with plenty of room to spare).
-//see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
-//https://zadig.akeo.ie/  (for drivers - I used winusb )
+// saves flash memory (though the code currently fits onto the Nano with some room to spare).
+// see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
+// https://zadig.akeo.ie/  (for drivers - I used winusb )
+// -------------------------------------------------------------------------------------
 
-// Generate Map file
-// >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt
-
+// see README.MD for more info
 
 #include <Arduino.h>
 #include "Utils.h"
@@ -56,13 +50,10 @@ void setup() {
 void loop() {
   
   FatFile* pFile = Menu::handleMenu();
- // const char* fileName = SdCardSupport::getFileName(pFile);
-  //const char* ext = strrchr(fileName, '.');
-
-
   char extBuff[4];
   pFile->getExtension((char*)&extBuff, sizeof(extBuff));
   char* ext = extBuff;
+
 
   if (ext) {
   //  ext++;  // skip the '.'
@@ -167,7 +158,13 @@ void handleZ80File(FatFile* pFile) {
   // drop down to report load error
   Utils::clearScreen(COL::BLACK_WHITE);
   Draw::text_P(0, 40, F("Can't load:"));
-  Draw::text(0, 50, SdCardSupport::getDisplayFileName(pFile));
+
+  char* buf = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN+1);
+  uint8_t mark = BufferManager::getMark();
+  pFile->getDisplayName7(buf,ZX_FILENAME_MAX_DISPLAY_LEN );
+  Draw::text(0, 50,  buf);
+  BufferManager::freeToMark(mark);
+
   if (SnapZ80::getMachineDetails(headerInfo.version, headerInfo.hw_mode) == MACHINE_128K) {
     Draw::text_P(80, 90, F("128K not supported (yet)"));
   }
@@ -246,7 +243,7 @@ void handleTxtFile(FatFile* pFile) {
 !!!!FOR NOW - ADD THESE TO THE FatLib library (i.e. #include "SdFat.h")!!!!
 
 //------------------------------------------------------------------------------
-C:\Users\Admin\Documents\Arduino\libraries\SdFat\src\FatLib\FatName.h
+C:\Users\Admin\Documents\Arduino\libraries\SdFat\src\FatLib\FatFile.h
 //------------------------------------------------------------------------------
 class FatFile {
  public:
@@ -430,3 +427,7 @@ Z80Bus::sendBytes(packetBuffer, 6);
 sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));  // eats flash memory
 Draw::text(256 - 128, 0, _c);
 */
+
+
+// Generate Map file
+// >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt

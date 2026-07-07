@@ -236,6 +236,16 @@ struct  __attribute__ ((packed)) MemoryPacket {
         dest_addr_low (destAddr & 0xFF),
         amount (len)
     {}
+
+//         MemoryPacket(uint16_t cmd, uint16_t destAddr, uint8_t len) :
+//         //cmd_high(cmd_addr(cmd) >> 8),
+//         //cmd_low (cmd_addr(cmd) & 0xFF),
+//         cmd_high(cmd >> 8),
+//         cmd_low (cmd & 0xFF),
+//         dest_addr_high (destAddr >> 8),
+//         dest_addr_low (destAddr & 0xFF),
+//         amount (len)
+//    {}
 };
 ASSERT_Z80_PACKET_SIZE(5,MemoryPacket);
 

@@ -40,11 +40,12 @@ private:
   static bool buttonHeld;
 
   static void highlightFileList();
-
   static void displayFileList();
+
   static uint16_t scanFolder(bool reset = false);
   static MenuAction_t getMenuAction(uint16_t totalFiles);
 
+  //static void renderFileList();
 };
 
 #endif

@@ -162,7 +162,7 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 // uint32_t startTime = millis();
 
 
-  //const uint8_t selectedCmd = borderLoadingEffect ? cmd_addr(CMD_Transfer) : cmd_addr(CMD_Copy);
+//const uint8_t selectedCmd = borderLoadingEffect ? cmd_addr(CMD_Transfer) : cmd_addr(CMD_Copy);
   const uint8_t cmd = borderLoadingEffect ? CMD_Transfer : CMD_Copy;
   const uint16_t mark = BufferManager::getMark();
    // transfering SNAPS gets it own buffer value, it can't use project constants due to RLE and max limit of 255
@@ -193,12 +193,12 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
 }
 
 //------------------------------------------------------------------------------------------
-// This transfer has a simple look ahead to see if data can be RLE-compressed.  When a performance payoff 
-// for using RLE is found, the data is encoded and the RLE-compressed block is sent to the Z80 using fast
-// fill commands. We do things this way as the Z80 can use PUSH instructions to fill 2 bytes per
-// instruction. When no compression is found raw bytes are sent instead.
-// NOTE: The transfer assumes memory to fill is zeroed
-//
+/* rleOptimisedTransfer:
+ * Transfers data using look-ahead RLE. If beneficial, sends RLE blocks via fast Z80 fill
+ * commands (PUSH fills 2 bytes/instruction); otherwise sends raw bytes.
+ */
+
+
 
 __attribute__((optimize("-Ofast"))) 
 void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* input, const uint8_t cmd) {
@@ -271,6 +271,9 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
     }
   }
 }
+
+
+
 
 
 /* executeSnapshot:
