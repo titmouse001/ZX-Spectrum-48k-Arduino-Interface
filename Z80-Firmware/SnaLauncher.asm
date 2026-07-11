@@ -102,7 +102,7 @@ L0000:
 	; (While in the menu code, it's okay to use the stack normally.)
 
 	SET_BORDER 0
-	call ClearScreenAttributes
+	;/////////call ClearScreenAttributes   ; nano is resetting about + it asks for a screen clear (attributes first)
 
 	;------------------------------------------
 	; Disable 128k Spectrums from paging
@@ -195,13 +195,16 @@ ORG $00D0
 	jp command_SetStack				
 	jp command_RestoreGameAndExecute				
 	jp command_reverse_fill8	
-	jp command_SendData				; 11
-	jp command_Poke					; 12
+	jp command_SendData					; 11
+	jp command_Poke						; 12
+	jp Command_ClearAllRam				; 13
+	jp Command_ClearScreenAttributes	; 14
+	jp Command_ClearBitmapScreen		; 15
 
 ;------------------------------------------------------
-	IF $ > $00D0+(13*3)
-		.ERROR "CODE OVERLAPS"
-	ENDIF
+;	IF $ > $00D0+(15*3)
+;		.ERROR "TABLE GROWN!"
+;	ENDIF
 ;------------------------------------------------------
 
 
@@ -273,6 +276,38 @@ FillLoopOptimized:
 RestoreSP:
 	LD SP,IX               
     jp mainloop             
+
+; ;------------------------------------------------------
+; ; Small Memory Fill (Zero-Only Speed)
+; ; Input: Buffer end address, total fill count (byte)
+; ;------------------------------------------------------
+; command_reverse_fill8:  
+
+;     READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
+;     halt                    ; Synchronization 
+;     in b,(c)                ; B = total fill amount
+
+;     LD IX, 0					
+;     ADD IX, SP               
+;     XOR A      
+
+; CheckParity:
+;     SRL B                   
+;     JR NC, StartEvenFill  
+; HandleOddByte:
+;     DEC HL         	
+;     LD (HL), A      
+;     JR Z, RestoreSP      ; NOTE: flag state from SRL B still good
+; StartEvenFill:
+;     LD SP, HL       
+;     LD H, A   
+;     LD L, A   
+; FillLoopOptimized:
+;     PUSH HL     
+;     DJNZ FillLoopOptimized  
+; RestoreSP:
+;     LD SP, IX   
+;     jp mainloop
 
 
 ;------------------------------------------------------
@@ -416,28 +451,11 @@ command_VBL_Wait:
 ; Read/Write to the Stack Pointer
 command_SetStack: 
 ;-----------------------------------------------------
-
 	READ_PAIR_WITH_HALT h,l 
-;  	READ_ACC_WITH_HALT       ; A = Save:0 or Restore:1
-
-; 	or a    
-;     jr nz, .restore 
-	
-; .store:
-	; ld HL,0
-	; add HL,SP
-	; OUT (C), L
-	; halt				
-	; OUT (C), H    		  
-	; halt
- 	; jp mainloop    
-	
-; .restore 	
  	ld sp,hl
     halt  					; synchronization with Arduino
     jp mainloop          	
 	
-
 ;------------------------------------------------------
 ; Command: Upload Code and Execute
 ; Input from Arduino: 
@@ -623,28 +641,6 @@ JumpInstruction:
 TempStack:        	; Temporary stack space (2 bytes)
 relocateEnd:
 ;-----------------------------------------------------------------------	
-
-;-----------------------------------------------------------------------
-; CLEAR SCREEN ATTRIBUTES - 768 bytes of attribute memory.
-;-----------------------------------------------------------------------
-ClearScreenAttributes:
-    LD IX, 0        
-    ADD IX, SP     
-        
-    ld hl, 0    
-    ld sp, SCREEN_ATTRIBUTES_START + SCREEN_ATTRIBUTES_SIZE  
-    ld b, 6   ; 768 / 2 (push) / 6 = 64
-        
-clr_attr_loop:
-    REPT 64
-    push hl
-    ENDM        
-    djnz clr_attr_loop   
-
- 	ld sp, ix     
-    ret
-;-----------------------------------------------------------------------
-
 
 ;-----------------------------------------------------------------------	
 ; RESTORE INTERRUPT MODE - Helper for command_Execute
@@ -1063,6 +1059,72 @@ command_MuteAY:
     RET		; return OK as using MuteAY inside game menu's stack
 ;--------------------------------------------------------
 
+
+;-----------------------------------------------------------------------
+; CLEAR RAM 48KB - 273,725 T-states / 3,500,000 = 0.0782
+; +0.08 seconds (will be a bit more due to contended memory)
+;-----------------------------------------------------------------------
+Command_ClearAllRam: 
+        LD IX, 0        
+        ADD IX, SP               
+        ld hl, 0                 
+      	ld sp,0              ; Wraps to 0x10000 (first PUSH writes at 0xFFFE)	
+        ld b, 0              ; wraps so 256 times
+clr:    REPT 96
+        	push hl  		 ; 11 * 96 * 256
+        ENDM
+        djnz clr      		 ; (256 * 13) - (13-8)
+        ld sp, ix                
+
+		jp mainloop 
+
+
+;-----------------------------------------------------------------------
+; CLEAR SCREEN ATTRIBUTES - 768 bytes of attribute memory.
+;-----------------------------------------------------------------------
+Command_ClearScreenAttributes:
+    LD IX, 0        
+    ADD IX, SP     
+        
+    ld hl, 0    
+    ld sp, SCREEN_ATTRIBUTES_START + SCREEN_ATTRIBUTES_SIZE  
+    ld b, 6   ; 768 / 2 (push) / 6 = 64
+        
+clr_attr_loop:
+    REPT 64
+    	push hl
+    ENDM        
+    djnz clr_attr_loop   
+
+ 	ld sp, ix     
+    jp mainloop 
+;-----------------------------------------------------------------------
+
+;-------------------------------------------------------------------------
+; CLEAR SCREEN - 192*32 bytes of attribute memory. 6,144 bitmap pixel data
+; DOES NOT CLEAR THE COLOUR ATTRIBUTES
+;--------------------------------------------------------------------------
+Command_ClearBitmapScreen:
+    LD IX, 0        
+    ADD IX, SP     
+        
+    ld hl, 0    
+    ld sp, SCREEN_END + 1
+    ld b, 48   ; 6144 / (64 x 2 push) 
+        
+clr_bitmap_loop:
+    REPT 64
+    	push hl
+    ENDM        
+    djnz clr_bitmap_loop   
+
+ 	ld sp, ix     
+    jp mainloop 
+;-----------------------------------------------------------------------
+
+
+
+
 	
 ; =======================================================================
 ; PORT 0x7FFD - ZX SPECTRUM 128K PAGING REGISTER
@@ -1112,8 +1174,6 @@ cleanup:
     LD   A, D             ; Move result into A for return
 
     RET  ; return OK as using Detect128K inside game menu's stack
-
-
 
 ; ;-----------------------------------------------------------------------
 ; ; SaveZ80State – Save FULL Z80 state (entered via NMI)

@@ -79,12 +79,12 @@ void swap(byte &a, byte &b);
 }  // namespace Utils
 
 
-#ifndef ARDUINO_AVR_NANO
-#error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
-#endif
-#if (F_CPU != 16000000L)
-#warning "This sketch expects 16MHz clock speed."
-#endif
+// #ifndef ARDUINO_AVR_NANO
+// #error "This sketch is designed for Arduino Nano (ATmega328P). Please select the correct board in Tools > Board."
+// #endif
+// #if (F_CPU != 16000000L)
+// #warning "This sketch expects 16MHz clock speed."
+// #endif
 
 
 

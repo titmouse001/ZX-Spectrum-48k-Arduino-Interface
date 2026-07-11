@@ -153,43 +153,36 @@ uint8_t Z80Bus::getKeyboard() {
 void Z80Bus::Z80_NOP() {
     NOP_Packet pkt;
     Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
-  
 }
 
 //#include "Draw.h"
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
+   //uint32_t startTime = millis();
 
-// uint32_t startTime = millis();
-
-
-//const uint8_t selectedCmd = borderLoadingEffect ? cmd_addr(CMD_Transfer) : cmd_addr(CMD_Copy);
   const uint8_t cmd = borderLoadingEffect ? CMD_Transfer : CMD_Copy;
   const uint16_t mark = BufferManager::getMark();
-   // transfering SNAPS gets it own buffer value, it can't use project constants due to RLE and max limit of 255
-  constexpr uint8_t BUFFER_SIZE_U8 = 255; 
+  // transfering SNAPS gets it own buffer value, it can't use project constants
+  // due to RLE and max limit of 255
+  constexpr uint8_t BUFFER_SIZE_U8 = 255;
   uint8_t* Buf = BufferManager::allocate(BUFFER_SIZE_U8);
   uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
   // Transfer data to Spectrum RAM
   while (pFile->available()) {
-    uint16_t bytesRead = pFile->read(Buf,BUFFER_SIZE_U8);
-   rleOptimisedTransfer(bytesRead, currentAddress, Buf, cmd);
-   // rleOptimisedTransfer(bytesRead, currentAddress, Buf, borderLoadingEffect);
+    uint16_t bytesRead = pFile->read(Buf, BUFFER_SIZE_U8);
+    rleOptimisedTransfer(bytesRead, currentAddress, Buf, cmd);
     currentAddress += bytesRead;
   }
   BufferManager::freeToMark(mark);
 
-
-
-  // Utils::clearScreen(COL::CYAN_BLACK); 
+  // Utils::clearScreen(COL::CYAN_BLACK);
   // char _c[10];
   // uint32_t endTime = millis();
   // uint16_t duration = endTime - startTime;
   // itoa(duration, _c, 10);
   // Draw::text(8, 8, _c);
-  // itoa(duration/1000, _c, 10);
-  // Draw::text(8, 8+16, _c);
-  // delay (2000);
-
+  // itoa(duration / 1000, _c, 10);
+  // Draw::text(8, 8 + 16, _c);
+  // delay(2000);
 }
 
 //------------------------------------------------------------------------------------------
@@ -210,7 +203,7 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
         Z80Bus::sendBytes8(input, input_len);
         return;
         // Looks like the RLE is ONLY JUST A BIT quicker than the plain copy
-        //   Exolon: noRLE=1115, withRLE=1036
+        //   Exolon: noRLE=1115, withRLE=1036 1027
         //  Turtles: noRLE=1115, withRLE=1113 
         //   Zynaps: noRLE=1115, withRLE=1119
         //    Dizzy: noRLE=1115, withRLE=1170
@@ -226,13 +219,13 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
 
   while (remaining > 0) {
     // RLE Check - kind of worth doing!
-    if (remaining >= 5) {
+    if (remaining >= 6) {
       // 5 is an ok payoff Threshold  - setup cost of Z80 fill call
-      if (*p == *(p + 1) && *p == *(p + 2) && *p == *(p + 3) &&
-          *p == *(p + 4)) {
-        uint8_t run = 5;
-        uint8_t* scan = p + 5;
-        remaining -= 5;  // already checked above
+      if (*p == *(p + 5) && *p == *(p + 1) && *p == *(p + 2) &&
+          *p == *(p + 3) && *p == *(p + 4)) {
+        uint8_t run = 6;
+        uint8_t* scan = p + 6;
+        remaining -= 6;  // already checked above
 
         // Count the run (max 255)
         while (remaining > 0 && *scan == *p) {
@@ -254,8 +247,8 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
     uint8_t rawLen = 0;
     // Collect RAW bytes until we see an RLE run or run out of data
     while (remaining > 0) {
-      if (remaining >= 5 && *p == *(p + 1) && *p == *(p + 2) &&
-          *p == *(p + 3) && *p == *(p + 4)) {
+      if (remaining >= 6 && *p == *(p + 5) && *p == *(p + 1) &&
+          *p == *(p + 2) && *p == *(p + 3) && *p == *(p + 4)) {
         break;  // Found an RLE run, stop collecting raw
       }
       ++p;
@@ -271,9 +264,6 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
     }
   }
 }
-
-
-
 
 
 /* executeSnapshot:

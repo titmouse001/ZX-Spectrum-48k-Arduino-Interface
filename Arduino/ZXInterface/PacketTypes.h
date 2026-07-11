@@ -22,6 +22,7 @@ constexpr uint16_t CMD_Execute=8;
 constexpr uint16_t CMD_Fill8=9;
 constexpr uint16_t CMD_SendData=10;
 constexpr uint16_t CMD_Poke=11;
+constexpr uint16_t CMD_ClearAllRam=12;
 
 #pragma pack(push, 1)
 
@@ -232,25 +233,23 @@ struct  __attribute__ ((packed)) MemoryPacket {
     MemoryPacket(uint8_t cmd, uint16_t destAddr, uint8_t len) :
         cmd_high(cmd_addr(cmd) >> 8),
         cmd_low (cmd_addr(cmd) & 0xFF),
+        amount (len),
         dest_addr_high (destAddr >> 8),
-        dest_addr_low (destAddr & 0xFF),
-        amount (len)
+        dest_addr_low (destAddr & 0xFF)
     {}
-
-//         MemoryPacket(uint16_t cmd, uint16_t destAddr, uint8_t len) :
-//         //cmd_high(cmd_addr(cmd) >> 8),
-//         //cmd_low (cmd_addr(cmd) & 0xFF),
-//         cmd_high(cmd >> 8),
-//         cmd_low (cmd & 0xFF),
-//         dest_addr_high (destAddr >> 8),
-//         dest_addr_low (destAddr & 0xFF),
-//         amount (len)
-//    {}
 };
 ASSERT_Z80_PACKET_SIZE(5,MemoryPacket);
 
 
-#pragma pack(pop)
+struct __attribute__ ((packed))  ClearAllRam {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    ClearAllRam() : cmd_high(cmd_addr(CMD_ClearAllRam) >> 8), 
+                    cmd_low(cmd_addr(CMD_ClearAllRam) & 0xff) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,ClearAllRam);
 
+
+#pragma pack(pop)
 
 #endif

@@ -8,6 +8,13 @@
 // saves flash memory (though the code currently fits onto the Nano with some room to spare).
 // see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
 // https://zadig.akeo.ie/  (for drivers - I used winusb )
+
+// For cheaper clone boards like ATmega328PB (not ATmega328P using standard options "Arduino AVR Boards" -> "Arduino Nano" )
+// Tools > Board > MiniCore -> select ATmega328
+// Settings -> board: 115200, "BOD 2.7v", Yes (UART0), External 16MHz, EEPROM retianed, LTO enabled, "328PB"
+// Make sure programmer is set to USBaspm,
+// then -> "upload using programmer"
+
 // -------------------------------------------------------------------------------------
 
 // see README.MD for more info
