@@ -166,7 +166,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
       // clear a thin window for text
       Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS)/2/8) * (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
       for (uint8_t i=0; i<8; i++) {
-        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address((ZX_SCREEN_HEIGHT_PIXELS/2) + i), ZX_SCREEN_WIDTH_BYTES, 0);
+        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address(0, (ZX_SCREEN_HEIGHT_PIXELS/2) + i), ZX_SCREEN_WIDTH_BYTES, 0);
       }
 
       Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));

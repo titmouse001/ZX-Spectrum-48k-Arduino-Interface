@@ -445,32 +445,96 @@ void Utils::show5VoltRailStatus() {
 
 void Utils::delay16(uint16_t ms) {
     const uint32_t start = millis();
-    while ((uint16_t)(millis() - start) < ms) {
-    }
+    while ((uint16_t)(millis() - start) < ms) {  }
+
 }
+
+// Screen Address (16-bit): starting at 16384 (0x4000, %0100000000000000)
+// +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+// |15 |14 |13 |12 |11 |10 | 9 | 8 | | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+// +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+// | 0 | 1 | 0 |   TT  |    SSS    | |    RRR    |       CCCCC       |
+// +---+---+---+---+---+---+---+---+ +---+---+---+---+---+---+---+---+
+// \___________ High Byte _________/ \___________ Low Byte _________/
+//
+// TT = Screen third (0–2)
+// SSS = Pixel row within character line (0–7)
+// RRR = Character row within third (0–7)
+// CCCCC = Character column (0–31)
 
 uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
-  uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part +
-         (x >> 3);  // x/8 gives 32 columns
+    uint8_t addr_high = 0x40 | ((y >> 3) & 0x18) | (y & 0x07);
+    uint8_t addr_low = ((y & 0x38) << 2) | (x >> 3);
+    return (static_cast<uint16_t>(addr_high) << 8) | addr_low;
+
 }
 
-uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
-  const uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-  uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-  return ZX_SCREEN_ADDRESS_START + section_part + interleave_part;
-}
+// OLD join6Bits : Sketch uses 29648 bytes (96%)
+// NEW join6Bits : Sketch uses 29060 bytes (94%) and it's optimised for speed!!!
+
+
+
 
 void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
-  constexpr uint8_t bitWidth = 6;
-  uint16_t byteIndex = bitPosition >> 3;  // /8
-  uint8_t bitIndex = bitPosition & 7;     // %8
-  uint8_t maskedInput = input & ((1U << bitWidth) - 1);
-  uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
-  output[byteIndex] |= aligned >> 8;
-  if (aligned) { output[byteIndex + 1] |= aligned; }
+  uint16_t byteIndex = bitPosition >> 3;
+  uint8_t bitIndex = bitPosition & 7;
+  uint8_t maskedInput = input & 0x3F;
+
+  switch (bitIndex) {
+    case 0: 
+      output[byteIndex] |= (maskedInput << 2); 
+      break;
+    case 1: 
+      output[byteIndex] |= (maskedInput << 1); 
+      break;
+    case 2: 
+      output[byteIndex] |= maskedInput;        
+      break;
+    case 3: 
+      output[byteIndex]     |= (maskedInput >> 1); 
+      output[byteIndex + 1] |= (maskedInput << 7); 
+      break;
+    case 4: 
+      output[byteIndex]     |= (maskedInput >> 2); 
+      output[byteIndex + 1] |= (maskedInput << 6); 
+      break;
+    case 5: 
+      output[byteIndex]     |= (maskedInput >> 3); 
+      output[byteIndex + 1] |= (maskedInput << 5); 
+      break;
+    case 6: 
+      output[byteIndex]     |= (maskedInput >> 4); 
+      output[byteIndex + 1] |= (maskedInput << 4); 
+      break;
+    case 7: 
+      output[byteIndex]     |= (maskedInput >> 5); 
+      output[byteIndex + 1] |= (maskedInput << 3); 
+      break;
+  }
 }
+
+// uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
+//   uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
+//   uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
+//   return ZX_SCREEN_ADDRESS_START + section_part + interleave_part +
+//          (x >> 3);  // x/8 gives 32 columns
+// }
+
+// uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
+//   const uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
+//   uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
+//   return ZX_SCREEN_ADDRESS_START + section_part + interleave_part;
+// }
+
+// void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
+//   constexpr uint8_t bitWidth = 6;
+//   uint16_t byteIndex = bitPosition >> 3;  // /8
+//   uint8_t bitIndex = bitPosition & 7;     // %8
+//   uint8_t maskedInput = input & ((1U << bitWidth) - 1);
+//   uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
+//   output[byteIndex] |= aligned >> 8;
+//   if (aligned) { output[byteIndex + 1] |= aligned; }
+// }
 
 void Utils::memsetZero(byte* b, uint16_t len) {
   for (; len != 0; len--) { *b++ = 0; }

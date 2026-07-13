@@ -4,7 +4,6 @@
 #include "utils.h"
 #include "RenderFont.h"
 
-
 #define PROCESS_ROW(r) do { \
     const uint8_t transposedRow = \
         ((d0 & 1) << 4) | \
@@ -19,7 +18,6 @@
 
 __attribute__((optimize("-Ofast")))
 void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, uint16_t basePos) {
-    // Read fonts directly into local variables
     uint8_t d0 = pgm_read_byte(&fontPtr[0]);
     uint8_t d1 = pgm_read_byte(&fontPtr[1]);
     uint8_t d2 = pgm_read_byte(&fontPtr[2]);
@@ -31,42 +29,33 @@ void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, 
     PROCESS_ROW(6);
 }
 
+// !!! ODD: For the methods bellow - Did have these without "-Ofast" but noticed the compile size increased (maybe it's the -flto option)!!!
+#
 __attribute__((optimize("-Ofast"))) 
-uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char* message) {
+uint8_t RenderFont::prepareTextInternal( uint8_t* finalOutput, const char* message, bool inFlash) {
   Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
+  if (message == NULL) return 0;
+
   uint8_t charCount = 0;
-  if (message != NULL) {
-    uint16_t basePos = 0;
-    while (true) {
-      const char ch = message[charCount];
-      if (!ch) break;  // end line early on null char
-      const uint8_t idx = (ch - 0x20);
-      const uint8_t* fontPtr = &fudged_Adafruit5x7[(idx << 2) + idx +
-                              SmallFont::FNT_HEADER_SIZE];  // trick for 5 x idx
-      processCharacter(finalOutput, fontPtr, basePos);
-      charCount++;
-      basePos += SmallFont::FNT_CHAR_PITCH;
-    }
+  uint16_t basePos = 0;
+  while (true) {
+    const char ch = inFlash ? pgm_read_byte(&message[charCount]) : message[charCount];
+    if (!ch) break;  // end line early on null char
+    const uint8_t idx = (ch - 0x20);
+    const uint8_t* fontPtr = &fudged_Adafruit5x7[idx * 5];
+    processCharacter(finalOutput, fontPtr, basePos);
+    charCount++;
+    basePos += SmallFont::FNT_CHAR_PITCH;
   }
   return charCount;
 }
 
- 
-uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper *flashStr) {
-    Utils::memsetZero(&finalOutput[0], SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
-    const char *message = (const char *)flashStr;
-    uint8_t charCount = 0;
-    uint16_t basePos = 0; 
-    char ch;
-    
-    while ((ch = pgm_read_byte(message++)) != 0) {
-        const uint8_t idx = (ch - 0x20);
-        const uint8_t *fontPtr = &fudged_Adafruit5x7[(idx << 2) + idx + SmallFont::FNT_HEADER_SIZE]; // id x 5
-        processCharacter(finalOutput, fontPtr, basePos);
-        charCount++;
-        basePos += SmallFont::FNT_CHAR_PITCH;
-    }
-    return charCount;
+__attribute__((optimize("-Ofast"))) 
+uint8_t RenderFont::prepareTextGraphics(uint8_t* finalOutput, const char* message) {
+    return prepareTextInternal(finalOutput, message, false); // read from RAM
 }
 
-
+__attribute__((optimize("-Ofast"))) 
+uint8_t RenderFont::prepareTextGraphics_P(uint8_t* finalOutput, const __FlashStringHelper* flashStr) {
+    return prepareTextInternal(finalOutput, (const char*)flashStr, true);  // read from Flas
+}

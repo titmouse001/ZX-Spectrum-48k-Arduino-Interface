@@ -13,44 +13,69 @@ constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HE
 constexpr uint16_t PIX_INC = 0x0100;  // within same character -> +256 for next pixel line
 constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
 
-// textLine: Draws up to a full-width line of text (32 bytes per line)
-// Text must be NULL-terminated and no longer than 42 characters (font width is 6 pixels, screen width 256 pixels -> max 42 chars)
+
+/* textLine: 
+ * Draws up to a full-width line of text (32 bytes per line). Text must be NULL-terminated and no longer
+ * than 42 characters (font width is 6 pixels, screen width 256 pixels -> max 42 chars)
+ *
+ * NOTE: ypos must be a multiple of 8 (8 pixel Y-grid aligned)
+ * (This prevents the fast 8-bit scanline increment from overflowing into 
+ * the "Screen Third" bits and scrambling the render across the screen sections)
+ */
 __attribute__((optimize("-Ofast"))) 
 void Draw::textLine(int ypos, const char *message) {
-
     uint16_t mark = BufferManager::getMark();
     uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
-    
     RenderFont::prepareTextGraphics(fontData, message);
-    uint16_t destAddr = Utils::zx_spectrum_screen_address(ypos);
+    uint16_t destAddr = Utils::zx_spectrum_screen_address(0, ypos);
+    uint8_t addr_high = static_cast<uint8_t>(destAddr >> 8);
+    uint8_t addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
 
     Copy32Packet pkt;
+    pkt.dest_addr_low = addr_low;
+
     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
-        pkt.dest_addr_high = static_cast<uint8_t>(destAddr >> 8);
-        pkt.dest_addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
+        pkt.dest_addr_high = addr_high++;
         Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
         Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
         fontData += SmallFont::FNT_BUFFER_SIZE;
-        destAddr += PIX_INC;  // down 1 pixel scanline 
     }
-
     BufferManager::freeToMark(mark);
 }
 
-// text_P: TEXT SUPPORT FROM FLASH MEMORY 
-void Draw::text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {
-    uint16_t mark = BufferManager::getMark();
-    uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);
-    const uint8_t charCount = RenderFont::prepareTextGraphics_P(buffer, flashStr);
-    drawTextInternal(xpos, ypos, charCount, buffer);
-    BufferManager::freeToMark(mark);
-}
+// __attribute__((optimize("-Ofast"))) 
+// void Draw::textLine(int ypos, const char *message) {
 
-// text: General purpuse text
-void Draw::text(int xpos, int ypos, const char *message) {
+//     uint16_t mark = BufferManager::getMark();
+//     uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
+    
+//     RenderFont::prepareTextGraphics(fontData, message);
+//     uint16_t destAddr = Utils::zx_spectrum_screen_address(0,ypos);
+
+//     Copy32Packet pkt;
+//     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
+//         pkt.dest_addr_high = static_cast<uint8_t>(destAddr >> 8);
+//         pkt.dest_addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
+//         Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
+//         Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
+//         fontData += SmallFont::FNT_BUFFER_SIZE;
+//         destAddr += PIX_INC;  // down 1 pixel scanline 
+//     }
+//     BufferManager::freeToMark(mark);
+// }
+
+// Unified renderer for Flash (PROGMEM) and RAM strings (using void* to support both)
+void Draw::textCore(int xpos, int ypos, const void *str, bool isFlash) {
     uint16_t mark = BufferManager::getMark();
     uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);
-    const uint8_t charCount = RenderFont::prepareTextGraphics(buffer, message);
+    uint8_t charCount;
+    
+    if (isFlash) {
+        charCount = RenderFont::prepareTextGraphics_P(buffer, reinterpret_cast<const __FlashStringHelper*>(str));
+    } else {
+        charCount = RenderFont::prepareTextGraphics(buffer, reinterpret_cast<const char*>(str));
+    }
+    
     drawTextInternal(xpos, ypos, charCount, buffer);
     BufferManager::freeToMark(mark);
 }

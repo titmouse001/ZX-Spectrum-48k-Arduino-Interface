@@ -10,7 +10,10 @@ constexpr uint16_t POOL_SIZE = 512;
 namespace BufferManager {
   extern uint8_t pool[POOL_SIZE];
   extern uint16_t poolOffset;
+
+#ifdef _DEBUG_POOL_SIZE_ENABLED_
   extern uint16_t poolOffsetLastMax;  // BEBUG ONLY
+#endif
 
   uint8_t* allocate(size_t size);
   uint16_t getMark();

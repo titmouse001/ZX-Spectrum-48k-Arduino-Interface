@@ -14,11 +14,11 @@
 // Place font characters in flash
 GLCDFONTDECL(fudged_Adafruit5x7) = {
 
-	0x0, 0x0, // size of zero indicates fixed width font,
-	0x05,	  // width
-	0x07,	  // height
-	0x20,	  // first char
-	0x60,	  // char count
+	// 0x0, 0x0, // size of zero indicates fixed width font,
+	// 0x05,	  // width
+	// 0x07,	  // height
+	// 0x20,	  // first char
+	// 0x60,	  // char count
 
 	0x00, 0x00, 0x00, 0x00, 0x00, // SPACE
 	0x00, 0x00, 0x5F, 0x00, 0x00, // !
@@ -115,7 +115,7 @@ GLCDFONTDECL(fudged_Adafruit5x7) = {
 	0x00, 0x00, 0x7F, 0x00, 0x00, // |
 	0x41, 0x41, 0x36, 0x08, 0x00, // }
 	0x02, 0x01, 0x02, 0x04, 0x02, // ~
-	0X7F, 0X7F, 0X7F, 0X7F, 0X7F  // del
+//	0X7F, 0X7F, 0X7F, 0X7F, 0X7F  // del
 };
 
 // helper to fetch a byte from flash:
