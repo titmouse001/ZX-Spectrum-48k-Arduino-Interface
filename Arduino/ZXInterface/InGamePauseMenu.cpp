@@ -146,9 +146,21 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   Z80Registers* z80Registers = Utils::storeZ80States();
   z80Registers->borderCol = borderColour; // used the original snapshot value, we can't extract this at game time!
 
-  //Utils::saveScreen(SCRATCH_FILE);
-//  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, 1024U*48);// ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
-//  Utils::saveHeader(z80Registers);
+
+// Test - Fudged for now!
+  char name[42+4+1];
+//  char* name = (char*) BufferManager::allocate(42+1);
+ // uint16_t mark = BufferManager::getMark();
+  uint8_t s = SdCardSupport::getFile().getDisplayName7(name,42);
+  name[s+3] = '\0';
+  name[s+2] = 'A';
+  name[s+1] = 'N';
+  name[s+0] = 'S';
+  name[s-1] = '.';
+  name[s-2] = '1';
+  name[s-3] = '0';
+  name[s-4] = '0';
+
 
   Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
   
@@ -162,7 +174,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     Menu::waitForRelease();   
 
     if (result == SAVE_SNA ) { 
-      Utils::saveSnapshot(z80Registers);
+      Utils::saveSnapshot(z80Registers, name);
       // clear a thin window for text
       Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS)/2/8) * (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
       for (uint8_t i=0; i<8; i++) {
@@ -171,6 +183,12 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
       Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));
       Utils::delay16(1500);
+
+
+     // SdCardSupport::syncRootToDepth();
+
+
+
     }
     if (result == POKE) {
       handlePokeMenu();
@@ -344,15 +362,17 @@ void InGamePauseMenu::handleScreenshotMenu() {
   do {
     Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 17) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) - 16, F("Saving Screenshot"));
 
-    if (Utils::exportScreenshot("SHOTS")) {
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 15) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("SAVED - ANY KEY"));
+    char* fileName = Utils::exportScreenshot(SHOTS_FOLDER);
+    if (fileName != nullptr) {
+      Draw::text((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 12) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 8, fileName);
+      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 16) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 48, F("SAVED - ANY KEY"));
       Menu::waitForAnyKey();
       break;
     }else{
       if (!SdCardSupport::isInserted()) {
         Utils::waitForSDCard_Blocking(true); // shows "INSERT SD CARD"
       } else {
-        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 11) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("SAVE FAILED"));
+        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 11) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("FAILED"));
         Utils::delay16(2000);
         Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
       }

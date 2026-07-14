@@ -17,6 +17,8 @@ constexpr uint8_t FOLDER_NAV_DEPTH = 5;
 // Saves the current game state when navigating to the in-game pause menu
 static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 
+// Screen shots folder -  incrementing "SHOT0000.SCR" files are saved here.
+static constexpr const char* SHOTS_FOLDER = "SHOTS";
 
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format

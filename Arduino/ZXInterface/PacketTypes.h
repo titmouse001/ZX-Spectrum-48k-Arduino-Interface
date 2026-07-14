@@ -23,6 +23,9 @@ constexpr uint16_t CMD_Fill8=9;
 constexpr uint16_t CMD_SendData=10;
 constexpr uint16_t CMD_Poke=11;
 constexpr uint16_t CMD_ClearAllRam=12;
+constexpr uint16_t CMD_ClearScreenAttributes=13;
+constexpr uint16_t CMD_ClearScreenBitmap=14;
+
 
 #pragma pack(push, 1)
 
@@ -248,6 +251,25 @@ struct __attribute__ ((packed))  ClearAllRam {
                     cmd_low(cmd_addr(CMD_ClearAllRam) & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,ClearAllRam);
+
+
+
+struct __attribute__ ((packed))  ClearScreenBitmap {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    ClearScreenBitmap() : cmd_high(cmd_addr(CMD_ClearScreenBitmap) >> 8), 
+                          cmd_low(cmd_addr(CMD_ClearScreenBitmap) & 0xff) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,ClearScreenBitmap);
+
+
+struct __attribute__ ((packed))  ClearScreenAttributes {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    ClearScreenAttributes() : cmd_high(cmd_addr(CMD_ClearScreenAttributes) >> 8), 
+                              cmd_low(cmd_addr(CMD_ClearScreenAttributes) & 0xff) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,ClearScreenAttributes);
 
 
 #pragma pack(pop)

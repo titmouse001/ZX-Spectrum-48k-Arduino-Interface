@@ -11,8 +11,15 @@
 //      REG_AF'=07, REG_HL =09, REG_DE =11, REG_BC =13
 //      REG_IY =15, REG_IX =17, REG_IFF=19, REG_R  =20
 //      REG_AF =21, REG_SP =23, REG_IM =25, REG_BDR=26
+
 struct __attribute__ ((packed)) Z80Registers {
-    // This wil be raw copied to SNA file header so must be Little-Endian order (Low byte first).
+    // This struct will be raw-copied to the SNA file header when saving snapshot files.
+    // It matches the SNA Little-Endian byte order (low byte first), allowing these 
+    // saved files to be loaded by ZX Spectrum emulators.
+    // 
+    // Note: The in-game pause menu uses this structure to save z80 states, but it
+    // does not use the structs memory order; since transferring registers to and from the Speccy 
+    // requires a controlled process, it cannot follow this specific file-format order.
     uint8_t i;
     uint8_t l_prime,h_prime;
     uint8_t e_prime,d_prime;
@@ -37,31 +44,24 @@ struct __attribute__ ((packed)) Z80Registers {
 
 namespace Utils {
 
-void clearScreen(uint8_t col);
-
-uint8_t readJoystick();
-
-void frameDelay(unsigned long start);
-void setupJoystick();
-
+void resetSystem();
 Z80Registers* storeZ80States();
 void restoreZ80States(Z80Registers* regs);
 
-//void saveScreen(const char* filename);
-//void restoreScreen(const char* filename);
 void saveMemory(const char* filename, uint16_t address, uint16_t size);
 void loadMemory(const char* filename, uint16_t address, uint16_t size);
-void saveSnapshot(Z80Registers* regs);
+void saveSnapshot(Z80Registers* regs, char* fileName);
 
+void setupJoystick();
+uint8_t readJoystick();
+
+void clearScreen(uint8_t col);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
-
-bool exportScreenshot(const char* folderName);
+char* exportScreenshot(const char* folderName);
 void viewSpeccyMemory();
-
 void stockRomBoot_Blocking();
 void waitForSDCard_Blocking(bool clearScreen= false);
 void show5VoltRailStatus();
-void resetSystem();
 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
 uint16_t zx_spectrum_screen_address(uint8_t y);

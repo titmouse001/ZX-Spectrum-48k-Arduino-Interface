@@ -18,54 +18,55 @@ bool     Menu::inSubFolder = false;
 constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_WHITE; 
 
 
-static uint16_t menuPathHistory[FOLDER_NAV_DEPTH]; 
-static uint8_t  menuPathDepth = 0;
+// static uint16_t menuPathHistory[FOLDER_NAV_DEPTH]; 
+// static uint8_t  menuPathDepth = 0;
 
 
-static void syncRootToDepth() {
-  FatFile& root = SdCardSupport::closeRootIfOpen();
-  root.open("/");
+// static void syncRootToDepth() {
+//   FatFile& root = SdCardSupport::reopenRoot();
+// //  root.open("/");
 
-  if (menuPathDepth > 0) {
-    size_t totalPathLen = 1;  // Start with root '/'
-    for (uint8_t i = 0; i < menuPathDepth; i++) {
-      FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
-      if (file) {
-        totalPathLen += (file->getNameLength() + 1);  //  + 1 for the slash
-      }
-    }
-    totalPathLen += 1;  // +1 for null terminator
+//   if (menuPathDepth > 0) {
+//     size_t totalPathLen = 1;  // Start with root '/'
+//     for (uint8_t i = 0; i < menuPathDepth; i++) {
+//       FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
+//       if (file) {
+//         totalPathLen += (file->getNameLength() + 1);  //  + 1 for the slash
+//       }
+//     }
+//     totalPathLen += 1;  // +1 for null terminator
 
-    uint16_t mark = BufferManager::getMark();
-    char* localPath = (char*)BufferManager::allocate(totalPathLen);
+//     uint16_t mark = BufferManager::getMark();
+//     char* localPath = (char*)BufferManager::allocate(totalPathLen);
 
-    localPath[0] = '/';
-    localPath[1] = '\0';
+//     localPath[0] = '/';
+//     localPath[1] = '\0';
 
-    for (uint8_t i = 0; i < menuPathDepth; i++) {
-      FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
-      if (file) {
-        // Now you can safely use getName() into the allocated space
-        size_t len = strlen(localPath);
-        localPath[len] = '/';
-        file->getName(localPath + len + 1, totalPathLen - len - 1);
-      }
+//     for (uint8_t i = 0; i < menuPathDepth; i++) {
+//       FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
+//       if (file) {
+//         // Now you can safely use getName() into the allocated space
+//         size_t len = strlen(localPath);
+//         localPath[len] = '/';
+//         file->getName(localPath + len + 1, totalPathLen - len - 1);
+//       }
 
-      root.close();
-      if (!root.open(localPath)) {
-        menuPathDepth = 0;
-        root.open("/");
-        break;
-      }
-    }
-    BufferManager::freeToMark(mark);
-  }
-  Menu::inSubFolder = (menuPathDepth > 0);
-}
+//       root.close();
+//       if (!root.open(localPath)) {
+//         menuPathDepth = 0;
+//         SdCardSupport::reopenRoot();
+//         //root.open("/");
+//         break;
+//       }
+//     }
+//     BufferManager::freeToMark(mark);
+//   }
+//   Menu::inSubFolder = (menuPathDepth > 0);
+// }
 
 
 FatFile* Menu::handleMenu() {
-  syncRootToDepth();    // Re-synchronize the menu
+  SdCardSupport::syncRootToDepth();    // Re-synchronize the menu
   Utils::clearScreen(MENU_TEXT_COLOUR);
   uint16_t totalFiles = scanFolder();
 
@@ -105,11 +106,11 @@ FatFile* Menu::handleMenu() {
       bool backOneLevel = (inSubFolder && currentFileIndex == 0);  // Inside folder - first item shows "[/]"
 
       if (backOneLevel) {
-        if (menuPathDepth > 0) {
-          menuPathDepth--;
-          uint16_t exitedFolderIndex = menuPathHistory[menuPathDepth];
+        if (SdCardSupport::menuPathDepth > 0) {
+          SdCardSupport::menuPathDepth--;
+          uint16_t exitedFolderIndex = SdCardSupport::menuPathHistory[SdCardSupport::menuPathDepth];
           
-          syncRootToDepth();
+          SdCardSupport::syncRootToDepth();
           totalFiles = scanFolder(false);  
           
           // back to the folder we just exited
@@ -120,14 +121,12 @@ FatFile* Menu::handleMenu() {
         // Regular File or Folder selection
         uint16_t selectedIndex = inSubFolder ? currentFileIndex - 1 : currentFileIndex;
         FatFile* file= SdCardSupport::openFileByIndex(selectedIndex);
-       // FatFile& file = SdCardSupport::getFile();
-        
         if (file->isDir()) {
           // Check if we are allowed to go deeper
-          if (menuPathDepth < FOLDER_NAV_DEPTH) { 
-            menuPathHistory[menuPathDepth] = selectedIndex;
-            menuPathDepth++;
-            syncRootToDepth();
+          if (SdCardSupport::menuPathDepth < FOLDER_NAV_DEPTH) { 
+            SdCardSupport::menuPathHistory[SdCardSupport::menuPathDepth] = selectedIndex;
+            SdCardSupport::menuPathDepth++;
+            SdCardSupport::syncRootToDepth();
             totalFiles = scanFolder(true);  // new subfolder
           } else {
             file->close();
@@ -156,7 +155,8 @@ FatFile* Menu::handleMenu() {
       Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
     }
 
-    Utils::frameDelay(start);
+    //Utils::frameDelay(start);
+    Utils::delay16(MAX_BUTTON_READ_MILLISECONDS);  // aiming for 50 FPS'ish
   }
 }
 
@@ -386,5 +386,5 @@ void Menu::resetToRoot() {
   currentFileIndex = 0;
   startFileIndex = 0;
   inSubFolder = false;
-  menuPathDepth = 0;
+  SdCardSupport::menuPathDepth = 0;
 }

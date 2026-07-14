@@ -17,20 +17,28 @@ static FatFile root;
 static FatFile file;
 
 public:
-static bool init(); //uint8_t csPin) ;
-static uint16_t countSnapshotFiles();
-static FatFile*  openFileByIndex(uint16_t searchIndex);
 
-static char* getDisplayFileName(char* buff);
+static uint16_t menuPathHistory[]; 
+static uint8_t  menuPathDepth;
+
+static bool init(); //uint8_t csPin) ;
+
+static void syncRootToDepth();
 
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }
+static FatFile& closeFile();
+static FatFile& reopenRoot() ;
 
-static FatFile& closeFileIfOpen();
-static FatFile& closeRootIfOpen();
+// static FatFile& closeFileIfOpen();
+// static FatFile& closeRootIfOpen();
 static bool isInserted();
 static bool copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName);
 static bool findFreeFilename(FatFile& dir,  char* filename);
+
+static uint16_t countSnapshotFiles();
+static FatFile*  openFileByIndex(uint16_t searchIndex);
+//static char* getDisplayFileName(char* buff);
 
 };
 
