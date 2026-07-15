@@ -57,13 +57,6 @@ void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
 }
 
 uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) {
-  Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
-  Draw::text_P(PAUSE_XPOS, getY(RESUME), F("Resume"));
-  Draw::text_P(PAUSE_XPOS, getY(SAVE_SNA), F("Save"));
-  Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
-  Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
-  Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
-  Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
 
   unsigned long lastActionTime = 0;
   bool isRepeating = false;
@@ -112,7 +105,8 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
 bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
 
-  // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's combined /RD AND /IORQ lines
+  // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's
+  // combined /RD AND /IORQ lines
   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
   // Using Inline ASM for cycle-accurate timing.
@@ -123,7 +117,8 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
       "1: sbic %[pin],2   \n\t"  // Check A2 (PC2); skip next instruction if LOW
       "rjmp 1b            \n\t"  // Jump back to '1' (Loop while A2 is HIGH)
       "cbi  %[port],0     \n\t"  // Drive A0 (PC0) LOW (Start NMI pulse)
-      "sbi  %[port],0     \n\t"  // Drive A0 (PC0) HIGH (End NMI pulse, 2 cycles wide)
+      "sbi  %[port],0     \n\t"  // Drive A0 (PC0) HIGH (End NMI pulse, 2 cycles
+                                 // wide)
       :
       : [pin] "I"(_SFR_IO_ADDR(PINC)), [port] "I"(_SFR_IO_ADDR(PORTC)));
 
@@ -144,51 +139,87 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   // storeZ80States allocates memory, and restoreZ80States frees it.
   // If exiting without calling restoreZ80States, free structs marker manually.
   Z80Registers* z80Registers = Utils::storeZ80States();
-  z80Registers->borderCol = borderColour; // used the original snapshot value, we can't extract this at game time!
+  z80Registers->borderCol =
+      borderColour;  // used the original snapshot value, we can't extract this
+                     // at game time!
 
+  //  Get filename before we distroy the shared working FatFile
+  char dirName[43];
+  uint8_t len = SdCardSupport::getFile().getDisplayName7(dirName, 42);
+  dirName[len - 4] = '\0';  // knock off the ".sna"
 
-// Test - Fudged for now!
-  char name[42+4+1];
-//  char* name = (char*) BufferManager::allocate(42+1);
- // uint16_t mark = BufferManager::getMark();
-  uint8_t s = SdCardSupport::getFile().getDisplayName7(name,42);
-  name[s+3] = '\0';
-  name[s+2] = 'A';
-  name[s+1] = 'N';
-  name[s+0] = 'S';
-  name[s-1] = '.';
-  name[s-2] = '1';
-  name[s-3] = '0';
-  name[s-4] = '0';
+  // Save screen to scratch file
+  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
+                    ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
 
-
-  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE); 
-  
-  Menu::waitForRelease();
+ //Menu::waitForRelease();
 
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
+    Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
+    Draw::text_P(PAUSE_XPOS, getY(RESUME), F("Resume"));
+    Draw::text_P(PAUSE_XPOS, getY(SAVE_SNA), F("Save"));
+    Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
+    Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
+    Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
+    Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
+
     uint8_t result = getSelectedMenuOption_Blocking(selectedIndex);
 
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
-    Menu::waitForRelease();   
+    Menu::waitForRelease();
 
-    if (result == SAVE_SNA ) { 
-      Utils::saveSnapshot(z80Registers, name);
+    if (result == SAVE_SNA) {
+      // Restore Speccys screen from scratch file (screen is save to file when
+      // pausing game). This part is not really need but it's nice to show the
+      // user the screen as it's saved - rather than the pause menu screen.
+      Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
+                        ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+
+      SdFat32& sd = SdCardSupport::getSd();
+      if (!sd.exists(dirName)) {
+        sd.mkdir(dirName);
+      }
+      if (sd.chdir(dirName)) {
+        uint32_t nextIndex = 0;
+        File indexFile;
+
+        if (indexFile.open("INDEX.DAT", O_READ)) {
+          indexFile.read(&nextIndex, sizeof(nextIndex));
+          indexFile.close();
+        }
+
+        char saveName[13];
+        strcpy_P(saveName, PSTR("00000000.SNA"));
+
+        uint32_t temp = nextIndex;
+        for (int8_t i = 7; i >= 0; i--) {
+          saveName[i] = '0' + (temp % 10);
+          temp /= 10;
+        }
+
+        Utils::saveSnapshot(z80Registers, saveName);
+
+        nextIndex++;
+        if (indexFile.open("INDEX.DAT", O_WRITE | O_CREAT | O_TRUNC)) {
+          indexFile.write(&nextIndex, sizeof(nextIndex));
+          indexFile.close();
+        }
+
+        sd.chdir();
+      }
+
       // clear a thin window for text
-      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS)/2/8) * (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
-      for (uint8_t i=0; i<8; i++) {
-        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address(0, (ZX_SCREEN_HEIGHT_PIXELS/2) + i), ZX_SCREEN_WIDTH_BYTES, 0);
+      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START +  (((ZX_SCREEN_HEIGHT_PIXELS) / 2 / 8) * 
+                              (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
+
+      for (uint8_t i = 0; i < 8; i++) {
+        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, (ZX_SCREEN_HEIGHT_PIXELS / 2) + i),
+                                                                    ZX_SCREEN_WIDTH_BYTES, 0);
       }
 
       Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));
       Utils::delay16(1500);
-
-
-     // SdCardSupport::syncRootToDepth();
-
-
-
     }
     if (result == POKE) {
       handlePokeMenu();
@@ -200,26 +231,27 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
       handleScreenshotMenu();
     }
     if (result == Resume) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE,
+                              COL::BLACK_BLACK);
       break;
     }
     if (result == EXIT) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE,
+                              COL::BLACK_BLACK);
       BufferManager::freeToMark(z80Registers->AllocMark);
       return true;  // go back to main game loader menu (exit game)
     }
   } while (true);
 
-
-// // -------------------- DEBUG
-// Utils::clearScreen(COL::BRIGHT_MAGENTA_BLACK);
-// if (z80Registers->i == 0xfe) {  // Zynaps "I" value
-//    Draw::text_P(80, 90, F("I=fe, IM 2"));
-// }else {
-//    Draw::text_P(80, 90, F("I=3f, IM 1"));
-// }
-// delay(1000);
-// // ------------------------------
+  // // -------------------- DEBUG
+  // Utils::clearScreen(COL::BRIGHT_MAGENTA_BLACK);
+  // if (z80Registers->i == 0xfe) {  // Zynaps "I" value
+  //    Draw::text_P(80, 90, F("I=fe, IM 2"));
+  // }else {
+  //    Draw::text_P(80, 90, F("I=3f, IM 1"));
+  // }
+  // delay(1000);
+  // // ------------------------------
 
 
   Menu::waitForRelease();

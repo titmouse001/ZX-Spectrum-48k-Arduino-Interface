@@ -25,6 +25,7 @@ static bool init(); //uint8_t csPin) ;
 
 static void syncRootToDepth();
 
+static SdFat32& getSd() { return sd; }
 static FatFile& getRoot() { return root; }
 static FatFile& getFile() { return file; }
 static FatFile& closeFile();

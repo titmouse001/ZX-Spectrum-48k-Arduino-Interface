@@ -131,20 +131,21 @@ void Utils::restoreZ80States(Z80Registers* regs) {
 void Utils::saveSnapshot(Z80Registers* regs, char* fileName) {
   // Restore Speccys screen from scratch file (screen is save to file when pausing game).
   // This part is not really need but it's nice to show the user the screen as it's saved - rather than the pause menu screen.
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+//  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
 
 
-  FatFile folder;
-  char folderName[] = "SAVES";
-  FatFile& root = SdCardSupport::reopenRoot();
+  // FatFile folder;
+  // char folderName[] = "SAVES";
+  // FatFile& root = SdCardSupport::reopenRoot();
 
-  if (!folder.open(folderName, O_RDONLY)) {
-    if (!folder.mkdir(&root, folderName)) return;
-    folder.open(folderName, O_RDONLY);
-  }
+  // if (!folder.open(folderName, O_RDONLY)) {
+  //   if (!folder.mkdir(&root, folderName)) return;
+  //   folder.open(folderName, O_RDONLY);
+  // }
 
   FatFile& file = SdCardSupport::closeFile();
-  if (!file.open(&folder, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
+  //if (!file.open(&folder, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
+  if (!file.open( fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
     return ;
   }
   file.write((const uint8_t*)regs, sizeof(Z80Registers) -2 );
@@ -180,7 +181,7 @@ void Utils::saveSnapshot(Z80Registers* regs, char* fileName) {
     file.write(byte);
   }
   file.close();
-  folder.close();
+ // folder.close();
 
   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
   DDRD = 0xFF;                     // Set all PORTD pins as outputs

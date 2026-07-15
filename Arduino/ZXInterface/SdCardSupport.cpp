@@ -4,7 +4,7 @@
 #include "menu.h"
 #include "Pin.h"
 #include "Utils.h"
-#include "src/fatlib/SdFat.h"
+#include "src/fatlib/SdFat.h" // SdFat version 2.3.1 
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
