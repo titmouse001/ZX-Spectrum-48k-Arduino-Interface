@@ -31,6 +31,49 @@
 #ifdef __AVR__
 #include <avr/io.h>
 #endif  // __AVR__
+
+
+
+// SdFat configuration options
+// These settings reduce code size and RAM usage for small AVR targets.
+
+// Disable contiguous file flag support.
+// Saves a small amount of code if you never create pre-allocated contiguous files.
+#define USE_FAT_FILE_FLAG_CONTIGUOUS 0  // 0=off/1=on (off saves 450 bytes)
+
+// Disable dedicated SPI mode.
+// 0 = use normal SPI interface
+// 1 = enable dedicated SPI handling for higher performance (may use more code)
+// Disable on AVR when flash size is more important than maximum SD speed.
+#define ENABLE_DEDICATED_SPI 0  // (off saves 360 bytes)
+
+// Disable Long File Name (LFN) support.
+// 0 = standard 8.3 FAT filenames only (smaller code, less RAM)
+// 1 = enable long filenames (larger code size)
+// Use 0 for AVR projects where flash space is limited.
+#define USE_LONG_FILE_NAMES 1 // (cost 1,260 bytes)
+
+// Select filesystem support.
+// 1 = FAT16/FAT32 only (smallest code size)
+// 2 = exFAT support
+// 3 = FAT16/FAT32 + exFAT (largest code size)
+#define SDFAT_FILE_TYPE 1
+
+// Check SD card internal flash programming busy state after writes.
+// 1 = wait until SD card completes internal flash programming
+// 0 = allow application to continue immediately after write command
+// Enabled is recommended for maximum compatibility and reliability.
+#define CHECK_FLASH_PROGRAMMING 1  // (cost 40 bytes)
+
+
+
+
+
+
+
+
+
+
 // To try UTF-8 encoded filenames.
 //  #define USE_UTF8_LONG_NAMES 1
 //

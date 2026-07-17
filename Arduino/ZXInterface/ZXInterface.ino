@@ -240,45 +240,6 @@ void handleTxtFile(FatFile* pFile) {
 }
 
 
-// --------------------------------------
-  // roms debug_trap test at 0x3d00
-
-  // NOP_Packet pkt;
-  // pkt.cmd_high =0x3d00 >> 8;
-  // pkt.cmd_low = 0x3d00 & 0xff;
-  // Z80Bus::sendBytes((uint8_t*)&pkt, 2);
-
-// --------------------------------------
-
-// #ifdef SERIAL_DEBUG
-//   void setupSerial() {
-//     Serial.begin(9600);
-//     while (!Serial) {};
-//     Serial.println("SERIAL DEBUG BREAKS COMMS TO Z80");
-//   }
-// #endif
-
-
-// #ifdef DEBUG_OLED
-// bool setupOled() {  // DEBUG USE ONLY
-//   Wire.begin(); 
-//   Wire.beginTransmission(I2C_ADDRESS);
-//   bool result = (Wire.endTransmission() == 0);  // is OLED fitted
-//   Wire.end();
-
-//   if (result) {
-//     oled.begin(&Adafruit128x32, I2C_ADDRESS);  // Initialise OLED
-//     delay(1);                                  // some hardware is slow to initialise, and first call may not work
-//     oled.begin(&Adafruit128x32, I2C_ADDRESS);
-//     oled.setFont(fudged_Adafruit5x7);  // original Adafruit5x7 font
-//     oled.clear();
-//     oled.print(F("ver"));
-//     oled.println(F(VERSION));
-//   }
-//   return result;
-// }
-// #endif
-
 
 // -------------------------------------------------------------------------------------
 // *** Some Useful Links ***
@@ -286,22 +247,6 @@ void handleTxtFile(FatFile* pFile) {
 // Arduino    : https://devboards.info/boards/arduino-nano
 //              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
 // -------------------------------------------------------------------------------------
-
-/* DEBUG EXAMPLE TO SPECTRUM SCREEN
-uint16_t destAddr;
-char _c[32];
-for (uint8_t y = 0; y < 8; y++) {
-  destAddr = Utils::zx_spectrum_screen_address(128, y);
-  FILL_COMMAND(packetBuffer, 128 / 8, destAddr, 0x00);
-  Z80Bus::sendBytes(packetBuffer, 6);
-}
-destAddr = 0x5800 + (128 / 8);
-FILL_COMMAND(packetBuffer, 128 / 8, destAddr, B01000100);
-Z80Bus::sendBytes(packetBuffer, 6);
-sprintf(_c, "Delay:%d seconds", _delay / (1000 / 20));  // eats flash memory
-Draw::text(256 - 128, 0, _c);
-*/
-
 
 // Generate Map file
 // >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt

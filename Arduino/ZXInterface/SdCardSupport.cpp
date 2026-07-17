@@ -4,16 +4,14 @@
 #include "menu.h"
 #include "Pin.h"
 #include "Utils.h"
-#include "src/fatlib/SdFat.h" // SdFat version 2.3.1 
+//#include "src/fatlib/SdFat.h" // SdFat version 2.3.1 
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
 
-
 uint16_t SdCardSupport::menuPathHistory[FOLDER_NAV_DEPTH]; 
 uint8_t  SdCardSupport::menuPathDepth = 0;
-
 
 
 bool SdCardSupport::init() { //uint8_t csPin) {
@@ -26,9 +24,9 @@ bool SdCardSupport::init() { //uint8_t csPin) {
 
 
 
+
 void SdCardSupport::syncRootToDepth() {
-  FatFile& root = SdCardSupport::reopenRoot();
-//  root.open("/");
+  reopenRoot();
 
   if (menuPathDepth > 0) {
     size_t totalPathLen = 1;  // Start with root '/'
@@ -49,7 +47,6 @@ void SdCardSupport::syncRootToDepth() {
     for (uint8_t i = 0; i < menuPathDepth; i++) {
       FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
       if (file) {
-        // Now you can safely use getName() into the allocated space
         size_t len = strlen(localPath);
         localPath[len] = '/';
         file->getName(localPath + len + 1, totalPathLen - len - 1);
@@ -58,8 +55,7 @@ void SdCardSupport::syncRootToDepth() {
       root.close();
       if (!root.open(localPath)) {
         menuPathDepth = 0;
-        SdCardSupport::reopenRoot();
-        //root.open("/");
+        reopenRoot();
         break;
       }
     }
@@ -69,34 +65,32 @@ void SdCardSupport::syncRootToDepth() {
 }
 
 
-
 FatFile* SdCardSupport::openFileByIndex(uint16_t searchIndex) {
   uint16_t index = 0;
   root.rewind();
-  do {
-    file.close(); 
+  while (true) {
+    file.close(); // Close the previous file before opening the next
     if (!file.openNext(&root, O_RDONLY)) {
-      return nullptr; // Directory empty or end of directory reached
+      return nullptr; // Reached the end of the directory without finding the index
     }
-  } while (file.isHidden() || index++ != searchIndex);
-  return &file; // The loop only exits naturally when we find the exact file
+    if (!file.isHidden()) {
+      if (index == searchIndex) {
+        return &file; // Found the exact match!
+      }
+      index++; // Only increment our counter if the file is actually visible
+    }
+  }
 }
 
 uint16_t SdCardSupport::countSnapshotFiles() {
-  //closeFileIfOpen();
   file.close();
   root.rewind();
-  DirFat_t dir;
   uint16_t totalFiles = 0;
-  while (root.readDir(&dir) > 0) {
-    uint8_t firstChar = dir.name[0];   
-    if (firstChar == FAT_NAME_FREE) break;  // nothing left
-    if (firstChar == '.' || firstChar == FAT_NAME_DELETED) continue; 
-    // As was are peeking at internal name[11], we must filter to skip Hidden, System, Label, and Long File Names
-    if (dir.attributes & (FAT_ATTRIB_LONG_NAME | FS_ATTRIB_HIDDEN | FS_ATTRIB_SYSTEM | FAT_ATTRIB_LABEL)) {
-      continue;
+  while (file.openNext(&root, O_RDONLY)) {
+    if (!file.isHidden()) {
+      totalFiles++;
     }
-    totalFiles++;
+    file.close();
   }
   return totalFiles;
 }
@@ -121,33 +115,22 @@ bool SdCardSupport::isInserted() {
   return true; // Card is alive and well
 }
 
-
 bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
-
-  // caller has this passed in from a static - need to reset each time.
-  fileName[4]='0';
-  fileName[5]='0';
-  fileName[6]='0';
-  fileName[7]='0';
-
-  file.close();
-  // happy to let "SHOT9999" roll over to "SHOU0000"
+  fileName[4] = '0';
+  fileName[5] = '0';
+  fileName[6] = '0';
+  fileName[7] = '0';
   for (uint16_t i = 0; i < 9999; i++) {
-    // Ripple-carry "0000" -> "9999"
     uint8_t idx = 7;
     while (++fileName[idx] > '9') {
       fileName[idx--] = '0';
     }
-
-    if (!file.open(&dir, fileName, O_READ)) {
-      return true;  // found one
+    if (!dir.exists(fileName)) {
+      return true;  // found an empty slot!
     }
-    file.close();
   }
-  
   return false; // All 9999 slots full
 }
-
 
 bool SdCardSupport::copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName) {
   uint16_t mark = BufferManager::getMark();
