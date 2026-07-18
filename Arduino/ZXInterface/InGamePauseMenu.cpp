@@ -12,12 +12,17 @@
 #include "z80bus.h"
 #include "PacketTypes.h"
 
+
 constexpr uint16_t PM_INITIAL_DELAY = 380;
 constexpr uint16_t PM_REPEAT_RATE = 120;
 constexpr uint8_t PAUSE_XPOS = 80;
 constexpr uint8_t PAUSE_YPOS_START = 48;
 constexpr uint8_t HIGHLIGHT_OFFSET = PAUSE_YPOS_START / 8; 
 constexpr uint8_t getY(int8_t line) { return PAUSE_YPOS_START + (line * 8); }
+
+#define FPSTR(pstr) (reinterpret_cast<const __FlashStringHelper *>(pstr))
+static const char SAVED_MSG[] PROGMEM = "SAVED";
+
 
 // ----------------------------------------------------------------------------------------------
 // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
@@ -139,20 +144,27 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   // storeZ80States allocates memory, and restoreZ80States frees it.
   // If exiting without calling restoreZ80States, free structs marker manually.
   Z80Registers* z80Registers = Utils::storeZ80States();
-  z80Registers->borderCol =
-      borderColour;  // used the original snapshot value, we can't extract this
-                     // at game time!
+   // borderColour: using original snapshot loaded value as we can't extract this at game time!
+  z80Registers->borderCol = borderColour; 
 
   //  Get filename before we distroy the shared working FatFile
-  char dirName[43];
+  static char dirName[43];
   uint8_t len = SdCardSupport::getFile().getDisplayName7(dirName, 42);
   dirName[len - 4] = '\0';  // knock off the ".sna"
+
+// TODO: When saving a snapshot, save it as "00000000.sna" in a new folder named after the game (e.g "/DIZZY")
+//       However, if the user loads that file and saves again, it will create a new folder called "/00000000"
+//       containing "00000000.sna". Repeating this from "/00000000" will increment both the folder and file names
+//       (e.g "00000001/00000001.sna")
+//
+// TODO: Store additional metadata in a *.dat file in each save folder to track the game name,
+//       since folder names alone are unreliable. This will solve 90% of cases, but existing folders
+//       that clash and are unrelated will still be an issue - so we must check for an existing *.dat
+//       containing a valid header ID
 
   // Save screen to scratch file
   Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
                     ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
- //Menu::waitForRelease();
 
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
@@ -170,56 +182,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     Menu::waitForRelease();
 
     if (result == SAVE_SNA) {
-      // Restore Speccys screen from scratch file (screen is save to file when
-      // pausing game). This part is not really need but it's nice to show the
-      // user the screen as it's saved - rather than the pause menu screen.
-      Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
-                        ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
-      SdFat32& sd = SdCardSupport::getSd();
-      if (!sd.exists(dirName)) {
-        sd.mkdir(dirName);
-      }
-      if (sd.chdir(dirName)) {
-        uint32_t nextIndex = 0;
-        File indexFile;
-
-        if (indexFile.open("INDEX.DAT", O_READ)) {
-          indexFile.read(&nextIndex, sizeof(nextIndex));
-          indexFile.close();
-        }
-
-        char saveName[13];
-        strcpy_P(saveName, PSTR("00000000.SNA"));
-
-        uint32_t temp = nextIndex;
-        for (int8_t i = 7; i >= 0; i--) {
-          saveName[i] = '0' + (temp % 10);
-          temp /= 10;
-        }
-
-        Utils::saveSnapshot(z80Registers, saveName);
-
-        nextIndex++;
-        if (indexFile.open("INDEX.DAT", O_WRITE | O_CREAT | O_TRUNC)) {
-          indexFile.write(&nextIndex, sizeof(nextIndex));
-          indexFile.close();
-        }
-
-        sd.chdir();
-      }
-
-      // clear a thin window for text
-      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START +  (((ZX_SCREEN_HEIGHT_PIXELS) / 2 / 8) * 
-                              (ZX_SCREEN_WIDTH_BYTES)), ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
-
-      for (uint8_t i = 0; i < 8; i++) {
-        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, (ZX_SCREEN_HEIGHT_PIXELS / 2) + i),
-                                                                    ZX_SCREEN_WIDTH_BYTES, 0);
-      }
-
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), F("SAVED"));
-      Utils::delay16(1500);
+      handleSaveSnapshot(z80Registers, dirName);
     }
     if (result == POKE) {
       handlePokeMenu();
@@ -231,13 +194,11 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
       handleScreenshotMenu();
     }
     if (result == Resume) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE,
-                              COL::BLACK_BLACK);
+      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
       break;
     }
     if (result == EXIT) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE,
-                              COL::BLACK_BLACK);
+      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
       BufferManager::freeToMark(z80Registers->AllocMark);
       return true;  // go back to main game loader menu (exit game)
     }
@@ -390,33 +351,99 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
 }
 
 void InGamePauseMenu::handleScreenshotMenu() {
-  bool savedSuccessfully = false;
-  do {
-    Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 17) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) - 16, F("Saving Screenshot"));
+  // Restore the Speccy's screen from the scratch file to show the user
+  // something is happening
+  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
+                    ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
 
-    char* fileName = Utils::exportScreenshot(SHOTS_FOLDER);
-    if (fileName != nullptr) {
-      Draw::text((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 12) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 8, fileName);
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 16) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 48, F("SAVED - ANY KEY"));
-      Menu::waitForAnyKey();
-      break;
-    }else{
-      if (!SdCardSupport::isInserted()) {
-        Utils::waitForSDCard_Blocking(true); // shows "INSERT SD CARD"
-      } else {
-        Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 11) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2) + 16, F("FAILED"));
-        Utils::delay16(2000);
-        Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
-      }
+  FatFile& root = SdCardSupport::reopenRoot();
+  FatFile dir;
+
+  // Open "SHOTS" folder, create if missing
+  if (!dir.open(&root, SHOTS_FOLDER, O_READ)) {
+    if (!dir.mkdir(&root, SHOTS_FOLDER)) {  // mkdir also opens it!!!!!!
+      return;
     }
-  } while (!savedSuccessfully);
+  }
+
+// TODO !!!
+
+  static char filename[] = "SHOT0000.SCR";  // will be modified
+  if (SdCardSupport::findFreeFilename(dir, filename)) {
+    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START,ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
+    for (uint8_t i = 0; i < 8; i++) {
+      Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, i), ZX_SCREEN_WIDTH_BYTES, 0);
+    }
+
+    Draw::text(0, 0, filename);
+
+    if (SdCardSupport::copyScratchTo(dir, filename)) {
+
+  //    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START,ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
+   //   for (uint8_t i = 0; i < 8; i++) {
+    //    Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, i), ZX_SCREEN_WIDTH_BYTES, 0);
+    //  }
+
+        Draw::text_P(64+16,0, FPSTR(SAVED_MSG));
+        Utils::delay16(1500);
+    }
+  }
+  dir.close();
 }
 
+void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName)  {
+      // Restore the Speccy's screen from the scratch file. This allows us to dump the whole memory which is easier 
+      // than extracting the screen from scratch file and it gives the user visual feedback that something is happening
+      Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+
+      // Check we have the games folder on SD - if not create it
+      FatFile& root = SdCardSupport::reopenRoot();
+      FatFile dir;
+      if (!dir.open(&root, dirName, O_READ)) {
+        if (!dir.mkdir(&root, dirName)) {  // mkdir also opens it!!!!!!
+          return;
+        }
+      }
+      uint16_t nextIndex = 0;
+      FatFile indexFile;
+
+      if (indexFile.open(&dir, "INDEX.DAT", O_RDWR | O_CREAT)) {
+        indexFile.read(&nextIndex, sizeof(nextIndex));
+
+        char saveName[13];
+        strcpy_P(saveName, PSTR("00000000.SNA"));  // limit 65535!
+
+        uint16_t temp = nextIndex;
+        for (int8_t i = 7; i >= 0; i--) {
+          saveName[i] = '0' + (temp % 10);
+          temp /= 10;
+        }
+
+        Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+
+        indexFile.rewind();
+        indexFile.write(&(++nextIndex), sizeof(nextIndex));
+        indexFile.close();
+      }
+
+      dir.close();
+
+      // Clear a thin window for text
+      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS) / 2 / 8) * (ZX_SCREEN_WIDTH_BYTES)),
+                                ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
+      for (uint8_t i = 0; i < 8; i++) {
+        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, (ZX_SCREEN_HEIGHT_PIXELS / 2) + i),
+                                                                  ZX_SCREEN_WIDTH_BYTES, 0);
+      }
+      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), FPSTR(SAVED_MSG));
+      Utils::delay16(1500);
+    }
 
 
 
+// ----------------------------------
 
-
+// INGNORE - OLD REF
 
 
     // This SloMo kind of works .. but sooner or later games using it crash.

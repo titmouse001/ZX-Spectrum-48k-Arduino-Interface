@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+struct Z80Registers;
+
 namespace InGamePauseMenu {
 
     uint8_t getSelectedMenuOption_Blocking(uint8_t& selectedIndex);
@@ -12,6 +14,7 @@ namespace InGamePauseMenu {
 
     void handlePokeMenu();
     void handleScreenshotMenu();
+    void handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName);
 
     enum OPTIONS_PM{
         RESUME,

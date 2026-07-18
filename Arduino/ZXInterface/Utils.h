@@ -50,21 +50,19 @@ void restoreZ80States(Z80Registers* regs);
 
 void saveMemory(const char* filename, uint16_t address, uint16_t size);
 void loadMemory(const char* filename, uint16_t address, uint16_t size);
-void saveSnapshot(Z80Registers* regs, char* fileName);
+void dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir);
 
 void setupJoystick();
 uint8_t readJoystick();
 
 void clearScreen(uint8_t col);
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
-char* exportScreenshot(const char* folderName);
 void viewSpeccyMemory();
 void stockRomBoot_Blocking();
 void waitForSDCard_Blocking(bool clearScreen= false);
 void show5VoltRailStatus();
 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
-uint16_t zx_spectrum_screen_address(uint8_t y);
 
 void memsetZero(byte* b, uint16_t len);
 void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);

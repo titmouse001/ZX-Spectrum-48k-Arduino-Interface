@@ -31,7 +31,7 @@ static FatFile& closeFile();
 static FatFile& reopenRoot() ;
 
 static bool isInserted();
-static bool copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName);
+static bool copyScratchTo(FatFile& dir, const char* toFileName);
 static bool findFreeFilename(FatFile& dir,  char* filename);
 
 static uint16_t countSnapshotFiles();

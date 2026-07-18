@@ -76,17 +76,6 @@ void loop() {
   pFile->close();
 }
 
-// notes: compiled program
-// 27258
-// 27222
-// 27218  
-// 27222
-// map file or a quick...
-// > avr-nm -S --size-sort --radix=d ZXInterface.ino.elf | grep strrchr    
-// 00027102 00000022 T strrchr
-// 00027042 00000038 T strcasecmp
-
-
 // ---------------------
 // .SCR FILE 
 // ---------------------
@@ -103,11 +92,11 @@ void handleScrFile(FatFile* pFile) {
 // NOTES: Exiting the menu and restoring the snapshot. Before doing this, we must relocate 
 // the Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is a bad idea while loading a game.
 // We set a temporary stack in screen memory (0x4000). This is safe because:
-// - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap instruction. 
-// - We reuse 0x4003 for temporary 1-deep push/pop (at 0x4001/02).
+// - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap instruction.       (JP = [1] byte)
+// - We reuse 0x4003 for temporary 1-deep push/pop (at 0x4001/02).                  (STACK = [2] bytes)
 // This temporary SP is later set by the load process to the games correct stack.
 //
-// We can safely (99.999%) set the SP at screen location during loading and simply sacrifice/corrupt 3 bytes of screen data.
+// We can safely (99.999%) set the SP at screen location during loading and simply sacrifice/corrupt [2] + [1] bytes.
 // -----------------------------------------------------------------------------------------------
 
 // ---------------------

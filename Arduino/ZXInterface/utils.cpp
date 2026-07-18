@@ -128,63 +128,40 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   BufferManager::freeToMark(regs->AllocMark);
 }
 
-void Utils::saveSnapshot(Z80Registers* regs, char* fileName) {
-  // Restore Speccys screen from scratch file (screen is save to file when pausing game).
-  // This part is not really need but it's nice to show the user the screen as it's saved - rather than the pause menu screen.
-//  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
-
-  // FatFile folder;
-  // char folderName[] = "SAVES";
-  // FatFile& root = SdCardSupport::reopenRoot();
-
-  // if (!folder.open(folderName, O_RDONLY)) {
-  //   if (!folder.mkdir(&root, folderName)) return;
-  //   folder.open(folderName, O_RDONLY);
-  // }
-
+void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir) {
   FatFile& file = SdCardSupport::closeFile();
-  //if (!file.open(&folder, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
-  if (!file.open( fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
-    return ;
+  
+  if (!file.open(&dir, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
+    return;
   }
-  file.write((const uint8_t*)regs, sizeof(Z80Registers) -2 );
+  
+  file.write((const uint8_t*)regs, sizeof(Z80Registers) - 2);  // -2 don't include AllocMark attribute
 
- // FatFile& file = SdCardSupport::closeFile();
-
-  // while (!file.open(fileName /*"saved001.sna"*/, O_CREAT | O_WRONLY | O_TRUNC)) {
-  //   // Can't warn user here - need are in the middle of storing memory!!!
-  //   while (!SdCardSupport::init()) {
-  //     Utils::delay16(20);
-  //   }  // worst case - sd card removed, full reset needed.
-  // }
-
-  //file.write(regs, sizeof(Z80Registers) - 2);  // -2 for structs AllocMark
-
-  constexpr uint16_t size = 1024U * 48;
-  // send header details first (request Z80 to send the memory data)
+  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
+  
+  // Alert Z80 to send memory data packets
   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
 
-  // Above will be doing a final NMI to unhalt Z80
-  // We need to give it time to catch up before we slam the lines to input!
-  Utils::delay16(1);  // todo - will do for now, but this is way too much time!
+  // Small delay buffer allowing hardware states to equalize
+  Utils::delay16(1);  
 
-  DDRD = 0x00;                    // make them inputs
-  digitalWriteFast(PIN_A5, LOW);  // Enable Latch for reading
+  DDRD = 0x00;                    // Set PORTD data pins to inputs
+  digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
   __asm__ __volatile__("nop; nop");
 
+  // Stream data out of the Z80 bus directly onto the SD file stream
   for (uint16_t i = 0; i < size; i++) {
     Z80Bus::waitHalt_syncWithZ80();
-    uint8_t byte = PIND;  // Capture latched data
+    uint8_t byte = PIND;          // Capture latched data from lines
     Z80Bus::triggerZ80NMI();
     file.write(byte);
   }
+  
   file.close();
- // folder.close();
 
-  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
-  DDRD = 0xFF;                     // Set all PORTD pins as outputs
+  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+  DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
 }
 
 void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
@@ -340,26 +317,6 @@ void Utils::viewSpeccyMemory() {
   }
 }
 
-char* Utils::exportScreenshot(const char* folderName) {
-  FatFile& root = SdCardSupport::reopenRoot();
-  FatFile dir;
-  if (!dir.open(&root, folderName, O_READ)) {
-    if (!dir.mkdir(&root, folderName) || !dir.open(&root, folderName, O_READ)) {
-      // TODO - warn user save failed
-      return nullptr;
-    }
-  }
-
-  static char filename[] = "SHOT0000.SCR";  // 0000 is the search start
-  bool success = false;
-  if (SdCardSupport::findFreeFilename(dir, filename)) {
-    success = SdCardSupport::copyFile(root, dir, SCRATCH_FILE, filename);
-  }
-
-  dir.close();
-  return filename;
-}
-
 void Utils::resetSystem() {
   pinModeFast(Pin::Z80_REST, OUTPUT);
   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
@@ -429,10 +386,6 @@ void Utils::show5VoltRailStatus() {
   Draw::text(256-(6*sizeof(voltageStr)), 192-8, voltageStr);  // top right corner
 }
 
-// replacing delay() with delay16()
-// Before : Sketch uses 28072 bytes (91%) of program storage space. Maximum is 30720 bytes.
-// after  : Sketch uses 27874 bytes (90%) of program storage space. Maximum is 30720 bytes.
-
 void Utils::delay16(uint16_t ms) {
     const uint32_t start = millis();
     while ((uint16_t)(millis() - start) < ms) {  }
@@ -458,12 +411,6 @@ uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
     return (static_cast<uint16_t>(addr_high) << 8) | addr_low;
 
 }
-
-// OLD join6Bits : Sketch uses 29648 bytes (96%)
-// NEW join6Bits : Sketch uses 29060 bytes (94%) and it's optimised for speed!!!
-
-
-
 
 void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
   uint16_t byteIndex = bitPosition >> 3;
@@ -502,44 +449,10 @@ void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
       break;
   }
 }
-
-// uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
-//   uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-//   uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-//   return ZX_SCREEN_ADDRESS_START + section_part + interleave_part +
-//          (x >> 3);  // x/8 gives 32 columns
-// }
-
-// uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
-//   const uint16_t section_part = uint16_t(y >> 6) * 0x0800;  //  upper/middle/lower 64 lines
-//   uint16_t interleave_part = ((y & 0x07) << 8) | ((y & 0x38) << 2);
-//   return ZX_SCREEN_ADDRESS_START + section_part + interleave_part;
-// }
-
-// void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
-//   constexpr uint8_t bitWidth = 6;
-//   uint16_t byteIndex = bitPosition >> 3;  // /8
-//   uint8_t bitIndex = bitPosition & 7;     // %8
-//   uint8_t maskedInput = input & ((1U << bitWidth) - 1);
-//   uint16_t aligned = (uint16_t)maskedInput << (16 - bitWidth - bitIndex);
-//   output[byteIndex] |= aligned >> 8;
-//   if (aligned) { output[byteIndex + 1] |= aligned; }
-// }
-
 void Utils::memsetZero(byte* b, uint16_t len) {
   for (; len != 0; len--) { *b++ = 0; }
 }
 
-// 27708
-
-
-
-// // // ****** DEBUG ONLY *************
-// // char _c[8];
-// // //sprintf(_c, "%d", BufferManager::poolOffsetLastMax );
-// // itoa(BufferManager::poolOffsetLastMax, _c, 10);
-// // Draw::text(256 - 64, 32, _c);
-// // // *******************************
 
 
 // ======================
@@ -642,7 +555,6 @@ void Utils::memsetZero(byte* b, uint16_t len) {
 //   a = b;
 //   b = temp;
 // }
-
 //=============================
 
 //

@@ -22,9 +22,6 @@ bool SdCardSupport::init() { //uint8_t csPin) {
   return root.openRoot(sd.vol());
 }
 
-
-
-
 void SdCardSupport::syncRootToDepth() {
   reopenRoot();
 
@@ -101,6 +98,7 @@ FatFile& SdCardSupport::closeFile() {
 }
 
 FatFile& SdCardSupport::reopenRoot() { 
+  file.close();
   root.close(); 
   root.openRoot(sd.vol());
   return root;
@@ -132,27 +130,33 @@ bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
   return false; // All 9999 slots full
 }
 
-bool SdCardSupport::copyFile(FatFile& root, FatFile& dir, const char* fromFileName,const char* toFileName) {
-  uint16_t mark = BufferManager::getMark();
-  uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
-  bool success = false;
-
-  file.close();
-  if (file.open(&root, fromFileName, O_READ)) {
-    FatFile destFile;
-    if (destFile.open(&dir, toFileName, O_CREAT | O_WRONLY)) {
-      int bytesRead;
-      while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
-        destFile.write(buf, bytesRead);
-      }
-      destFile.close();
-      success = true;
-    }
-    file.close();
+bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
+  FatFile& srcFile = file;
+  srcFile.close();
+  if (!srcFile.open(&root, SCRATCH_FILE, O_READ)) {
+    return false;
   }
 
+  FatFile destFile;
+  if (!destFile.open(&dir, toFileName, O_CREAT | O_WRITE | O_TRUNC)) {
+    return false;
+  }
+  uint16_t mark = BufferManager::getMark();
+  uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+
+  bool success = true;
+  uint8_t bytesRead;
+  file.rewind();
+
+  while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
+    if (destFile.write(buf, bytesRead) != bytesRead) {
+      success = false;
+      break;
+    }
+  }
   BufferManager::freeToMark(mark);
+  destFile.close();
+  srcFile.close();
+
   return success;
 }
-
-

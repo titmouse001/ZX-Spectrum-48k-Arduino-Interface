@@ -20,6 +20,7 @@ static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 // Screen shots folder -  incrementing "SHOT0000.SCR" files are saved here.
 static constexpr const char* SHOTS_FOLDER = "SHOTS";
 
+
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
  * -------------------------------------------------
@@ -233,7 +234,8 @@ static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
 
 //-----------------------------------------
 
-static constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
+//static constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
+static constexpr uint8_t FILE_READ_BUFFER_SIZE = 128;
 static constexpr uint8_t MAX_FILENAME_LEN = 64; 
 static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
 
