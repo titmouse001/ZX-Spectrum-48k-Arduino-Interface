@@ -1,7 +1,7 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
 Arduino-based ZX Spectrum 48K game loader.
-Loads the following from an SD card:
+Loads the following from a micro SD card (FAT16/32) with long file name support:
 - **SNA** *- Loading 48K Snapshots*
 - **Z80** *- Supports loading v1/2/3 48K snapshots*
 - **SCR** *- Take Spectrum screenshots*
