@@ -204,25 +204,12 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     }
   } while (true);
 
-  // // -------------------- DEBUG
-  // Utils::clearScreen(COL::BRIGHT_MAGENTA_BLACK);
-  // if (z80Registers->i == 0xfe) {  // Zynaps "I" value
-  //    Draw::text_P(80, 90, F("I=fe, IM 2"));
-  // }else {
-  //    Draw::text_P(80, 90, F("I=3f, IM 1"));
-  // }
-  // delay(1000);
-  // // ------------------------------
-
 
   Menu::waitForRelease();
 
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-  //Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, 1024U*48) ; //ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-  //Utils::restoreScreen(SCRATCH_FILE);
+  Utils::restorePauseMenuScreen();
 
   Utils::restoreZ80States(z80Registers);
-
   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
   Utils::delay16(1);               
   
@@ -351,41 +338,17 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
 }
 
 void InGamePauseMenu::handleScreenshotMenu() {
-  // Restore the Speccy's screen from the scratch file to show the user
-  // something is happening
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
-                    ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+  // Restore the Speccy's screen from the scratch file to show the user something is happening
+  Utils::restorePauseMenuScreen();
 
-  FatFile& root = SdCardSupport::reopenRoot();
   FatFile dir;
-
-  // Open "SHOTS" folder, create if missing
-  if (!dir.open(&root, SHOTS_FOLDER, O_READ)) {
-    if (!dir.mkdir(&root, SHOTS_FOLDER)) {  // mkdir also opens it!!!!!!
-      return;
-    }
-  }
-
-// TODO !!!
-
   static char filename[] = "SHOT0000.SCR";  // will be modified
-  if (SdCardSupport::findFreeFilename(dir, filename)) {
-    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START,ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
-    for (uint8_t i = 0; i < 8; i++) {
-      Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, i), ZX_SCREEN_WIDTH_BYTES, 0);
-    }
-
+  if ( SdCardSupport::openOrCreateDirectory(dir, SHOTS_FOLDER) &&  SdCardSupport::findFreeFilename(dir, filename)) {
+    Utils::clearTopBar();
     Draw::text(0, 0, filename);
-
     if (SdCardSupport::copyScratchTo(dir, filename)) {
-
-  //    Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START,ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
-   //   for (uint8_t i = 0; i < 8; i++) {
-    //    Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, i), ZX_SCREEN_WIDTH_BYTES, 0);
-    //  }
-
         Draw::text_P(64+16,0, FPSTR(SAVED_MSG));
-        Utils::delay16(1500);
+        Utils::delay16(2200);
     }
   }
   dir.close();
@@ -394,20 +357,12 @@ void InGamePauseMenu::handleScreenshotMenu() {
 void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName)  {
       // Restore the Speccy's screen from the scratch file. This allows us to dump the whole memory which is easier 
       // than extracting the screen from scratch file and it gives the user visual feedback that something is happening
-      Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
-      // Check we have the games folder on SD - if not create it
-      FatFile& root = SdCardSupport::reopenRoot();
+      Utils::restorePauseMenuScreen();
+  
+      FatFile& indexFile = SdCardSupport::closeFile();
       FatFile dir;
-      if (!dir.open(&root, dirName, O_READ)) {
-        if (!dir.mkdir(&root, dirName)) {  // mkdir also opens it!!!!!!
-          return;
-        }
-      }
-      uint16_t nextIndex = 0;
-      FatFile indexFile;
-
-      if (indexFile.open(&dir, "INDEX.DAT", O_RDWR | O_CREAT)) {
+      if (SdCardSupport::openOrCreateDirectory(dir,dirName) && indexFile.open(&dir, "INDEX.DAT", O_RDWR | O_CREAT)) {
+        uint16_t nextIndex = 0;
         indexFile.read(&nextIndex, sizeof(nextIndex));
 
         char saveName[13];
@@ -427,16 +382,9 @@ void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char*
       }
 
       dir.close();
-
-      // Clear a thin window for text
-      Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + (((ZX_SCREEN_HEIGHT_PIXELS) / 2 / 8) * (ZX_SCREEN_WIDTH_BYTES)),
-                                ZX_SCREEN_WIDTH_BYTES, COL::BRIGHT_BLACK_WHITE);
-      for (uint8_t i = 0; i < 8; i++) {
-        Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address( 0, (ZX_SCREEN_HEIGHT_PIXELS / 2) + i),
-                                                                  ZX_SCREEN_WIDTH_BYTES, 0);
-      }
-      Draw::text_P((ZX_SCREEN_WIDTH_PIXELS / 2) - ((6 * 5) / 2), (ZX_SCREEN_HEIGHT_PIXELS / 2), FPSTR(SAVED_MSG));
-      Utils::delay16(1500);
+      Utils::clearTopBar();
+      Draw::text_P(0, 0, FPSTR(SAVED_MSG));
+      Utils::delay16(2200);
     }
 
 

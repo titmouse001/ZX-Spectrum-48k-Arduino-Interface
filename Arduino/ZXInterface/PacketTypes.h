@@ -27,8 +27,6 @@ constexpr uint16_t CMD_ClearScreenAttributes=13;
 constexpr uint16_t CMD_ClearScreenBitmap=14;
 
 
-#pragma pack(push, 1)
-
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
 
@@ -56,7 +54,7 @@ struct  __attribute__ ((packed))  Poke_Packet {
                     addr_low(static_cast<uint8_t>(addr & 0xFF)),
                     value(value) {}
 };
-ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
+ASSERT_Z80_PACKET_SIZE(5,Poke_Packet);
 
 
 struct  __attribute__ ((packed))  ReceiveKeyboardPacket {
@@ -271,7 +269,5 @@ struct __attribute__ ((packed))  ClearScreenAttributes {
 };
 ASSERT_Z80_PACKET_SIZE(2,ClearScreenAttributes);
 
-
-#pragma pack(pop)
 
 #endif

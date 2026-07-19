@@ -29,8 +29,6 @@ void RenderFont::processCharacter(uint8_t* finalOutput, const uint8_t *fontPtr, 
     PROCESS_ROW(6);
 }
 
-// !!! ODD: For the methods bellow - Did have these without "-Ofast" but noticed the compile size increased (maybe it's the -flto option)!!!
-#
 __attribute__((optimize("-Ofast"))) 
 uint8_t RenderFont::prepareTextInternal( uint8_t* finalOutput, const char* message, bool inFlash) {
   Utils::memsetZero(finalOutput, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);

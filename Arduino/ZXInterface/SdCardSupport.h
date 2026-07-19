@@ -35,7 +35,8 @@ static bool copyScratchTo(FatFile& dir, const char* toFileName);
 static bool findFreeFilename(FatFile& dir,  char* filename);
 
 static uint16_t countSnapshotFiles();
-static FatFile*  openFileByIndex(uint16_t searchIndex);
+static FatFile* openFileByIndex(uint16_t searchIndex);
+static bool openOrCreateDirectory(FatFile& dir, const char* folderName);
 
 };
 

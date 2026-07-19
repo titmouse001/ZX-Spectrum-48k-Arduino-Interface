@@ -449,11 +449,21 @@ void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
       break;
   }
 }
+
 void Utils::memsetZero(byte* b, uint16_t len) {
   for (; len != 0; len--) { *b++ = 0; }
 }
 
+void Utils::restorePauseMenuScreen() {
+  loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+}
 
+void Utils::clearTopBar() {
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_WIDTH_BYTES,COL::BRIGHT_BLACK_WHITE);
+  for (uint8_t i = 0; i < 8; i++) {
+    Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address(0, i), ZX_SCREEN_WIDTH_BYTES, 0);
+  }
+}
 
 // ======================
 // ARCHIVED CODE SECTION:

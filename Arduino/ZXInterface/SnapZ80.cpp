@@ -44,7 +44,7 @@ static const uint8_t END_MARKER[] = { 0x00, 0xED, 0xED, 0x00 };
 #define MARKER_SIZE (sizeof(END_MARKER) / sizeof(END_MARKER[0]))
 
 
-MachineType SnapZ80::getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE) {
+MachineType SnapZ80::getMachineDetails(int8_t z80_version, uint8_t Z80_EXT_HW_MODE) {
 	if (z80_version == 1) {
 		return MACHINE_48K;  // For V1, machine is implicitly 48K
 	} else if (z80_version == 2) {
@@ -166,41 +166,42 @@ bool SnapZ80::locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& r
 	return false;
 }
 
-
 bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
-	bool result = true;
-	uint32_t initial_file_pos = pFile->curPosition();
+  bool result = true;
+  uint32_t initial_file_pos = pFile->curPosition();
 
-	if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {
-		result = false;
-	} else if (headerInfo->version >= Z80_VERSION_2) {
-		while (pFile->available()) {
-			uint8_t len_buf[3];  // compressed length (2 bytes), page number (1 byte)
-			if (pFile->read(len_buf, 3) != 3) {
-				return false;
-			}
-			uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
-			constexpr uint16_t UNCOMPRESSED_16KB = 0x4000 ; // uses 16KB (0x4000)
-			constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF ; // flags uncompressed
-      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? UNCOMPRESSED_16KB : compressed_len;
-			if (!pFile->seekCur(skip_len)) { // RESTORE NO REALLY NEEDED
-				return false;  // skip block data
-			}
-		}
-	} else {  // V1
-		if (headerInfo->isV1Compressed) {
-			if (!locateV1Terminator(pFile, initial_file_pos, headerInfo->v1PayloadLength ) ) {
-				result = false;
-			}
-		} else { // check uncompressed data is 48k + file header
-			if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) {  
-				result = false;
-			}
-		}
-	}
+  if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {
+    result = false;
+  } else if (headerInfo->version >= Z80_VERSION_2) {
+    while (pFile->available()) {
+      uint8_t len_buf[3];  // compressed length (2 bytes), page number (1 byte)
+      if (pFile->read(len_buf, 3) != 3) {
+        return false;
+      }
+      uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
+      constexpr uint16_t UNCOMPRESSED_16KB = 0x4000;  // uses 16KB (0x4000)
+      constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF;  // flags uncompressed
+      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG)
+                              ? UNCOMPRESSED_16KB
+                              : compressed_len;
+      if (!pFile->seekCur(skip_len)) {  // RESTORE NO REALLY NEEDED
+        return false;                   // skip block data
+      }
+    }
+  } else {  // V1
+    if (headerInfo->isV1Compressed) {
+      if (!locateV1Terminator(pFile, initial_file_pos, headerInfo->v1PayloadLength)) {
+        result = false;
+      }
+    } else {  // check uncompressed data is 48k + file header
+      if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) {
+        result = false;
+      }
+    }
+  }
 
-	pFile->seekSet(initial_file_pos);
-	return result;
+  pFile->seekSet(initial_file_pos);
+  return result;
 }
 
 // Z80 format - Block decompression support for it's "ED ED [count] [value]" format

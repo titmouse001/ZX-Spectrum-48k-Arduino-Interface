@@ -18,9 +18,8 @@ constexpr uint8_t FOLDER_NAV_DEPTH = 5;
 static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 
 // Screen shots folder -  incrementing "SHOT0000.SCR" files are saved here.
-static constexpr const char* SHOTS_FOLDER = "SHOTS";
-
-
+//static constexpr const char* SHOTS_FOLDER = "SHOTS";
+static const char* SHOTS_FOLDER = "SHOTS";
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
  * -------------------------------------------------
@@ -192,20 +191,20 @@ constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL
 //-----------------------------------------
 
 
-enum BlockReadResult {
+enum BlockReadResult : uint8_t {
     BLOCK_SUCCESS = 0,
     BLOCK_END_OF_FILE = 1,
     BLOCK_UNSUPPORTED_PAGE = 2,
     BLOCK_ERROR = 13
 };
 
-enum MachineType {
+enum MachineType : uint8_t{
     MACHINE_48K,
     MACHINE_128K,
     MACHINE_UNKNOWN
 };
 
-enum Z80HeaderVersion {
+enum Z80HeaderVersion : uint8_t {
     Z80_VERSION_UNKNOWN = 0,
     Z80_VERSION_1 = 1,
     Z80_VERSION_2 = 2,
@@ -242,7 +241,7 @@ static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / 
 
 //-----------------------------------------
 
-enum PauseMenu {
+enum PauseMenu : uint8_t {
   Resume,
   SaveSNA,
   SlowMo,

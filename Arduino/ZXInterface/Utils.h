@@ -56,6 +56,9 @@ void setupJoystick();
 uint8_t readJoystick();
 
 void clearScreen(uint8_t col);
+void restorePauseMenuScreen();
+void clearTopBar();
+
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 void viewSpeccyMemory();
 void stockRomBoot_Blocking();

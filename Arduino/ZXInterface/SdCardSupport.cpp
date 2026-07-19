@@ -160,3 +160,13 @@ bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
 
   return success;
 }
+
+bool SdCardSupport::openOrCreateDirectory( FatFile& dir, const char* folderName) {
+  FatFile& root = SdCardSupport::reopenRoot();
+  if (!dir.open(&root, folderName, O_READ)) {
+    if (!dir.mkdir(&root, folderName)) {  // mkdir also opens it!!!!!!
+      return false;  
+    }
+  }
+  return true;   // folder opened (and created if missed)
+}

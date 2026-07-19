@@ -19,12 +19,10 @@ struct Z80HeaderInfo {
 	uint8_t headerV1Data[Z80_V1_HEADERLENGTH];
 };
 
-MachineType getMachineDetails(int16_t z80_version, uint8_t Z80_EXT_HW_MODE);
+MachineType getMachineDetails(int8_t z80_version, uint8_t Z80_EXT_HW_MODE);
 bool checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo);
 Z80HeaderVersion readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
-//Z80HeaderVersion readZ80HeaderInternal(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* buf);
 bool locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length);
-//bool locateV1TerminatorInternal(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length, uint8_t* search_buffer);
 BlockReadResult readAndWriteBlock(FatFile* pFile);
 bool convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader);
 void decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress);
