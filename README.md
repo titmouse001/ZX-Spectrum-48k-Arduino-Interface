@@ -22,7 +22,7 @@ PCB Gerbers (latest V2.40) : [Download Gerber Files](/Documents/Gerbers/)
 
 I'm in the middle of developing a **in-game pause menu**.
 Pressing the PCB button while in-game takes you to a new pause menu screen.
-Currently it suppots:-
+Currently it supports:-
 - Resume 
 - Poke (enter game cheats)
 - Take screenshot of game
@@ -44,7 +44,7 @@ Currently it suppots:-
 <img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="32%" >
 
 The interface loads games from a microSD card in about a second, using a slot at the back.
-Games can be in **.sna** or ***.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
+Games can be in **.sna** or **.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
 
 The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a Kempston joystick. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).  Pressing the menu button during a game returns you to the game browser.
 
@@ -74,7 +74,7 @@ The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which
 
 - 74HC165D – The Arduino Nano has limited I/O pins, so a shift register is used to handle joystick inputs.
   - Both Fire A and Fire B are supported. The PCB menu select button is also mapped into the same shift register, leaving one bit free for future use.
-  - The Arduino masks out the menu button from the joystick data juring gameplay.
+  - The Arduino masks out the menu button from the joystick data during gameplay.
 - 74HC245D – Used as a transceiver (IC is unidirectional, but I've tied DIR to +5 V)
   - Enables high-impedance (Z) state (detaches Arduino from the data bus)
 - 74HC32 – Provides the necessary glue logic to manage and monitor I/O signals.
