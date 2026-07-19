@@ -2,14 +2,16 @@
 
 Arduino-based ZX Spectrum 48K game loader.
 Loads the following from an SD card:
-- SNA (48K Snapshots)
-- Z80 (Supports v1/2/3 48K Snapshots)
-- SCR (Spectrum screenshots)
-- TXT (ASCII text files)
+- **SNA** *- Loading 48K Snapshots*
+- **Z80** *- Supports loading v1/2/3 48K snapshots*
+- **SCR** *- Take Spectrum screenshots*
+- **TXT** *- Reads ASCII text files*
 
-On start-up gives an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
-Game loading times are around 1.4 seconds.
-Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!
+It boots to an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
+Loads in just over a second.
+
+*Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!*
+
 For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu or fire2 button during power-up.
 
 ### 2026 Update
@@ -18,16 +20,17 @@ For compatibility, the interface can also start up in the standard Spectrum ROM 
 <img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="55%">
 <div>
 
-PCB Gerbers (latest V2.40) : [Download Gerber Files](/Documents/Gerbers/)
+PCB Gerbers (latest V2.40):[Download Gerber Files](/Documents/Gerbers/)
 
-I'm in the middle of developing a **in-game pause menu**.
+#### In-game pause menu #### 
 Pressing the PCB button while in-game takes you to a new pause menu screen.
 Currently it supports:-
-- Resume 
-- Poke (enter game cheats)
-- Take screenshot of game
-- Memory Viewer
-- Exit Poke
+- **Resume** *- back to playing the game*
+- **Save** *- create a snapshot file*
+- **Poke** *- enter game cheats*
+- **Screenshot** *- saves to the "/Shots" folder*
+- **Memory Viewer** *- inspect memory contents*
+- **Exit** *- return to the main menu*
 
 <img src="/Documents/Pictures0.22/IngamePausedMenu.png" width="35%" alt="In-Game Pause Menu">
 
