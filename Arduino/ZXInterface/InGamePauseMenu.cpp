@@ -148,8 +148,8 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   z80Registers->borderCol = borderColour; 
 
   //  Get filename before we distroy the shared working FatFile
-  static char dirName[43];
-  uint8_t len = SdCardSupport::getFile().getDisplayName7(dirName, 42);
+  static char dirName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
+  uint8_t len = SdCardSupport::getFile().getDisplayName7(dirName, ZX_FILENAME_MAX_DISPLAY_LEN);
   dirName[len - 4] = '\0';  // knock off the ".sna"
 
 // TODO: When saving a snapshot, save it as "00000000.sna" in a new folder named after the game (e.g "/DIZZY")
@@ -341,52 +341,77 @@ void InGamePauseMenu::handleScreenshotMenu() {
   // Restore the Speccy's screen from the scratch file to show the user something is happening
   Utils::restorePauseMenuScreen();
 
+  // copyScratchTo() uses SdCardSupport's internal file (FatFile) so keep it available!
   FatFile dir;
-  static char filename[] = "SHOT0000.SCR";  // will be modified
+  static char filename[] = "Shot0000.SCR";  // will be modified
   if ( SdCardSupport::openOrCreateDirectory(dir, SHOTS_FOLDER) &&  SdCardSupport::findFreeFilename(dir, filename)) {
     Utils::clearTopBar();
     Draw::text(0, 0, filename);
     if (SdCardSupport::copyScratchTo(dir, filename)) {
-        Draw::text_P(64+16,0, FPSTR(SAVED_MSG));
+        Draw::text_P(256-32,0, FPSTR(SAVED_MSG));
         Utils::delay16(2200);
     }
   }
   dir.close();
 }
 
-void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName)  {
-      // Restore the Speccy's screen from the scratch file. This allows us to dump the whole memory which is easier 
-      // than extracting the screen from scratch file and it gives the user visual feedback that something is happening
-      Utils::restorePauseMenuScreen();
-  
-      FatFile& indexFile = SdCardSupport::closeFile();
-      FatFile dir;
-      if (SdCardSupport::openOrCreateDirectory(dir,dirName) && indexFile.open(&dir, "INDEX.DAT", O_RDWR | O_CREAT)) {
-        uint16_t nextIndex = 0;
-        indexFile.read(&nextIndex, sizeof(nextIndex));
+//static constexpr uint16_t HEAD_ID = 0xC0DE;
+struct __attribute__ ((packed))  GameMeta {
+//  uint16_t  head_id;   
+  uint8_t   version; 
+  char      gameName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
+};
 
-        char saveName[13];
-        strcpy_P(saveName, PSTR("00000000.SNA"));  // limit 65535!
+void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName) {
+  Utils::restorePauseMenuScreen();
+  FatFile dir, metaFile;
+  GameMeta meta;
+  bool hasMeta = false;
 
-        uint16_t temp = nextIndex;
-        for (int8_t i = 7; i >= 0; i--) {
-          saveName[i] = '0' + (temp % 10);
-          temp /= 10;
-        }
+  // Look for GAMEINFO.DAT in the currently navigated folder
+  SdCardSupport::syncRootToDepth();
+  if (metaFile.open(&SdCardSupport::getRoot(), GAMEINFO_DAT, O_READ)) {
+    hasMeta = true; 
+    metaFile.read(&meta, sizeof(meta));
+    metaFile.close();
+  }
 
-        Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+  SdCardSupport::reopenRoot();
 
-        indexFile.rewind();
-        indexFile.write(&(++nextIndex), sizeof(nextIndex));
-        indexFile.close();
-      }
-
-      dir.close();
-      Utils::clearTopBar();
-      Draw::text_P(0, 0, FPSTR(SAVED_MSG));
-      Utils::delay16(2200);
+  if (hasMeta) {
+    // STRICT MODE: We have a known location.
+    // Go to root and ONLY attempt to open it
+    if (!dir.open(&SdCardSupport::getRoot(), meta.gameName, O_READ)) {
+      return; // Abort safely: The DAT exists, but the target folder is missing.
+    }
+  } else {
+    // CREATE MODE: No DAT exists yet
+    if (!SdCardSupport::openOrCreateDirectory(dir, dirName)) {
+      return; // Abort safely if folder creation fails.
     }
 
+    // Write the new metadata file inside this newly established folder
+    if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {
+ //     meta.head_id = HEAD_ID;
+      meta.version = 1;
+      strncpy(meta.gameName, dirName, sizeof(meta.gameName));
+      metaFile.write(&meta, sizeof(meta));
+      metaFile.close();
+    }
+  }
+
+  // Find a free slot inside our opened directory and dump the snapshot
+  static char saveName[13] = "Snap0000.SNA";
+  if (SdCardSupport::findFreeFilename(dir, saveName)) {
+    Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+    Utils::clearTopBar();
+    Draw::text(0, 0, saveName);
+    Draw::text_P(256-32, 0, FPSTR(SAVED_MSG));
+    Utils::delay16(2000);
+  }
+  
+  dir.close();
+}
 
 
 // ----------------------------------

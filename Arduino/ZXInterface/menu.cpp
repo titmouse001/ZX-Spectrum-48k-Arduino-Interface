@@ -31,7 +31,6 @@ FatFile* Menu::handleMenu() {
   }
 
   drawFileList(true);
-  //Z80Bus::sendFillCommand( ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
   drawHighlightBar();
 
   while (true) {
@@ -93,7 +92,6 @@ FatFile* Menu::handleMenu() {
       Menu::waitForRelease();
       Utils::clearScreen(MENU_TEXT_COLOUR); // clear old page
       drawFileList(true);  // full redraw
-      //Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
       drawHighlightBar();
       continue;
     }
@@ -101,11 +99,9 @@ FatFile* Menu::handleMenu() {
     if (action == ACTION_REFRESH_LIST) {    
       drawFileList(true); 
       drawHighlightBar();
-     // Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
     }else if (action != ACTION_NONE) {
       drawFileList(false);                   // only reset attribute colours (clears old highlight)
-        drawHighlightBar();
-     // Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((currentFileIndex - startFileIndex) * 32), 32, COL::CYAN_BLACK);
+      drawHighlightBar();
     }
     Utils::delay16(MAX_BUTTON_READ_MILLISECONDS);  // aiming for 50 FPS'ish
   }

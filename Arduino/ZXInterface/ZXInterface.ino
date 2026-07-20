@@ -62,7 +62,6 @@ void loop() {
   char* ext = extBuff;
 
   if (ext) {
-  //  ext++;  // skip the '.'
     if (strcasecmp(ext, "scr") == 0) {
       handleScrFile(pFile);
     } else if (strcasecmp(ext, "sna") == 0) {
@@ -83,6 +82,7 @@ void handleScrFile(FatFile* pFile) {
   Utils::clearScreen(0);
   if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
     Z80Bus::transferSnaData(pFile, false);  // No loading effects.
+    Menu::waitForRelease();
     Menu::waitForAnyKey();
     Utils::clearScreen(0);
   }
@@ -198,7 +198,8 @@ void handleTxtFile(FatFile* pFile) {
 
     uint32_t nextPos = pFile->curPosition();
     bool canFwd = pFile->available();
-
+  
+    Menu::waitForRelease();
     // Block until button press
     Menu::Button_t btn;
     while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);

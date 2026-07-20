@@ -104,15 +104,6 @@ FatFile& SdCardSupport::reopenRoot() {
   return root;
 }
 
-bool SdCardSupport::isInserted() {
-  cid_t cid; // 16-byte struct to hold the response
-  // underlying hardware driver / card to identify itself.
-  if (!sd.card() || !sd.card()->readCID(&cid)) {
-    return false; // Card is gone or SPI communication failed!
-  }
-  return true; // Card is alive and well
-}
-
 bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
   fileName[4] = '0';
   fileName[5] = '0';
@@ -139,8 +130,10 @@ bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
 
   FatFile destFile;
   if (!destFile.open(&dir, toFileName, O_CREAT | O_WRITE | O_TRUNC)) {
+
     return false;
   }
+
   uint16_t mark = BufferManager::getMark();
   uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
 
@@ -151,9 +144,11 @@ bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
   while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
     if (destFile.write(buf, bytesRead) != bytesRead) {
       success = false;
+
       break;
     }
   }
+
   BufferManager::freeToMark(mark);
   destFile.close();
   srcFile.close();
@@ -161,12 +156,12 @@ bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
   return success;
 }
 
-bool SdCardSupport::openOrCreateDirectory( FatFile& dir, const char* folderName) {
-  FatFile& root = SdCardSupport::reopenRoot();
-  if (!dir.open(&root, folderName, O_READ)) {
-    if (!dir.mkdir(&root, folderName)) {  // mkdir also opens it!!!!!!
-      return false;  
-    }
-  }
-  return true;   // folder opened (and created if missed)
+bool SdCardSupport::openOrCreateDirectory(FatFile& dir, const char* folderName) {
+  FatFile& root = SdCardSupport::reopenRoot(); //
+  return dir.open(&root, folderName, O_READ) || dir.mkdir(&root, folderName);
+}
+
+bool SdCardSupport::isInserted() {
+  cid_t cid; //
+  return sd.card() && sd.card()->readCID(&cid); 
 }

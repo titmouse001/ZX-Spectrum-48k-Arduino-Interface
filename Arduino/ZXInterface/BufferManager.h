@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-constexpr uint16_t POOL_SIZE = 512;
-// seeing  449
+// Using 480 here is more than needed, we only really needs around 410 over a full lifetime
+constexpr uint16_t POOL_SIZE = 512;  
   
 namespace BufferManager {
   extern uint8_t pool[POOL_SIZE];

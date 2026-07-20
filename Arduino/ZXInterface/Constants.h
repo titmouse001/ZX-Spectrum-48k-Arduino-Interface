@@ -20,6 +20,7 @@ static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 // Screen shots folder -  incrementing "SHOT0000.SCR" files are saved here.
 //static constexpr const char* SHOTS_FOLDER = "SHOTS";
 static const char* SHOTS_FOLDER = "SHOTS";
+static constexpr char GAMEINFO_DAT[] = "GameInfo.dat";
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
  * -------------------------------------------------
