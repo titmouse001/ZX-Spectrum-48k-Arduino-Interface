@@ -4,34 +4,29 @@ This Arduino sketch handles the SD card, menu system, and snapshot transfer to t
 
 Required 3rd-party libraries: SdFat and SSD1306.
 
-
-
-UPDATE: This project includes a modified copy of the SdFat library:
-https://github.com/greiman/SdFat  (SdFat version 2.3.1)
+**UPDATE:** This project includes a modified copy of the SdFat library:
+https://github.com/greiman/SdFat   *(SdFat version 2.3.1)*
 
  The bundled version contains project-specific additions and must be used.
  Remove or rename any globally installed SdFat library
  (e.g. "<Arduino>/libraries/SdFat") before compiling to avoid conflicts.
 
-- FatFile::getNameLength()                            - Returns filename length (both short & long)
-- FatFile::getExtension(char* extBuf, size_t extSize) - Returns 3 char file extension (from the 8.3 format)
-- FatFile::getDisplayName7(char* name, size_t size)   - Returns a truncated display name suitable
-                                                         for limited-width displays
+- FatFile::getNameLength()                            *- Returns filename length (both short & long)*
+- FatFile::getExtension(char* extBuf, size_t extSize) *- Returns 3 char file extension (from the 8.3 format)*
+- FatFile::getDisplayName7(char* name, size_t size)   *- Returns a truncated name for limited-width displays*
 
 Modifications are located in:
 - src/FatLib/FatFile.h.h
 - src/FatLib/FatName.cpp
 
-###ZX SPECTRUM STORAGE TIPS###
+## ZX SPECTRUM STORAGE TIPS ##
 - Because ZX Spectrum snapshot files (.sna, .z80) are tiny, you can store 
   thousands of games on a single card. However, root directory performance 
   and menu load times can degrade if too many files sit in a single folder.
 - Organize your files into named subfolders (e.g. alphabetically or by genre) 
   to keep directory scanning fast and make navigation much easier.
-
-
-
-##Development Notes##
+---
+## Development Notes ##
 
 This project can be built with:
 - Visual Studio Code
