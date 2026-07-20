@@ -1,15 +1,17 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
 Arduino-based ZX Spectrum 48K game loader.
-Loads the following from an SD card:
-- SNA (48K Snapshots)
-- Z80 (Supports v1/2/3 48K Snapshots)
-- SCR (Spectrum screenshots)
-- TXT (ASCII text files)
+Loads the following from a micro SD card (FAT16/32) with long file name support:
+- **SNA** *- Loading 48K Snapshots*
+- **Z80** *- Supports loading v1/2/3 48K snapshots*
+- **SCR** *- Take Spectrum screenshots*
+- **TXT** *- Reads ASCII text files*
 
-On start-up gives an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
-Game loading times are around 1.4 seconds.
-Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!
+It boots to an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
+Loads in just over a second.
+
+*Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!*
+
 For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu or fire2 button during power-up.
 
 ### 2026 Update
@@ -18,16 +20,17 @@ For compatibility, the interface can also start up in the standard Spectrum ROM 
 <img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="55%">
 <div>
 
-PCB Gerbers (latest V2.40) : [Download Gerber Files](/Documents/Gerbers/)
+PCB Gerbers (latest V2.40):[Download Gerber Files](/Documents/Gerbers/)
 
-I'm in the middle of developing a **in-game pause menu**.
+#### In-game pause menu #### 
 Pressing the PCB button while in-game takes you to a new pause menu screen.
-Currently it suppots:-
-- Resume 
-- Poke (enter game cheats)
-- Take screenshot of game
-- Memory Viewer
-- Exit Poke
+Currently it supports:-
+- **Resume** *- back to playing the game*
+- **Save** *- create a snapshot file*
+- **Poke** *- enter game cheats*
+- **Screenshot** *- saves to the "/Shots" folder*
+- **Memory Viewer** *- inspect memory contents*
+- **Exit** *- return to the main menu*
 
 <img src="/Documents/Pictures0.22/IngamePausedMenu.png" width="35%" alt="In-Game Pause Menu">
 
@@ -44,7 +47,7 @@ Currently it suppots:-
 <img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="32%" >
 
 The interface loads games from a microSD card in about a second, using a slot at the back.
-Games can be in **.sna** or ***.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
+Games can be in **.sna** or **.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
 
 The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a Kempston joystick. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).  Pressing the menu button during a game returns you to the game browser.
 
@@ -74,7 +77,7 @@ The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which
 
 - 74HC165D – The Arduino Nano has limited I/O pins, so a shift register is used to handle joystick inputs.
   - Both Fire A and Fire B are supported. The PCB menu select button is also mapped into the same shift register, leaving one bit free for future use.
-  - The Arduino masks out the menu button from the joystick data juring gameplay.
+  - The Arduino masks out the menu button from the joystick data during gameplay.
 - 74HC245D – Used as a transceiver (IC is unidirectional, but I've tied DIR to +5 V)
   - Enables high-impedance (Z) state (detaches Arduino from the data bus)
 - 74HC32 – Provides the necessary glue logic to manage and monitor I/O signals.
