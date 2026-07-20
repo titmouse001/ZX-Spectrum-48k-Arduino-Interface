@@ -4,7 +4,6 @@
 #include "menu.h"
 #include "Pin.h"
 #include "Utils.h"
-//#include "src/fatlib/SdFat.h" // SdFat version 2.3.1 
 
 SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
@@ -12,7 +11,6 @@ FatFile SdCardSupport::file;
 
 uint16_t SdCardSupport::menuPathHistory[FOLDER_NAV_DEPTH]; 
 uint8_t  SdCardSupport::menuPathDepth = 0;
-
 
 bool SdCardSupport::init() { //uint8_t csPin) {
   sd.end();
@@ -23,60 +21,34 @@ bool SdCardSupport::init() { //uint8_t csPin) {
 }
 
 void SdCardSupport::syncRootToDepth() {
-  reopenRoot();
-
-  if (menuPathDepth > 0) {
-    size_t totalPathLen = 1;  // Start with root '/'
-    for (uint8_t i = 0; i < menuPathDepth; i++) {
-      FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
-      if (file) {
-        totalPathLen += (file->getNameLength() + 1);  //  + 1 for the slash
-      }
+  reopenRoot(); // Reset to "SD:/" top-level root
+  for (uint8_t i = 0; i < menuPathDepth; i++) {
+    // note: openFileByIndex opens using a global 'file' 
+    FatFile* foundFile = SdCardSupport::openFileByIndex(menuPathHistory[i]);
+    if (foundFile && foundFile->isDir()) {
+      root.move(foundFile); // transfer folder context
+    } else {
+      menuPathDepth = 0;
+      reopenRoot();
+      break;  // fallback
     }
-    totalPathLen += 1;  // +1 for null terminator
-
-    uint16_t mark = BufferManager::getMark();
-    char* localPath = (char*)BufferManager::allocate(totalPathLen);
-
-    localPath[0] = '/';
-    localPath[1] = '\0';
-
-    for (uint8_t i = 0; i < menuPathDepth; i++) {
-      FatFile* file = SdCardSupport::openFileByIndex(menuPathHistory[i]);
-      if (file) {
-        size_t len = strlen(localPath);
-        localPath[len] = '/';
-        file->getName(localPath + len + 1, totalPathLen - len - 1);
-      }
-
-      root.close();
-      if (!root.open(localPath)) {
-        menuPathDepth = 0;
-        reopenRoot();
-        break;
-      }
-    }
-    BufferManager::freeToMark(mark);
   }
   Menu::inSubFolder = (menuPathDepth > 0);
 }
 
-
 FatFile* SdCardSupport::openFileByIndex(uint16_t searchIndex) {
-  uint16_t index = 0;
+  uint16_t index = 0; 
   root.rewind();
-  while (true) {
-    file.close(); // Close the previous file before opening the next
-    if (!file.openNext(&root, O_RDONLY)) {
-      return nullptr; // Reached the end of the directory without finding the index
+  file.close(); 
+  
+  while (file.openNext(&root, O_RDONLY)) {
+    if (!file.isHidden()) { 
+      if (index == searchIndex) return &file; // Found it! Leave it open
+      index++; 
     }
-    if (!file.isHidden()) {
-      if (index == searchIndex) {
-        return &file; // Found the exact match!
-      }
-      index++; // Only increment our counter if the file is actually visible
-    }
+    file.close(); // Not a match
   }
+  return nullptr; // nothing found
 }
 
 uint16_t SdCardSupport::countSnapshotFiles() {
@@ -111,7 +83,7 @@ bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
   fileName[7] = '0';
   for (uint16_t i = 0; i < 9999; i++) {
     uint8_t idx = 7;
-    while (++fileName[idx] > '9') {
+    while (++fileName[idx] > '9') {   // pre ++ start at "0001"
       fileName[idx--] = '0';
     }
     if (!dir.exists(fileName)) {
@@ -122,15 +94,14 @@ bool SdCardSupport::findFreeFilename(FatFile& dir, char* fileName) {
 }
 
 bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
-  FatFile& srcFile = file;
-  srcFile.close();
-  if (!srcFile.open(&root, SCRATCH_FILE, O_READ)) {
+  file.close();
+  if (!file.open(&root, SCRATCH_FILE, O_READ)) {
     return false;
   }
 
   FatFile destFile;
   if (!destFile.open(&dir, toFileName, O_CREAT | O_WRITE | O_TRUNC)) {
-
+    file.close();
     return false;
   }
 
@@ -138,20 +109,18 @@ bool SdCardSupport::copyScratchTo(FatFile& dir, const char* toFileName) {
   uint8_t* buf = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
 
   bool success = true;
-  uint8_t bytesRead;
-  file.rewind();
-
+  uint8_t bytesRead; // buffer size is of type uint8_t
+  // NOTE: open() puts the pointer at byte 0
   while ((bytesRead = file.read(buf, FILE_READ_BUFFER_SIZE)) > 0) {
     if (destFile.write(buf, bytesRead) != bytesRead) {
       success = false;
-
       break;
     }
   }
 
   BufferManager::freeToMark(mark);
   destFile.close();
-  srcFile.close();
+  file.close();
 
   return success;
 }
