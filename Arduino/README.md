@@ -14,6 +14,8 @@ https://github.com/greiman/SdFat   *(SdFat version 2.3.1)*
 - FatFile::getNameLength()                            *- Returns filename length (both short & long)*
 - FatFile::getExtension(char* extBuf, size_t extSize) *- Returns 3 char file extension (from the 8.3 format)*
 - FatFile::getDisplayName7(char* name, size_t size)   *- Returns a truncated name for limited-width displays*
+(getNameLength() is no longer used in ZX Spectrum Interface)
+
 
 Modifications are located in:
 - src/FatLib/FatFile.h.h

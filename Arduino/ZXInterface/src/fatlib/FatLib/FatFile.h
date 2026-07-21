@@ -107,10 +107,9 @@ const uint8_t FNAME_FLAG_LC_EXT = FAT_CASE_LC_EXT;
 class FatFile {
  public:
 
-  size_t getNameLength() ;  // ADDED by PO
+ // size_t getNameLength() ;  // ADDED by PO - not in use
   size_t getExtension(char* extBuf, size_t extSize) ;  // ADDED by PO
   size_t getDisplayName7(char* name, size_t size) ;  // ADDED by PO
-  //size_t getLFNLength(char* name, size_t size);  // PO
 
   /** Create an instance. */
   FatFile() {}

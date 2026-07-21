@@ -16,7 +16,7 @@ namespace InGamePauseMenu {
     void handleScreenshotMenu();
     void handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName);
 
-    enum OPTIONS_PM{
+    enum OPTIONS_PM : uint8_t {
         RESUME,
         SAVE_SNA,
         POKE,
@@ -24,7 +24,6 @@ namespace InGamePauseMenu {
         MEM_VIEW,
         EXIT
     };
-
 }
 
 #endif

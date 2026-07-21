@@ -21,6 +21,7 @@ static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 //static constexpr const char* SHOTS_FOLDER = "SHOTS";
 static const char* SHOTS_FOLDER = "SHOTS";
 static constexpr char GAMEINFO_DAT[] = "GameInfo.dat";
+
 /* -------------------------------------------------
  * ZX Spectrum Screen Attribute Byte Format
  * -------------------------------------------------
@@ -190,7 +191,8 @@ constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL_ITEMS;  // total: 49179 for all .sna files
 
 //-----------------------------------------
-
+// Z80 FILE FORMAT
+//-----------------------------------------
 
 enum BlockReadResult : uint8_t {
     BLOCK_SUCCESS = 0,
@@ -213,7 +215,8 @@ enum Z80HeaderVersion : uint8_t {
 };
 
 //-----------------------------------------
-
+// FONT SUPPORT
+//-----------------------------------------
 
 namespace SmallFont {
     constexpr uint8_t FNT_WIDTH         = 5;   // character width in pixels
@@ -232,27 +235,7 @@ static constexpr uint16_t MAX_REPEAT_KEY_DELAY = 300;
 static constexpr uint16_t MIN_REPEAT_KEY_DELAY = 40;
 static constexpr uint16_t ADJUST_REPEAT_KEY_DELAY = 20;
 
-//-----------------------------------------
-
-//static constexpr uint16_t FILE_READ_BUFFER_SIZE = 128;
 static constexpr uint8_t FILE_READ_BUFFER_SIZE = 128;
 static constexpr uint8_t MAX_FILENAME_LEN = 64; 
 static constexpr uint8_t ZX_FILENAME_MAX_DISPLAY_LEN = ZX_SCREEN_WIDTH_PIXELS / FONT_WIDTH_WITH_GAP;
-
-
-//-----------------------------------------
-
-enum PauseMenu : uint8_t {
-  Resume,
-  SaveSNA,
-  SlowMo,
-  Cheats,
-  Screenshot,
-  MemView,
-  Exit
-};
-
-
-//-----------------------------------------
-
 

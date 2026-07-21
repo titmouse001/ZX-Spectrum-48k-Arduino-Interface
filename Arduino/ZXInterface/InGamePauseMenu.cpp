@@ -18,11 +18,16 @@ constexpr uint16_t PM_REPEAT_RATE = 120;
 constexpr uint8_t PAUSE_XPOS = 80;
 constexpr uint8_t PAUSE_YPOS_START = 48;
 constexpr uint8_t HIGHLIGHT_OFFSET = PAUSE_YPOS_START / 8; 
-constexpr uint8_t getY(int8_t line) { return PAUSE_YPOS_START + (line * 8); }
 
+constexpr uint8_t getY(int8_t line) { 
+    return PAUSE_YPOS_START + (line * 8); 
+}
+
+#ifndef FPSTR
 #define FPSTR(pstr) (reinterpret_cast<const __FlashStringHelper *>(pstr))
-static const char SAVED_MSG[] PROGMEM = "SAVED";
+#endif
 
+static const char SAVED_MSG[] PROGMEM = "SAVED";
 
 // ----------------------------------------------------------------------------------------------
 // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
@@ -40,18 +45,17 @@ static const char SAVED_MSG[] PROGMEM = "SAVED";
 //    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
 // ----------------------------------------------------------------------------------------------
 void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
-
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
+
   while (true) {
     uint8_t buttonData = Utils::readJoystick();
 
-    // remap 2nd fire to jump 
-// todo - needs config!
+    // Remap 2nd fire to jump (Todo: Needs config mapping framework)
     if (buttonData & INPUT_FIRE2) {
       buttonData |= 0b00001000;  // up  (BITS: XsfFUDLR)
     }
 
-    PORTD = buttonData & INPUT_MASK; 
+    PORTD = buttonData & INPUT_MASK;
 
     if (buttonData & INPUT_SELECT) {
       if (process(borderColour)) {
@@ -66,6 +70,7 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
   unsigned long lastActionTime = 0;
   bool isRepeating = false;
   Menu::Button_t lastButton = Menu::BUTTON_NONE;
+
   while (true) {
     Utils::show5VoltRailStatus();
 
@@ -75,24 +80,20 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
       isRepeating = false;
     } else {
       const unsigned long now = millis();
-      const uint16_t delayThreshold =
-          isRepeating ? PM_REPEAT_RATE : PM_INITIAL_DELAY;
-      if (currentButton != lastButton ||
-          (now - lastActionTime) >= delayThreshold) {
-        isRepeating =
-            (currentButton ==
-             lastButton);  // Becomes true only on subsequent held triggers
+      const uint16_t delayThreshold = isRepeating ? PM_REPEAT_RATE : PM_INITIAL_DELAY;
+
+      if (currentButton != lastButton || (now - lastActionTime) >= delayThreshold) {
+        isRepeating = (currentButton == lastButton); 
         lastActionTime = now;
         lastButton = currentButton;
+
         if (currentButton == Menu::BUTTON_ADVANCE && selectedIndex < EXIT) {
-          Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START +
-                                      ((selectedIndex + HIGHLIGHT_OFFSET) * 32),
+          Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((selectedIndex + HIGHLIGHT_OFFSET) * 32),
                                   32, COL::BRIGHT_BLACK_WHITE);
           selectedIndex++;
         } else if (currentButton == Menu::BUTTON_BACK &&
                    selectedIndex > RESUME) {
-          Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START +
-                                      ((selectedIndex + HIGHLIGHT_OFFSET) * 32),
+          Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((selectedIndex + HIGHLIGHT_OFFSET) * 32),
                                   32, COL::BRIGHT_BLACK_WHITE);
           selectedIndex--;
         } else if (currentButton == Menu::BUTTON_MENU) {
@@ -100,9 +101,7 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
         }
       }
     }
-    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START +
-                                ((selectedIndex + HIGHLIGHT_OFFSET) * 32),
-                            32, COL::CYAN_BLACK);
+    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((selectedIndex + HIGHLIGHT_OFFSET) * 32), 32, COL::CYAN_BLACK);
     Utils::delay16(1);
   }
 }
@@ -122,8 +121,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
       "1: sbic %[pin],2   \n\t"  // Check A2 (PC2); skip next instruction if LOW
       "rjmp 1b            \n\t"  // Jump back to '1' (Loop while A2 is HIGH)
       "cbi  %[port],0     \n\t"  // Drive A0 (PC0) LOW (Start NMI pulse)
-      "sbi  %[port],0     \n\t"  // Drive A0 (PC0) HIGH (End NMI pulse, 2 cycles
-                                 // wide)
+      "sbi  %[port],0     \n\t"  // Drive A0 (PC0) HIGH (End NMI pulse)
       :
       : [pin] "I"(_SFR_IO_ADDR(PINC)), [port] "I"(_SFR_IO_ADDR(PORTC)));
 
@@ -147,25 +145,17 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
    // borderColour: using original snapshot loaded value as we can't extract this at game time!
   z80Registers->borderCol = borderColour; 
 
-  //  Get filename before we distroy the shared working FatFile
-  static char dirName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
-  uint8_t len = SdCardSupport::getFile().getDisplayName7(dirName, ZX_FILENAME_MAX_DISPLAY_LEN);
-  dirName[len - 4] = '\0';  // knock off the ".sna"
+  //  Get filename before we destroy the shared working FatFile
+  static char cacheDirName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
+  if (cacheDirName[0] == '\0') {
+    uint8_t len = SdCardSupport::getFile().getDisplayName7(cacheDirName, ZX_FILENAME_MAX_DISPLAY_LEN);
+    cacheDirName[len - 4] = '\0';  // knock off the ".sna"
+  }
 
-// TODO: When saving a snapshot, save it as "00000000.sna" in a new folder named after the game (e.g "/DIZZY")
-//       However, if the user loads that file and saves again, it will create a new folder called "/00000000"
-//       containing "00000000.sna". Repeating this from "/00000000" will increment both the folder and file names
-//       (e.g "00000001/00000001.sna")
-//
-// TODO: Store additional metadata in a *.dat file in each save folder to track the game name,
-//       since folder names alone are unreliable. This will solve 90% of cases, but existing folders
-//       that clash and are unrelated will still be an issue - so we must check for an existing *.dat
-//       containing a valid header ID
-
-  // Save screen to scratch file
-  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
-                    ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
+   // Save screen to scratch file
+  Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+  
+  uint8_t result;
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
     Draw::text_P(PAUSE_XPOS, getY(-2), F("PAUSE MENU"));
@@ -176,52 +166,48 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
     Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
 
-    uint8_t result = getSelectedMenuOption_Blocking(selectedIndex);
+    result = getSelectedMenuOption_Blocking(selectedIndex);
 
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
     Menu::waitForRelease();
 
-    if (result == SAVE_SNA) {
-      handleSaveSnapshot(z80Registers, dirName);
+    switch (result) {
+      case SAVE_SNA:
+        handleSaveSnapshot(z80Registers, cacheDirName);
+        break;
+      case POKE:
+        handlePokeMenu();
+        break;
+      case MEM_VIEW:
+        Utils::viewSpeccyMemory();
+        break;
+      case SCREENSHOT:
+        handleScreenshotMenu();
+        break;
+      case RESUME:
+        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+        break;
+      case EXIT:
+        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+        BufferManager::freeToMark(z80Registers->AllocMark);
+        // reseting cache - to trigger new collection
+        cacheDirName[0] = '\0'; 
+        return true;  // Exit game back to launcher
     }
-    if (result == POKE) {
-      handlePokeMenu();
-    }
-    if (result == MEM_VIEW) {
-      Utils::viewSpeccyMemory();
-    }
-    if (result == SCREENSHOT) {  // Screenshot
-      handleScreenshotMenu();
-    }
-    if (result == Resume) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
-      break;
-    }
-    if (result == EXIT) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
-      BufferManager::freeToMark(z80Registers->AllocMark);
-      return true;  // go back to main game loader menu (exit game)
-    }
-  } while (true);
-
+  } while ( result != RESUME && result != EXIT);
 
   Menu::waitForRelease();
-
   Utils::restorePauseMenuScreen();
-
   Utils::restoreZ80States(z80Registers);
   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
   Utils::delay16(1);               
-  
   // About to restore the stock ROM and continue game
   // We need to put something useful on the output pins for joystick port 0x1F.
   PORTD = Utils::readJoystick() & INPUT_MASK; 
-  
   // Stock rom escapes the idle loop via its NOPs
   Z80Bus::setStockRom();  
   // let the stock rom catch up
   Utils::delay16(1);       
-
   Utils::readJoystick();  // flush junk
 
   return false;
@@ -295,12 +281,7 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
         }
       }
 
-      // Size Optimization: Flattened ternary logic to save flash cycles
-      uint8_t cursorIdx = len;
-      if (cursorIdx >= maxDigits) {
-        cursorIdx = maxDigits - 1;
-      }
-      
+      uint8_t cursorIdx = (len >= maxDigits) ? (maxDigits - 1) : len;
       char origChar = buf[cursorIdx];
       if (flash < 60) {  
         buf[cursorIdx] = 127; // Blink pattern 
@@ -358,7 +339,7 @@ void InGamePauseMenu::handleScreenshotMenu() {
 //static constexpr uint16_t HEAD_ID = 0xC0DE;
 struct __attribute__ ((packed))  GameMeta {
 //  uint16_t  head_id;   
-  uint8_t   version; 
+  uint8_t   version;  // future thing : not used yet
   char      gameName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
 };
 
@@ -379,23 +360,29 @@ void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char*
   SdCardSupport::reopenRoot();
 
   if (hasMeta) {
-    // STRICT MODE: We have a known location.
-    // Go to root and ONLY attempt to open it
+    // STRICT MODE: We have a known location - attempt to open it
     if (!dir.open(&SdCardSupport::getRoot(), meta.gameName, O_READ)) {
-      return; // Abort safely: The DAT exists, but the target folder is missing.
+      return;  // Abort
     }
   } else {
-    // CREATE MODE: No DAT exists yet
+    // CREATE MODE: No .dat file exists yet
     if (!SdCardSupport::openOrCreateDirectory(dir, dirName)) {
-      return; // Abort safely if folder creation fails.
+      return;  // Abort
     }
 
-    // Write the new metadata file inside this newly established folder
+    // Write new metadata inside new folder
     if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {
- //     meta.head_id = HEAD_ID;
+      //     meta.head_id = HEAD_ID;
       meta.version = 1;
       strncpy(meta.gameName, dirName, sizeof(meta.gameName));
       metaFile.write(&meta, sizeof(meta));
+
+      // hide dat file
+      int currentAttribs = metaFile.attrib();
+      if (currentAttribs != -1) {
+        metaFile.attrib(currentAttribs | FS_ATTRIB_HIDDEN);
+      }
+
       metaFile.close();
     }
   }
@@ -412,53 +399,3 @@ void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char*
   
   dir.close();
 }
-
-
-// ----------------------------------
-
-// INGNORE - OLD REF
-
-
-    // This SloMo kind of works .. but sooner or later games using it crash.
-    // I don't think it's the comms between the Arduino and Z80 (i.e. something like a bad jmp command)
-    // Think it's just the misuse of the stack .. even though it's only 2 deep.
-    // Guess using 4 bytes from the stack is bad - looks like 80s game's programmers new their stack and used all of it!!!
-
-
-    // // Reminder ... also see 'restoreZ80States' for extra code needed to make this work
-    // // ... this slowmo will probably need to use stack in screen memory , it's going to be firing atlot
-    // // and if any game's using all their stack space - this will find it and things will go bad!
-    // bool slowMo_todo = true;
-    // if (slowMo_todo) {
-    //   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
-    //   asm volatile(                  // continue when both /RD & /IORQ are low
-    //       "1: sbic %[pin],2   \n\t"  // skip if LOW
-    //       "rjmp 1b            \n\t"  // loop while HIGH
-    //       "cbi  %[port],0     \n\t"  // NMI low
-    //       "sbi  %[port],0     \n\t"  // NMI high (Pulsed /NMI)
-    //       :
-    //       : [pin] "I"(_SFR_IO_ADDR(PINC)), [port] "I"(_SFR_IO_ADDR(PORTC)));
-    //   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);  // back to normal clock use
-
-    //   delay(20);  // game slow down 
-
-    //   delay(1);
-    //   Z80Bus::setSnaRom();
-
-    //   delay(1);
-    //   Utils::storeZ80States();
-    //   Utils::restoreZ80States();
-
-    //   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
-    //   delay(1);     
-    
-    //   // About to restore the stock ROM and continue game         
-    //   // We need to put something useful on the output pins for joystick port 0x1F.
-    //   PORTD = Utils::readJoystick() & INPUT_MASK; 
-
-    //   // Stock rom escapes the idle loop via its NOPs
-    //   Z80Bus::setStockRom();  
-      
-    //   // let the stock rom catch up
-    //   delay(1);       
-    // }

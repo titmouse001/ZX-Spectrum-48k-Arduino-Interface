@@ -7,12 +7,9 @@
 #include "Utils.h"
 #include "Constants.h"
 
-constexpr uint8_t COMMAND_ADDR_SIZE = 2;
-
 //-------------------------------------------------
 // Z80 Data Transfer and Control Routines
 //-------------------------------------------------
-
 
 void Z80Bus::setupPins() {
  
@@ -39,7 +36,6 @@ void Z80Bus::setupPins() {
   // setup /NMI - Z80 /NMI, used to trigger a 'HALT' so the Z80 can be released and resume
   digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
-
 
 void Z80Bus::resetZ80() {
   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
@@ -82,7 +78,6 @@ void Z80Bus::sendByte(uint8_t* byte) {
   triggerZ80NMI();
 }
 
-
 void Z80Bus::sendSnaHeader(uint8_t* header) {
   RestoreGameAndExecute pkt;
   sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
@@ -103,18 +98,14 @@ void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(FillPacket));
 }
 
- 
 void Z80Bus::sendWaitVBLCommand() {
   WaitVBLPacket pkt;
   Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(WaitVBLPacket));
 }
-
  
 void Z80Bus::setStackCommand(uint16_t addr) {
-	
   StackPacket pkt(addr);
   Z80Bus::sendBytes( (uint8_t*) &pkt, sizeof(StackPacket) );
-
   // The Z80-side routine finishes with a HALT. We wait for that HALT
   // to confirm things have completed and release with NMI.
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
@@ -141,14 +132,12 @@ uint8_t Z80Bus::get_IO_Byte() {
   DDRD = 0xFF;                      // default - rest of code expects active bus driving
   return byte;
 }
-
   
 uint8_t Z80Bus::getKeyboard() {
     ReceiveKeyboardPacket pkt;
     Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
     return get_IO_Byte();
 }
-
   
 void Z80Bus::Z80_NOP() {
     NOP_Packet pkt;
@@ -190,8 +179,6 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
  * Transfers data using look-ahead RLE. If beneficial, sends RLE blocks via fast Z80 fill
  * commands (PUSH fills 2 bytes/instruction); otherwise sends raw bytes.
  */
-
-
 
 __attribute__((optimize("-Ofast"))) 
 void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* input, const uint8_t cmd) {
@@ -265,13 +252,11 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
   }
 }
 
-
 /* executeSnapshot:
  * See Z80 code around L16D4. It will idle-loop to allow bankswitching into the 
  * stock ROM to continue execution into RAM to jump back into game code. 
  * (Previously this needed an extra messy HALT and a precise wait for the NMI to complete)
  */
-  
 void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
 
   // --------------------------------------------------------------------------------------------
@@ -292,26 +277,20 @@ void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
   Utils::delay16(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
   Z80Bus::setStockRom();
 }
-
  
- void Z80Bus::waitHalt_syncWithZ80() {
-   // Wait until the Z80 enters the HALT state (active low).
-   while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
- }
+void Z80Bus::waitHalt_syncWithZ80() {
+  // Wait until the Z80 enters the HALT state (active low).
+  while (digitalReadFast(Pin::Z80_HALT) != 0) {};  
+}
 
- 
 void Z80Bus::triggerZ80NMI() {
   digitalWriteFast(Pin::Z80_NMI, LOW);
   // delayMicroseconds(1);     // other Arduino platforms may need a pause
   digitalWriteFast(Pin::Z80_NMI, HIGH);
   hasZ80Resumed();
 }
-
  
 void Z80Bus::hasZ80Resumed() {
   // wait until HALT goes HIGH (Z80 resumes)
   while (digitalReadFast(Pin::Z80_HALT) == 0) {};
 }
-
-
-

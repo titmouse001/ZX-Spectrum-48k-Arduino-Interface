@@ -71,25 +71,25 @@ size_t FatFile::getExtension(char *extBuf, size_t extSize) {
   return i;
 }
 
-size_t FatFile::getNameLength() {
-  if (!isLFN()) {
-    char buf[13]; 
-    return getSFN(buf, sizeof(buf));
-  }
+// size_t FatFile::getNameLength() {
+//   if (!isLFN()) {
+//     char buf[13]; 
+//     return getSFN(buf, sizeof(buf));
+//   }
 
-  FatFile dir;
-  if (!dir.openCluster(this)) return 0;
+//   FatFile dir;
+//   if (!dir.openCluster(this)) return 0;
 
-  for (uint8_t order = 1; order <= m_lfnOrd; order++) {
-    const DirLfn_t* ldir = reinterpret_cast<DirLfn_t*>(dir.cacheDir(m_dirIndex - order));
-    if (!ldir) break;
+//   for (uint8_t order = 1; order <= m_lfnOrd; order++) {
+//     const DirLfn_t* ldir = reinterpret_cast<DirLfn_t*>(dir.cacheDir(m_dirIndex - order));
+//     if (!ldir) break;
     
-    for (uint8_t i = 0; i < 13; i++) {
-      if (getLfnChar(ldir, i) == 0) return ((order - 1) * 13) + i;
-    }
-  }
-  return m_lfnOrd * 13;
-}
+//     for (uint8_t i = 0; i < 13; i++) {
+//       if (getLfnChar(ldir, i) == 0) return ((order - 1) * 13) + i;
+//     }
+//   }
+//   return m_lfnOrd * 13;
+// }
 
 
 //------------------------------------------------------------------------------

@@ -19,6 +19,10 @@
 
 // see README.MD for more info
 
+
+//Sketch uses 27500 bytes (89%) of program storage space. Maximum is 30720 bytes.
+//Global variables use 1392 bytes (67%) of dynamic memory, leaving 656 bytes for local variables. Maximum is 2048 bytes.
+
 #include <Arduino.h>
 #include "Utils.h"
 #include "Menu.h"
