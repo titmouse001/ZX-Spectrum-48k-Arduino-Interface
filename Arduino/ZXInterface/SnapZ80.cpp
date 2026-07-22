@@ -370,12 +370,12 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
 // .z80 files get converted to reuse existing ".SNA" game loading functionaliy
 bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
                                   uint8_t* snaHeader) {
-  uint16_t stackAddrForPushingPC = 0;
+ // uint16_t stackAddrForPushingPC = 0;
   uint8_t* v1_header = headerInfo->headerV1Data;
 
   if (headerInfo->version >= 2) {
     //
-    // V2 or V3 format
+    // >>> V2 or V3 format <<<
     //
     // V2/V3 don't store the PC (it's zero)
     // Restore PC from extended header and convert to V1 format for processing
@@ -384,8 +384,7 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     // Clear bit 7 of R register
     v1_header[Z80_V1_R_7BITS] &= ~0x80;
 
-    stackAddrForPushingPC =
-        Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
+  //  stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
     while (true) {
       BlockReadResult block_result = readAndWriteBlock(pFile);
@@ -400,24 +399,22 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     }
   } else {
     //
-    // V1 Format
+    // >>> V1 Format <<<
     //
-    stackAddrForPushingPC =
-        Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
+  	//  stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
     if (headerInfo->isV1Compressed) {
       uint32_t rle_data_length = headerInfo->v1PayloadLength;
       decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
     } else {
       // Uncompressed V1 data
-      sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY,
-                        ZX_SCREEN_ADDRESS_START);
+      sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY, ZX_SCREEN_ADDRESS_START);
     }
   }
 
-  // Fake push 'PC' onto the stack
-  constexpr uint8_t TRANSMIT_AMOUNT = 2;
+  constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
 
+  uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
   TransferPacket header( stackAddrForPushingPC, TRANSMIT_AMOUNT);  // commandPayloadPos will be the length
   uint8_t headerLen = sizeof(TransferPacket);
   Z80Bus::sendBytes((uint8_t*)&header, headerLen);

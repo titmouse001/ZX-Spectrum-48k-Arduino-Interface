@@ -33,6 +33,7 @@
 #include "Z80Bus.h"
 #include "SnapZ80.h"
 #include "Debug.h"  // see #defines to enable
+#include "PacketTypes.h"
 
 void setup() {
 
@@ -92,9 +93,48 @@ void handleScrFile(FatFile* pFile) {
   }
 }
 
+// -------------------------------------------------------------------------------------
+// SHARED HELPER: Hijack the Z80 and restore the 3 bytes corrupted by the temporary stack
+// 
+// Note: We don't need the extra stage to monitor the Z80's combined /RD and /IORQ lines here 
+// (see InGamePauseMenu::process), since the game has just been launched from executeSnapshot and 
+// waits for the next VBL. We should be safe, hopefully still inside the 50Hz maskable interrupt routine, 
+// as game code doesn't tend to abuse the stack there.
+// -------------------------------------------------------------------------------------
+void restoreCorruptedScreenBytes(const uint8_t* damagedScreenBytes) {
+
+  delayMicroseconds(25);
+  digitalWriteFast(Pin::Z80_NMI, LOW);      // NMI will loop spin for STOCK_ROM -> SNA_ROM swap
+  digitalWriteFast(Pin::Z80_NMI, HIGH);
+  delayMicroseconds(25);                    // Allow NMI routine time to reach its idle loop
+  //
+  // >>>  At this point we are now running the stock ROM  <<<
+  //
+  Z80Bus::setSnaRom();    // sna rom takes over loop spin with NOPs
+  delayMicroseconds(25);    // Wait for Z80 to hit SNA ROM's '.IngameHook'
+  Z80Registers* z80Registers = Utils::storeZ80States();
+
+  // !!! Patch the 3-bytes of screen RAM we used used as working memory !!!
+  MemoryPacket patchPkt(CMD_Copy, ZX_SCREEN_ADDRESS_START, 3);
+  Z80Bus::sendBytes8((uint8_t*)&patchPkt, sizeof(patchPkt));
+  Z80Bus::sendBytes8((uint8_t*)damagedScreenBytes, 3);
+
+  Utils::restoreZ80States(z80Registers);
+  delayMicroseconds(25);      // next idle loop so the stock ROM can take control
+
+  // About to restore the stock ROM and continue game
+  // We need to put something useful on the output pins for joystick port 0x1F.
+  PORTD = Utils::readJoystick() & INPUT_MASK; 
+  
+  Z80Bus::setStockRom();      // again... stock rom escapes the idle loop via its NOPs
+  delayMicroseconds(25);      // Let the stock rom catch up
+//  Utils::readJoystick();    // flush junk
+}
+
+
 // -----------------------------------------------------------------------------------------------
-// NOTES: Exiting the menu and restoring the snapshot. Before doing this, we must relocate 
-// the Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is a bad idea while loading a game.
+// NOTES: Exiting the menu and restoring the snapshot (.sna/.z80). Before doing this, we must relocate the 
+// Speccys Z80 stack to a safe working area. The menu defaults to 0xFFFF, which is a bad idea while loading a game.
 // We set a temporary stack in screen memory (0x4000). This is safe because:
 // - 0x4000 contains the Z80 "jp <patched-start-addr>" bootstrap instruction.       (JP = [1] byte)
 // - We reuse 0x4003 for temporary 1-deep push/pop (at 0x4001/02).                  (STACK = [2] bytes)
@@ -103,12 +143,13 @@ void handleScrFile(FatFile* pFile) {
 // We can safely (99.999%) set the SP at screen location during loading and simply sacrifice/corrupt [2] + [1] bytes.
 // -----------------------------------------------------------------------------------------------
 
-// ---------------------
+// -----------------------------------------------------------------------------------------------
 // .SNA FILE 
-// ---------------------
+// -----------------------------------------------------------------------------------------------
 void handleSnaFile(FatFile* pFile) {
   uint8_t borderColour;
   Utils::clearScreen(0);
+  
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
     // Set stack NOW before sending data over
     Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3); 
@@ -116,9 +157,14 @@ void handleSnaFile(FatFile* pFile) {
     {
       uint8_t *snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
       pFile->read((void *)(snaHeaderPacket), SNA_TOTAL_ITEMS);
+      uint8_t damagedScreenBytes[3];
+      pFile->read(damagedScreenBytes, 3);
+      pFile->seekSet(pFile->curPosition() - 3);
+
       Z80Bus::transferSnaData(pFile, true);
       Z80Bus::executeSnapshot(snaHeaderPacket);
-      borderColour =  snaHeaderPacket[SNA_BORDER_COLOUR];
+      borderColour = snaHeaderPacket[SNA_BORDER_COLOUR];
+      restoreCorruptedScreenBytes(damagedScreenBytes);
     } 
     BufferManager::freeToMark(mark);
     InGamePauseMenu::waitForUserExit(borderColour);
@@ -135,6 +181,7 @@ void handleZ80File(FatFile* pFile) {
   Utils::clearScreen(0);
   SnapZ80::Z80HeaderInfo headerInfo;
   uint8_t ver = readZ80Header(pFile, &headerInfo);
+  
   if (ver != Z80_VERSION_UNKNOWN) {
     if (checkZ80FileValidity(pFile, &headerInfo)) {
       // Set stack NOW before sending data over
@@ -142,9 +189,19 @@ void handleZ80File(FatFile* pFile) {
       uint8_t mark = BufferManager::getMark();
       {
         uint8_t *snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-        SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, snaHeaderPacket);
+        SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, snaHeaderPacket );
+
+        // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file data sent to convertSendZ80toSNA() is compressed!
+        uint8_t damagedScreenBytes[3];
+        RequestSendDataPacket pkt(sizeof(damagedScreenBytes), ZX_SCREEN_ADDRESS_START);
+        Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket));  // send request for N bytes of data
+        damagedScreenBytes[0] = Z80Bus::get_IO_Byte();
+        damagedScreenBytes[1] = Z80Bus::get_IO_Byte();
+        damagedScreenBytes[2] = Z80Bus::get_IO_Byte();
+
         Z80Bus::executeSnapshot(snaHeaderPacket);
-        borderColour =  snaHeaderPacket[SNA_BORDER_COLOUR];
+        borderColour = snaHeaderPacket[SNA_BORDER_COLOUR];
+        restoreCorruptedScreenBytes(damagedScreenBytes);
       }
       BufferManager::freeToMark(mark);
       InGamePauseMenu::waitForUserExit(borderColour);
@@ -165,10 +222,11 @@ void handleZ80File(FatFile* pFile) {
   BufferManager::freeToMark(mark);
 
   if (SnapZ80::getMachineDetails(headerInfo.version, headerInfo.hw_mode) == MACHINE_128K) {
-    Draw::text_P(80, 90, F("128K not supported (yet)"));
+    Draw::text_P(80, 90, F("128K not supported"));
   }
   Menu::waitForAnyKey();
 }
+
 
 // ---------------------
 // .TXT FILE
