@@ -137,6 +137,11 @@ L0038:
 ; notes: NMI Z80 timings
 ; 		 Push PC onto Stack: 10/11 T-states
 ; 		 RETN Instruction:   14 T-states.
+;
+; Our Arduino sync requires HALT + NMI. 
+; Since the pause menu uses recursive NMIs, IFF2 is overwritten (losing interrupt state). 
+; We must keep IFF2 and manually restore IFF (call EI or DI) to resume the game.
+;
 ;----------------------------------------------------------------------------------
 ; NON-MASKABLE INTERRUPT (NMI) - Vector: 0x0066  
 ; The HALT instruction and this NMI are used for synchronization with the Arduino.  
@@ -276,39 +281,6 @@ FillLoopOptimized:
 RestoreSP:
 	LD SP,IX               
     jp mainloop             
-
-; ;------------------------------------------------------
-; ; Small Memory Fill (Zero-Only Speed)
-; ; Input: Buffer end address, total fill count (byte)
-; ;------------------------------------------------------
-; command_reverse_fill8:  
-
-;     READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
-;     halt                    ; Synchronization 
-;     in b,(c)                ; B = total fill amount
-
-;     LD IX, 0					
-;     ADD IX, SP               
-;     XOR A      
-
-; CheckParity:
-;     SRL B                   
-;     JR NC, StartEvenFill  
-; HandleOddByte:
-;     DEC HL         	
-;     LD (HL), A      
-;     JR Z, RestoreSP      ; NOTE: flag state from SRL B still good
-; StartEvenFill:
-;     LD SP, HL       
-;     LD H, A   
-;     LD L, A   
-; FillLoopOptimized:
-;     PUSH HL     
-;     DJNZ FillLoopOptimized  
-; RestoreSP:
-;     LD SP, IX   
-;     jp mainloop
-
 
 ;------------------------------------------------------
 ; Read Keyboard / Transmit key (0 none)
@@ -770,17 +742,8 @@ L04B0:
 ;------------------------------------------------------------------------
 
 	halt 
-    in a, ($1f) 	
-	ld h,a			
-	halt 
-    in a, ($1f) 
-	ld l,a			
-	ld sp,hl		;sp
-
-	halt 
 	in a, ($1f) 
 	ld d,a			; D
-
 	halt 
     in a, ($1f) 
 	ld e,a			; E
@@ -788,18 +751,9 @@ L04B0:
 	halt 
     in a, ($1f) 
 	ld b,a			; B
-
 	halt 
     in a, ($1f) 
 	ld c,a			; C
-
-	halt 
-    in a, ($1f) 	
-	ld h,a			; H
-
-	halt 
-    in a, ($1f) 
-	ld l,a			; L
 
 	halt 
     in a, ($1f) 
@@ -874,6 +828,34 @@ L04B0:
 	pop af                   ; F now good (ignoring A holding junk)
 	dec sp                   ; re-align SP 
 
+	halt 
+    in a, ($1f) 	
+	ld h,a			
+	halt 
+    in a, ($1f) 
+	ld l,a			
+	ld sp,hl		;sp
+
+	halt 
+    in a, ($1f) 	
+	ld h,a			; H
+	halt 
+    in a, ($1f) 
+	ld l,a			; L
+
+	halt
+    in a, ($1f)   
+    ld   (0xFFFF), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFE), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFD), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFC), a
+
 	halt
     in a, ($1f)   			 ; A - now we have 'AF'
 
@@ -892,6 +874,34 @@ L04B0:
 	dec sp                   ; re-align SP 
 
 	halt 
+    in a, ($1f) 	
+	ld h,a			
+	halt 
+    in a, ($1f) 
+	ld l,a			
+	ld sp,hl		;sp
+
+	halt 
+    in a, ($1f) 	
+	ld h,a			; H
+	halt 
+    in a, ($1f) 
+	ld l,a			; L
+
+	halt
+    in a, ($1f)   
+    ld   (0xFFFF), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFE), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFD), a
+	halt
+    in a, ($1f)   
+    ld   (0xFFFC), a
+
+	halt 
     in a, ($1f)   			 ; A - now we have 'AF'
 
 	jp .restoreInGameStateCompletedWithDI
@@ -905,44 +915,57 @@ L04B0:
 ; Ingame NMI hook - save game state
 .IngameHook_SaveState:
 
-	; Our Arduino sync requires HALT + NMI. Since the pause menu uses recursive
-	; NMIs, the CPU's IFF2 is overwritten (losing the game's interrupt state). 
-	; We must keep IFF2 and when done manually restore IFF (call EI or DI) to resume the game.
-
-	; Here we use OUTs to save registers and minimize stack usage.
+	;  Send to Arduino A, 4 bytes from MEM-TOP, BC, DE, HL
 	out  (0x1F), a			; A
 	halt					; Nano triggers a NMI to release halt (this processs will use stack)
+
+	ld   a,(0xFFFF)
+	out  (0x1F), a
+	halt
+	ld   a,(0xFFFE)
+	out  (0x1F), a
+	halt
+	ld   a,(0xFFFD)
+	out  (0x1F), a
+	halt
+	ld   a,(0xFFFC)
+	out  (0x1F), a
+	halt
 
 	ld   a,b				; B
 	out  (0x1F), a
 	halt
-
 	ld   a,c				; C
 	out  (0x1F), a
 	halt
 
-	push af 
-    pop bc  
-
-	ld hl, 0   
-	add hl, sp 
-
-	ld   a,h				; 
+	ld   a,d				; D
 	out  (0x1F), a
 	halt
-	ld   a,l				; SP
+	ld   a,e				; E
 	out  (0x1F), a
 	halt
+
+	ld   a,h				; H
+	out  (0x1F), a
+	halt
+	ld   a,l				; L
+	out  (0x1F), a
+	halt
+
+    ld   (0xFFFC), sp       ; Save game's SP to memory
+	ld   sp, 0x0000         ; PUSH will wrap and write to FFFF and FFFE
+
+    ld   a, (0xFFFD)        ; SP High
+    out  (0x1F), a
+    halt
+    ld   a, (0xFFFC)        ; SP Low
+    out  (0x1F), a
+    halt
 
 	ld   a,c                ; F (from C)
     out  (0x1F), a
     halt
-
-;;	push af		
-;;	pop bc
-;;	ld   a,c				; F
-;;	out  (0x1F), a
-;;	halt
 
 	ld   a,i				; i
 	out  (0x1F), a
@@ -964,26 +987,11 @@ L04B0:
 	halt					; Sync
 
 .SendRegs:
-	ld   a,d				; D
-	out  (0x1F), a
-	halt
 
-	ld   a,e				; E
-	out  (0x1F), a
-	halt
-
-	ld   a,h				; H
-	out  (0x1F), a
-	halt
-
-	ld   a,l				; L
-	out  (0x1F), a
-	halt
 
 	ld   a,ixh				; IXH
 	out  (0x1F), a
 	halt
-
 	ld   a,ixl				; IXL
 	out  (0x1F), a
 	halt
@@ -991,7 +999,6 @@ L04B0:
 	ld   a,iyh				; IYH
 	out  (0x1F), a
 	halt
-
 	ld   a,iyl				; IYL
 	out  (0x1F), a
 	halt
@@ -1004,7 +1011,6 @@ L04B0:
 	ld   a,b				; B'
 	out  (0x1F), a
 	halt
-
 	ld   a,c				; C'
 	out  (0x1F), a
 	halt
@@ -1018,7 +1024,6 @@ L04B0:
 	ld   a,d				; D'
 	out  (0x1F), a
 	halt
-
 	ld   a,e				; E'
 	out  (0x1F), a
 	halt
@@ -1026,7 +1031,6 @@ L04B0:
 	ld   a,h				; H'
 	out  (0x1F), a
 	halt
-
 	ld   a,l				; L'
 	out  (0x1F), a
 	halt
@@ -1034,12 +1038,9 @@ L04B0:
     exx
     ex   af,af'
 
+	;	call command_MuteAY; // Prevent audio looping (machines with AY chip)
 
-
-	; We've already been forced to used the GAMES STACK above
-	; using the luxury of a call/return here will not matter now!
-	call command_MuteAY; // Prevent audio looping (machines with AY chip)
-
+	;  Now stack is leaft sitting at 0x0000
     jp mainloop         
 
 ;------------------------------------------------------------------------
@@ -1175,121 +1176,6 @@ cleanup:
 
     RET  ; return OK as using Detect128K inside game menu's stack
 
-; ;-----------------------------------------------------------------------
-; ; SaveZ80State – Save FULL Z80 state (entered via NMI)
-; ; The original NMI return address stays on the game's stack 
-; ;-----------------------------------------------------------------------
-; .SaveZ80State:
-
-;     out  ($1F),a	; A
-;     halt
-
-;     ld   a,i		; I
-;     out  ($1F),a
-;     halt
-
-;     ld   a,b		; B
-;     out  ($1F),a
-;     halt
-;     ld   a,c		; C
-;     out  ($1F),a
-;     halt
-
-;     push af
-;     pop  bc
-;     ld   a,c        ; F
-;     out  ($1F),a
-;     halt
-
-;     ld   a,d
-;     out  ($1F),a  	; D
-;     halt
-;     ld   a,e
-;     out  ($1F),a	; E
-;     halt
-;     ld   a,h
-;     out  ($1F),a	; H
-;     halt
-;     ld   a,l
-;     out  ($1F),a	; L
-;     halt
-;     ;---- Save SP ----
-;     ld   hl,0
-;     add  hl,sp
-;     ld   a,l
-;     out  ($1F),a
-;     halt
-;     ld   a,h
-;     out  ($1F),a
-;     halt
-;     ;---- Save IX ----
-;     ld   a,ixh
-;     out  ($1F),a
-;     halt
-;     ld   a,ixl
-;     out  ($1F),a
-;     halt
-;     ;---- Save IY ----
-;     ld   a,iyh
-;     out  ($1F),a
-;     halt
-;     ld   a,iyl
-;     out  ($1F),a
-;     halt
-
-;     ;---- Save alternate registers ----
-;     ex   af,af'
-;     exx
-;     out  ($1F),a	; A'
-;     halt
-;     push af
-;     pop  bc
-;     ld   a,c      	; F'
-;     out  ($1F),a
-;     halt
-;     ld   a,b
-;     out  ($1F),a  	; B'
-;     halt
-;     ld   a,c
-;     out  ($1F),a	; C'
-;     halt
-;     ld   a,d
-;     out  ($1F),a	; D'
-;     halt
-;     ld   a,e
-;     out  ($1F),a	; E'
-;     halt
-;     ld   a,h
-;     out  ($1F),a	; H'
-;     halt
-;     ld   a,l
-;     out  ($1F),a	; L'
-;     halt
-
-;     exx
-;     ex   af,af'
-
-;     ;---- Save I + IFF2 (bit 7 encodes IFF2) ----
-;     ld   a,i
-;     jp   po,.iffOff
-; .iffOn:
-;     or   %10000000
-;     out  ($1F),a
-;     halt
-;     jr   .saveR
-; .iffOff:
-;     and  %01111111
-;     out  ($1F),a
-;     halt
-
-; .saveR:
-;     ld   a,r		; R
-;     out  ($1F),a
-;     halt
-
-;     jp   mainloop
-
-
 ; -------------------------------------------------------------------------
 	IF $ > $16D4
 	.ERROR "CODE OVERLAPS"
@@ -1391,37 +1277,6 @@ DS  16384 - last	; leave rest of rom blank
 ; 21/ Command to upload code and execute 
 ; 22/ Joystick remapping including 2nd button support
 ;*****************************
-
-
-; 27-byte SNA Header Example (Reordered by Arduino to aid Z80 register restoration)
-
-;  Arduino's data transmit code loaded by z80
-;   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
-;   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
-;   sendBytes(&header[SNA_SP_LOW], 2);              // The rest aren't in SNA header sequence...
-;   sendBytes(&header[SNA_HL_LOW], 2);
-;   sendBytes(&header[SNA_IM_MODE], 1);
-;   sendBytes(&header[SNA_BORDER_COLOUR], 1);
-;   sendBytes(&header[SNA_DE_LOW], 2);
-;   sendBytes(&header[SNA_BC_LOW], 2);
-;   sendBytes(&header[SNA_AF_LOW], 2);
-
-; [0 ] I            = 0x3F     	 [1st loaded]   
-; [1 ] HL_          = 0x2758   	 [2nd]  
-; [3 ] DE_          = 0xB462     [3rd]  
-; [5 ] BC_          = 0x3F62     [4th]  
-; [7 ] AF_          = 0x12A8     [5th]  
-; [15] IY           = 0x5C3A  	 [6th]  
-; [17] IX           = 0xDB59     [7th]  
-; [19] IFF2         = 0x00       [8th]  
-; [20] R            = 0x5F       [9th]  
-; [23] SP           = 0x6188     [10th]  
-; [9 ] HL           = 0xFC0B     [11th]  
-; [25] IM           = 0x01       [12th]  
-; [26] BorderColour = 0x00       [13th]  
-; [11] DE           = 0x98B2     [14th]  
-; [13] BC           = 0x0012     [15th]  
-; [21] AF           = 0x4040  	 [16th is loaded last]
 
 ; ----------------------------------------------------------------------------------
 

@@ -57,7 +57,11 @@ void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
 
     PORTD = buttonData & INPUT_MASK;
 
-    if (buttonData & INPUT_SELECT) {
+//  static uint32_t a=10000;  // AUTO TEST PAUSING GAME NON STOP
+//  a--;
+ //   if (a==0) { 
+   if (buttonData & INPUT_SELECT) {
+//      a=10000;
       if (process(borderColour)) {
         break;  // back to game loader menu
       }
@@ -110,7 +114,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
 
   // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's
-  // combined /RD AND /IORQ lines
+  // combined /RD AND /IORQ lines (Detects Keyboard/Joystick IN instructions)
   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
   // Using Inline ASM for cycle-accurate timing.
@@ -118,10 +122,19 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   //   while (digitalRead(A2) == HIGH); // Wait for external signal on A2
   //   NMI_LOW(); NMI_HIGH();           // Pulse NMI on A0 immediately
   asm volatile(
-      "1: sbic %[pin],2   \n\t"  // Check A2 (PC2); skip next instruction if LOW
-      "rjmp 1b            \n\t"  // Jump back to '1' (Loop while A2 is HIGH)
-      "cbi  %[port],0     \n\t"  // Drive A0 (PC0) LOW (Start NMI pulse)
-      "sbi  %[port],0     \n\t"  // Drive A0 (PC0) HIGH (End NMI pulse)
+      // Wait for IORQ + RD to go LOW
+      "1: sbic %[pin],2   \n\t"  // Check A2 (PC2)
+      "rjmp 1b            \n\t"  // Loop while A2 is HIGH
+
+      // Wait for the IN instruction to finish.
+      ".rept 14            \n\t" 
+      "nop                \n\t"
+      ".endr              \n\t"
+
+      "cbi  %[port],0     \n\t"    //  Trigger NMI (Drive A0 / PC0 LOW)
+      "nop                \n\t"
+      "nop                \n\t"
+      "sbi  %[port],0     \n\t"   // Release NMI (Drive A0 / PC0 HIGH)
       :
       : [pin] "I"(_SFR_IO_ADDR(PINC)), [port] "I"(_SFR_IO_ADDR(PORTC)));
 
@@ -154,7 +167,6 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
    // Save screen to scratch file
   Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-  
   uint8_t result;
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
@@ -170,7 +182,6 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
     Menu::waitForRelease();
-
     switch (result) {
       case SAVE_SNA:
         handleSaveSnapshot(z80Registers, cacheDirName);
