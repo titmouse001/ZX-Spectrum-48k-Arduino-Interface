@@ -4,6 +4,7 @@
 #include "BufferManager.h" 
 #include "Z80Bus.h" 
 #include "PacketTypes.h" 
+#include "utils.h" 
 
 /*
  *******************************************************************
@@ -181,11 +182,10 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
       uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
       constexpr uint16_t UNCOMPRESSED_16KB = 0x4000;  // uses 16KB (0x4000)
       constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF;  // flags uncompressed
-      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG)
-                              ? UNCOMPRESSED_16KB
-                              : compressed_len;
-      if (!pFile->seekCur(skip_len)) {  // RESTORE NO REALLY NEEDED
-        return false;                   // skip block data
+      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? UNCOMPRESSED_16KB : compressed_len;
+	  //  If seeking the block pushes past, assume EOF.							  
+	  if (!pFile->seekCur(skip_len)) {  
+        break;                   
       }
     }
   } else {  // V1
@@ -193,10 +193,10 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
       if (!locateV1Terminator(pFile, initial_file_pos, headerInfo->v1PayloadLength)) {
         result = false;
       }
-    } else {  // check uncompressed data is 48k + file header
-      if (pFile->fileSize() != (0xC000 + Z80_V1_HEADERLENGTH)) {
-        result = false;
-      }
+    } else {  // check uncompressed data is a least 48k + file header (will ignore extra later)
+		if (pFile->fileSize() < (0xC000 + Z80_V1_HEADERLENGTH)) {
+        	result = false;
+      	}
     }
   }
 
@@ -204,7 +204,7 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
   return result;
 }
 
-// Z80 format - Block decompression support for it's "ED ED [count] [value]" format
+// Z80 format - Block decompression (supports the "ED ED [count] [value]" format)
 __attribute__((optimize("-Ofast")))
 void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_t currentAddress) {
 
@@ -234,10 +234,8 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 	// Send uncompressed to Z80
 	auto flushCommandPayloadBuffer = [&]() {
 		if (commandPayloadPos > 0) {
-
 			uint8_t headerLen = sizeof (TransferPacket);
 			TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
-
 			Z80Bus::sendBytes((uint8_t*)&header, headerLen);
 			Z80Bus::sendBytes(txBuffer, commandPayloadPos);
 			currentAddress += commandPayloadPos;
@@ -256,10 +254,16 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 	while (bytesReadFromSource < sourceLengthLimit) {
 		uint8_t b1 = getNextByteFromFile();
 		if (b1 == 0xED) { 
+			// Check if this 0xED is the very last byte of the compressed block!
+			if (bytesReadFromSource >= sourceLengthLimit) {
+				addByteToCommandPayloadBuffer(0xED);
+				break; 
+			}
+
 			// maybe the start of compressed sequence
 			uint8_t b2 = getNextByteFromFile();
-			if (b2 == 0xED)	{							   // double ED then it's compressed data to follow
-														   // We are officially in a compressed block!  (Format: ED ED [count] [value])
+			if (b2 == 0xED)	{							   
+				// We are officially in a compressed block!  (Format: ED ED [count] [value])
 				flushCommandPayloadBuffer();			   // Flush uncompressed bytes
 				uint8_t runAmount = getNextByteFromFile(); // repeat count
 				uint8_t value = getNextByteFromFile();	   // byte to repeat
@@ -271,8 +275,7 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 				currentAddress += runAmount;
 			}
 			else {
-				// We found a 'ED' followed by something that is NOT 'ED'. The format says that the byte immediately following a literal 'ED'
-				// is NOT part of a compression block. So, we treat both b1 ('ED') and b2 as normal, uncompressed data.
+				// We found a 'ED' followed by something that is NOT 'ED'. 
 				addByteToCommandPayloadBuffer(0xED);
 				addByteToCommandPayloadBuffer(b2);
 			}
@@ -330,6 +333,9 @@ void SnapZ80::sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t curren
 
 __attribute__((optimize("-Ofast")))
 BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
+	
+	constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF;
+
 	uint8_t header[3]; // compressed length (2 bytes), page number (1 byte)
 	if (pFile->read(header, sizeof(header)) != sizeof(header)) {
 		return pFile->available() ? BLOCK_ERROR : BLOCK_END_OF_FILE;
@@ -349,16 +355,16 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
 		mem_offset = 0xC000;
 		break;
 	default:
-		if (!pFile->seekCur(compressed_len)) {
+		// Skip: uncompressed 0x4000 (16KB) chunk or compressed chunk
+		uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? 0x4000 : compressed_len;
+		if (!pFile->seekCur(skip_len)) {
 			return BLOCK_ERROR;
 		}
 		return BLOCK_UNSUPPORTED_PAGE;
 	}
 
-	constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF ; // flags uncompressed
 	if (compressed_len == UNCOMPRESSED_FLAG) {
-		// uncompressed 16K blocks
-		sendRawBytes_core(pFile, 0x4000, mem_offset);
+		sendRawBytes_core(pFile, 0x4000, mem_offset);   // uncompressed 16K blocks
 	}
 	else {
 		decodeRLE_core(pFile, compressed_len, mem_offset);
@@ -367,12 +373,17 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
 	return BLOCK_SUCCESS;
 }
 
+/*
+ * Version 2/3 .z80 snapshot files can crash due to the conversion of z80->sna format i.e. convertSendZ80toSNA().
+ * At times (down to bad luck), any .z80 snapshot captured by emulators while the game was abusing the stack pointer will not end well. 
+ *
+ *  UPDATE THIS TO USE DEDICATED Z80 FILE LOADER
+ */
+
 // .z80 files get converted to reuse existing ".SNA" game loading functionaliy
 bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
                                   uint8_t* snaHeader) {
- // uint16_t stackAddrForPushingPC = 0;
   uint8_t* v1_header = headerInfo->headerV1Data;
-
   if (headerInfo->version >= 2) {
     //
     // >>> V2 or V3 format <<<
@@ -383,8 +394,6 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
     // Clear bit 7 of R register
     v1_header[Z80_V1_R_7BITS] &= ~0x80;
-
-  //  stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
 
     while (true) {
       BlockReadResult block_result = readAndWriteBlock(pFile);
@@ -401,17 +410,18 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     //
     // >>> V1 Format <<<
     //
-  	//  stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
-
     if (headerInfo->isV1Compressed) {
       uint32_t rle_data_length = headerInfo->v1PayloadLength;
       decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
     } else {
       // Uncompressed V1 data
-      sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY, ZX_SCREEN_ADDRESS_START);
+      sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY,
+                        ZX_SCREEN_ADDRESS_START);
     }
   }
 
+
+  
   constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
 
   uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
@@ -422,5 +432,6 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
   uint8_t buf[TRANSMIT_AMOUNT] = {  headerInfo->pc_low, headerInfo->pc_high};  // note order [0]=low , [1]=high
   Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);
 
-  return true;  // BLOCK_SUCCESS;
+
+  return true;
 }
