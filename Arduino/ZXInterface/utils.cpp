@@ -44,11 +44,6 @@ uint8_t Utils::readJoystick() {
   // bit 0 to 7: Right,Left,Down,Up,Fire1,Fire2, Select (PCB button) and last bit is not used.
 }
 
-
-static uint8_t scratchStack[4];
-
-
-
 void Utils::setupJoystick() {
   // Setup pins for "74HC165" shift register
   pinModeFast(Pin::ShiftRegDataPin, INPUT);
@@ -56,29 +51,29 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
+
+// Internal storage for storing Z80 states - This is not a SNA header thing
 Z80Registers* Utils::storeZ80States() {
   uint16_t mark = BufferManager::getMark();
   Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
 
   // !!! not the same order as restore !!!
   regs->a = Z80Bus::get_IO_Byte();
-
-  scratchStack[0] = Z80Bus::get_IO_Byte(); // 0xffff
-  scratchStack[1] = Z80Bus::get_IO_Byte();
-  scratchStack[2] = Z80Bus::get_IO_Byte();
-  scratchStack[3] = Z80Bus::get_IO_Byte(); // 0xfffc
-
   regs->b = Z80Bus::get_IO_Byte();
   regs->c = Z80Bus::get_IO_Byte();
   regs->d = Z80Bus::get_IO_Byte();
   regs->e = Z80Bus::get_IO_Byte();
   regs->h = Z80Bus::get_IO_Byte();
   regs->l = Z80Bus::get_IO_Byte();
+
   regs->sp_hi = Z80Bus::get_IO_Byte();
   regs->sp_lo = Z80Bus::get_IO_Byte();
-  regs->f = Z80Bus::get_IO_Byte();
+
   regs->i = Z80Bus::get_IO_Byte();
   regs->iff2 = Z80Bus::get_IO_Byte();
+
+  regs->f = Z80Bus::get_IO_Byte();
+
   regs->ixh = Z80Bus::get_IO_Byte();
   regs->ixl = Z80Bus::get_IO_Byte();
   regs->iyh = Z80Bus::get_IO_Byte();
@@ -102,7 +97,6 @@ Z80Registers* Utils::storeZ80States() {
 }
 
 
-
 void Utils::restoreZ80States(Z80Registers* regs) {
   
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
@@ -111,11 +105,14 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
   // !!! not the same order as store !!!
-  Z80Bus::sendBytes(&regs->d, 1);
-  Z80Bus::sendBytes(&regs->e, 1);
+  Z80Bus::sendBytes(&regs->sp_hi, 1);
+  Z80Bus::sendBytes(&regs->sp_lo, 1);
+//  Z80Bus::sendBytes(&regs->d, 1);
+//  Z80Bus::sendBytes(&regs->e, 1);
   Z80Bus::sendBytes(&regs->b, 1);
   Z80Bus::sendBytes(&regs->c, 1);
-
+  Z80Bus::sendBytes(&regs->h, 1);
+  Z80Bus::sendBytes(&regs->l, 1);
   Z80Bus::sendBytes(&regs->i, 1);
   Z80Bus::sendBytes(&regs->ixh, 1);
   Z80Bus::sendBytes(&regs->ixl, 1);
@@ -133,15 +130,8 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   // no point doing R (z80's .restoreInGameState: skips reg-R)
   Z80Bus::sendBytes(&regs->f, 1);  
 
-  Z80Bus::sendBytes(&regs->sp_hi, 1);
-  Z80Bus::sendBytes(&regs->sp_lo, 1);
-  Z80Bus::sendBytes(&regs->h, 1);
-  Z80Bus::sendBytes(&regs->l, 1);
-
-  Z80Bus::sendByte(&scratchStack[0]);
-  Z80Bus::sendByte(&scratchStack[1]);
-  Z80Bus::sendByte(&scratchStack[2]);
-  Z80Bus::sendByte(&scratchStack[3]);
+  Z80Bus::sendBytes(&regs->d, 1);
+  Z80Bus::sendBytes(&regs->e, 1);
 
   Z80Bus::sendBytes(&regs->a, 1);
 
