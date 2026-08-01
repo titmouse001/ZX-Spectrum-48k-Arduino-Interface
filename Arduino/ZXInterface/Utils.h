@@ -44,7 +44,7 @@ struct __attribute__ ((packed)) Z80Registers {
 
 namespace Utils {
 
-void resetSystem();
+//void resetSystem();
 Z80Registers* storeZ80States();
 void restoreZ80States(Z80Registers* regs);
 

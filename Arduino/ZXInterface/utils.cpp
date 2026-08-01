@@ -51,13 +51,11 @@ void Utils::setupJoystick() {
   pinModeFast(Pin::ShiftRegClockPin, OUTPUT);
 }
 
-
-// Internal storage for storing Z80 states - This is not a SNA header thing
+// Internal storage for storing Z80 states (not part of the SNA header format).
 Z80Registers* Utils::storeZ80States() {
   uint16_t mark = BufferManager::getMark();
   Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
 
-  // !!! not the same order as restore !!!
   regs->a = Z80Bus::get_IO_Byte();
   regs->b = Z80Bus::get_IO_Byte();
   regs->c = Z80Bus::get_IO_Byte();
@@ -65,15 +63,11 @@ Z80Registers* Utils::storeZ80States() {
   regs->e = Z80Bus::get_IO_Byte();
   regs->h = Z80Bus::get_IO_Byte();
   regs->l = Z80Bus::get_IO_Byte();
-
   regs->sp_hi = Z80Bus::get_IO_Byte();
   regs->sp_lo = Z80Bus::get_IO_Byte();
-
   regs->i = Z80Bus::get_IO_Byte();
   regs->iff2 = Z80Bus::get_IO_Byte();
-
   regs->f = Z80Bus::get_IO_Byte();
-
   regs->ixh = Z80Bus::get_IO_Byte();
   regs->ixl = Z80Bus::get_IO_Byte();
   regs->iyh = Z80Bus::get_IO_Byte();
@@ -86,17 +80,16 @@ Z80Registers* Utils::storeZ80States() {
   regs->e_prime = Z80Bus::get_IO_Byte();
   regs->h_prime = Z80Bus::get_IO_Byte();
   regs->l_prime = Z80Bus::get_IO_Byte();
-  regs->r = 255; // memory refresh register - anything will do
+  regs->r = 127; // memory refresh register - from mid point
   regs->borderCol = COL::RED;  // red to stand out if this failes as will be overwritten later
   // 0x3f is the Speccys default ROM's startup
   // Anything other then 99% chance the games uses IM2 (i.e. it's something like i==0xfe)
   regs->im = (regs->i == 0x3f) ? 1 : 2;
-
   regs->AllocMark = mark;
   return regs;
 }
 
-
+// Internal storage for restoring Z80 states (not part of the SNA header format).
 void Utils::restoreZ80States(Z80Registers* regs) {
   
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
@@ -104,11 +97,8 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   uint8_t addr0x04AA[] = { 0x04, 0xAA };  // jump to address
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
-  // !!! not the same order as store !!!
   Z80Bus::sendBytes(&regs->sp_hi, 1);
   Z80Bus::sendBytes(&regs->sp_lo, 1);
-//  Z80Bus::sendBytes(&regs->d, 1);
-//  Z80Bus::sendBytes(&regs->e, 1);
   Z80Bus::sendBytes(&regs->b, 1);
   Z80Bus::sendBytes(&regs->c, 1);
   Z80Bus::sendBytes(&regs->h, 1);
@@ -127,12 +117,10 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   Z80Bus::sendBytes(&regs->l_prime, 1);
   Z80Bus::sendBytes(&regs->a_prime, 1);
   Z80Bus::sendBytes(&regs->iff2, 1);
-  // no point doing R (z80's .restoreInGameState: skips reg-R)
+  //z80's .restoreInGameState: skips reg-R (hard coded as 127 in store above)
   Z80Bus::sendBytes(&regs->f, 1);  
-
   Z80Bus::sendBytes(&regs->d, 1);
   Z80Bus::sendBytes(&regs->e, 1);
-
   Z80Bus::sendBytes(&regs->a, 1);
 
   BufferManager::freeToMark(regs->AllocMark);
@@ -327,30 +315,20 @@ void Utils::viewSpeccyMemory() {
   }
 }
 
-void Utils::resetSystem() {
-  pinModeFast(Pin::Z80_REST, OUTPUT);
-  digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
-
-  Z80Bus::setupPins();
-  Utils::setupJoystick();
-
-  Utils::delay16(Z80_RESET_TIME);
-
-  digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
-  Utils::delay16(1);
-}
-
 void Utils::stockRomBoot_Blocking() {
+  // !!! NO Z80 RESET AVAILABLE - STOLE THAT PIN FOR FUTURE USE !!!
+  // TODO: get back into SNA ROM via PCB button
+  //
   Z80Bus::setStockRom();
-  Z80Bus::resetZ80(); // Resets Z80 for a clean boot from internal ROM.
-  while ((Utils::readJoystick() & INPUT_SELECT) != 0){} // Debounces button release.
+ //////////// Z80Bus::resetZ80(); // Resets Z80 for a clean boot from internal ROM.
+  //while ((Utils::readJoystick() & INPUT_SELECT) != 0){} // Debounces button release.
   while (true) {
-    // Allow the user to return back to the game loader screen.
-    if (Utils::readJoystick() & INPUT_SELECT) {
-      Z80Bus::setSnaRom();
-      while ((Utils::readJoystick() & INPUT_SELECT) != 0) { }
-      break; // continue with Sna loader ROM
-    }
+    // // Allow the user to return back to the game loader screen.
+    // if (Utils::readJoystick() & INPUT_SELECT) {
+    //   Z80Bus::setSnaRom();
+    //   while ((Utils::readJoystick() & INPUT_SELECT) != 0) { }
+    //   break; // continue with Sna loader ROM
+    // }
   }
 }
 

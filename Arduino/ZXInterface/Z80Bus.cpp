@@ -15,14 +15,13 @@ void Z80Bus::setupPins() {
  
   pinModeFast(Pin::ROM_HALF, OUTPUT);  // set ROM_HALF first
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
- 
+  
   pinModeFast(Pin::OE_LATCH, OUTPUT);
   digitalWriteFast(Pin::OE_LATCH,HIGH);   //74HC574PW , #OE_LATCH
 
   pinModeFast(Pin::Z80_HALT, INPUT);
-  pinModeFast(Pin::Z80_NMI, OUTPUT);
-  pinModeFast(Pin::Z80_REST, OUTPUT);
-
+ 
+  DDRD = 0xFF;                     // Set all PORTD pins as outputs
   // pinModeFast(Pin::Z80_D0Pin, OUTPUT);
   // pinModeFast(Pin::Z80_D1Pin, OUTPUT);
   // pinModeFast(Pin::Z80_D2Pin, OUTPUT);
@@ -31,18 +30,14 @@ void Z80Bus::setupPins() {
   // pinModeFast(Pin::Z80_D5Pin, OUTPUT);
   // pinModeFast(Pin::Z80_D6Pin, OUTPUT);
   // pinModeFast(Pin::Z80_D7Pin, OUTPUT);
-  DDRD = 0xFF;                     // Set all PORTD pins as outputs
-
-  // setup /NMI - Z80 /NMI, used to trigger a 'HALT' so the Z80 can be released and resume
-  digitalWriteFast(Pin::Z80_NMI, HIGH);  // put into a default state
 }
 
-void Z80Bus::resetZ80() {
-  digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
-  Utils::delay16(Z80_RESET_TIME); 
-  digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
-  Utils::delay16(1);
-}
+// void Z80Bus::resetZ80() {
+//   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
+//   Utils::delay16(Z80_RESET_TIME); 
+//   digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
+//   Utils::delay16(1);
+// }
 
 void Z80Bus::setSnaRom() {
   digitalWriteFast(Pin::ROM_HALF, LOW);  // LOW = Snaploader Custom ROM
@@ -285,6 +280,7 @@ void Z80Bus::waitHalt_syncWithZ80() {
 
 void Z80Bus::triggerZ80NMI() {
   digitalWriteFast(Pin::Z80_NMI, LOW);
+  __asm__ __volatile__("nop\n\t nop\n\t");
   // delayMicroseconds(1);     // other Arduino platforms may need a pause
   digitalWriteFast(Pin::Z80_NMI, HIGH);
   hasZ80Resumed();

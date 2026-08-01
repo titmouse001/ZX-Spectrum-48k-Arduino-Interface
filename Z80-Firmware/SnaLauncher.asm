@@ -95,15 +95,17 @@ L0000:
 	;Stack Behavior - 	The stack grows downward.
 	;					PUSH: sp -= 2; stores value at (sp).
 	;					POP: loads value from (sp); sp += 2.
+	;
 	;*** IMPORTANT WARNINGS ***:
-	; Code limitations when using "command_Execute":
+	; Code limitations when using "command_*":
 	; Total stack usage must be only 1 level deep (2 bytes, just one push).
 	; Do NOT use PUSH/POP around interrupts! (Interrupts automatically push PC onto the stack).
-	; (While in the menu code, it's okay to use the stack normally.)
-
+	; (While in the main menu code, it's okay to use the stack normally.)
+	;
 	SET_BORDER 0
-	;/////////call ClearScreenAttributes   ; nano is resetting about + it asks for a screen clear (attributes first)
-
+	; hide screen - black
+	jp ClearScreenAttributes_ForStartup_StackAbused
+return_ClearScreenAttributes_ForStartup_StackAbused:
 	;------------------------------------------
 	; Disable 128k Spectrums from paging
 	; 0x7FFD : Bit 5=1 (Lock), Bit 3=0 (Screen at 0x4000), Bits 0-2=0 (Bank 0)
@@ -111,7 +113,8 @@ L0000:
     LD BC, $7FFD      
     OUT (C), A        ; Lock and select Bank 0/Screen 5
 	;------------------------------------------
-
+	HALT  ; Syncronise with Arduino 
+	; SET_BORDER 6   ; DEBUG
 	jp mainloop
 
 ; -------------------------------------------------------------------------
@@ -1098,6 +1101,21 @@ clr_attr_loop:
 
  	ld sp, ix     
     jp mainloop 
+
+; ----------------------------------------------------------------
+; !!! FOR CODE STARTUP ONLY !!!
+ClearScreenAttributes_ForStartup_StackAbused:
+    ld hl, 0    
+    ld sp, SCREEN_ATTRIBUTES_START + SCREEN_ATTRIBUTES_SIZE  
+    ld b, 6   ; 768 / 2 (push) / 6 = 64
+.clr_attr_loop:
+    REPT 64
+    	push hl
+    ENDM        
+    djnz .clr_attr_loop   
+	ld SP,0xFFFF  ; nothings using it yet
+
+    jp return_ClearScreenAttributes_ForStartup_StackAbused
 ;-----------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------

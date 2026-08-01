@@ -8,22 +8,52 @@
 // saves flash memory (though the code currently fits onto the Nano with some room to spare).
 // see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
 // https://zadig.akeo.ie/  (for drivers - I used winusb )
-
 // For cheaper clone boards like ATmega328PB (not ATmega328P using standard options "Arduino AVR Boards" -> "Arduino Nano" )
 // Tools > Board > MiniCore -> select ATmega328
 // Settings -> board: 115200, "BOD 2.7v", Yes (UART0), External 16MHz, EEPROM retianed, LTO enabled, "328PB"
-// Make sure programmer is set to USBaspm,
-// then -> "upload using programmer"
+// Make sure programmer is set to USBaspm, then -> "upload using programmer"
 
+// -------------------------------------------------------------------------------------
+// To upload via an external programmer (USBasp) instead of the onboard USB chip. 
+// Useful if the USB/Serial chip fails, and saves flash memory (frees ~512B by removing bootloader).
+// Quick start guide: https://www.youtube.com/watch?v=ToKerwRR-70
+// Drivers (Windows): https://zadig.akeo.ie/ (Select USBasp device -> install 'WinUSB' driver)
+//
+// For clone boards with ATmega328PB (which fail under standard "Arduino AVR Boards" -> "Arduino Nano"):
+// 1. Board Selection: Tools > Board > MiniCore -> ATmega328
+// 2. MiniCore Options: 
+//    - Variant: "328PB"
+//    - Clock: "External 16MHz"
+//    - BOD: "BOD 2.7V"
+//    - EEPROM: "EEPROM retained"
+//    - LTO: "Enabled"
+// 3. Programmer: Tools > Programmer -> "USBasp"
+// 4. Upload Code: Sketch > Upload Using Programmer (Do NOT use "Burn Bootloader" unless changing fuses)
+// -------------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------
+// NOTE: USING CLONES OF CLONES (LGT8F328P LQFP32 MiniEVB)
+// Issue with the  LGT8F328 + SdFat combination (others also seen this)
+// The LGT's SPI hardware isn't a 100% register-compatible ATmega328P clone, and
+// the standard SD.h works while SdFat fails on the exact same hardware.
+// THIS CHANGE FIXED IT FOR ME:
+//    #define SPI_DRIVER_SELECT 1
+// This forces SdFat to use the standard Arduino SPI driver rather than its optimized native one.
+// BUT HAD TO UPLOAD USING "Arduino IDE 2.3.10"  (VSC extension wth same config same build/upload but just failed to run!!!)
+// FOR NOW AVOID USING PURPLE NANO LGT8F328 - looking like support on latest arduino nano setup is breaking something!!!
+// -------------------------------------------------------------------------------------
 // -------------------------------------------------------------------------------------
 
 // see README.MD for more info
-
 
 //Sketch uses 27500 bytes (89%) of program storage space. Maximum is 30720 bytes.
 //Global variables use 1392 bytes (67%) of dynamic memory, leaving 656 bytes for local variables. Maximum is 2048 bytes.
 
 #include <Arduino.h>
+#include <avr/wdt.h>
+#include <EEPROM.h>
+
 #include "Utils.h"
 #include "Menu.h"
 #include "InGamePauseMenu.h"
@@ -36,27 +66,53 @@
 #include "PacketTypes.h"
 
 void setup() {
+  // *************************************************************************************
+  // NOTE: To free up a pin, I removed the Arduino line used to reset the Z80 (/RESET). 
+  // Because of this, things can now go out of sync between the Z80 and Arduino at start-up.
+  // To get around this, the A3 (ROM Half) pin has now been tied to GND via a 10K pull-down resistor, 
+  // so at power-up it defaults to LOW (SNA-ROM).
+  // *************************************************************************************
+  // Reset now removed to free up pin - see above (this is a pain but need a
+  // free pin) pinModeFast(Pin::Z80_REST, OUTPUT);
+  // digitalWriteFast(Pin::Z80_REST, LOW);
+  // Utils::delay16(Z80_RESET_TIME);
+  // digitalWriteFast(Pin::Z80_REST, HIGH);
 
-#ifdef SERIAL_DEBUG 
-  Debug::setupSerial(); // For debugging
+#ifdef SERIAL_DEBUG
+  Debug::setupSerial();  // For debugging
 #endif
 
-  Utils::resetSystem();
+  Z80Bus::setupPins();
+  Utils::setupJoystick();
 
-#ifdef DEBUG_OLED
-  Debug::setupOled(); // For debugging
-#endif
+  // ----------------------------------------------------------------------
+  // Attempt to sync with Speccy - Spectrum side has extra HALT at startup
+  Z80Bus::waitHalt_syncWithZ80();
+  // At this point HALT has been spotted by the Arduino and we carry on!
+  // ----------------------------------------------------------------------
+  //
+  // WARNING: Switching a floating/high-Z input to OUTPUT will drive the line
+  // LOW because the pin defaults to LOW on power-up. Changing the pin to OUTPUT
+  // generates a falling edge that triggers the Z80's edge-sensitive /NMI.
+  pinModeFast(Pin::Z80_NMI, OUTPUT);
+  //
+  // Now we can go LOW/HIGH in a controlled pulse at start-up.
+  digitalWriteFast(Pin::Z80_NMI, LOW);
+  __asm__ __volatile__("nop\n\t nop\n\t");
+  digitalWriteFast(Pin::Z80_NMI, HIGH);
+  // ----------------------------------------------------------------------------------------
 
   // Use stock ROM when select button or fire held at power up
   if (Utils::readJoystick() & (INPUT_FIRE2 | INPUT_SELECT)) {
     Utils::stockRomBoot_Blocking();  // user pressing select again will exit
   }
 
-  // Display the version (remove sd card to view version)
-  Utils::clearScreen(COL::CYAN_BLACK); 
-  Draw::text_P(256 - 24, 192 - 8, F(VERSION));
+  //  Utils::delay16(1);
 
-  Utils::waitForSDCard_Blocking(); // When blocking shows - "INSERT SD CARD"
+  // Display the version (remove sd card to view version)
+  Utils::clearScreen(COL::CYAN_BLACK);
+  Draw::text_P(256 - 24, 192 - 8, F(VERSION));
+  Utils::waitForSDCard_Blocking();  // When blocking shows - "INSERT SD CARD"
 }
 
 void loop() {
@@ -169,7 +225,7 @@ void handleSnaFile(FatFile* pFile) {
     BufferManager::freeToMark(mark);
     InGamePauseMenu::waitForUserExit(borderColour);
     Z80Bus::setSnaRom();
-    Z80Bus::resetZ80();
+   // Z80Bus::resetZ80();
   }
 }
 
@@ -206,7 +262,7 @@ void handleZ80File(FatFile* pFile) {
       BufferManager::freeToMark(mark);
       InGamePauseMenu::waitForUserExit(borderColour);
       Z80Bus::setSnaRom();
-      Z80Bus::resetZ80();
+     // Z80Bus::resetZ80();
       return;  // load OK
     }
   }

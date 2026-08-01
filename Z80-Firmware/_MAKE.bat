@@ -53,8 +53,9 @@ for %%A in ("%BIN_FILE%") do (
 )
 
 echo Building EPROM image...
-::copy /b "%BIN_FILE%"+%EXTRA_BIN% .\output\EPROM2.bin >nul
-::copy /b "%BIN_FILE%"+%ROM_FILE% .\output\EPROM.bin >nul
+
+REM debugging ony: both halfs using sna rom - to confirm lower half actions
+::copy /b %BIN_FILE%+%BIN_FILE% .\output\EPROM_PAIR.bin >nul
 
 copy /b "%BIN_FILE%"+%EXTRA_BIN% .\output\EPROM_PAIR.bin >nul
 

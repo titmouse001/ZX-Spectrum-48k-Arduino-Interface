@@ -26,7 +26,7 @@ extern void rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* buf,
 extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
 extern void executeSnapshot(uint8_t* snaHeaderPacket);
 
-extern void resetZ80();
+//extern void resetZ80();
 extern void setSnaRom();
 extern void setStockRom();
 
