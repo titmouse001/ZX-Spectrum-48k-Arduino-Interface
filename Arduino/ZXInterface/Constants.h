@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define VERSION ("0.26")  // Arduino firmware
+#define VERSION ("0.27")  // Arduino firmware
 
 // Comment out '_DEBUG_POOL_SIZE_ENABLED_' for release
 //#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
