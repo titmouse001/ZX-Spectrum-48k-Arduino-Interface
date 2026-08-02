@@ -16,7 +16,6 @@ https://github.com/greiman/SdFat   *(SdFat version 2.3.1)*
 - FatFile::getDisplayName7(char* name, size_t size)   *- Returns a truncated name for limited-width displays*
 (getNameLength() is no longer used in ZX Spectrum Interface)
 
-
 Modifications are located in:
 - src/FatLib/FatFile.h.h
 - src/FatLib/FatName.cpp
