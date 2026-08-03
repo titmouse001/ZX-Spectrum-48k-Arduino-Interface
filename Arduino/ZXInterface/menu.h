@@ -27,7 +27,7 @@ public:
   static Button_t getButton();
 
   static inline void waitForRelease() { while (Menu::getButton() != Menu::BUTTON_NONE);  }
-  static inline void waitForAnyKey() { while (Menu::getButton() == Menu::BUTTON_NONE); waitForRelease(); }
+  static inline void waitForAnyKey() { waitForRelease(); while (Menu::getButton() == Menu::BUTTON_NONE);  }
 
   static void resetToRoot();
   static bool inSubFolder;

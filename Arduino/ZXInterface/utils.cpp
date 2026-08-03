@@ -133,7 +133,7 @@ void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& di
     return;
   }
   
-  file.write((const uint8_t*)regs, sizeof(Z80Registers) - 2);  // -2 don't include AllocMark attribute
+  file.write((const uint8_t*)regs, sizeof(Z80Registers) - 2 - 2);  // -4 don't include extra non sna attributes
 
   constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
   
@@ -442,9 +442,9 @@ void Utils::memsetZero(byte* b, uint16_t len) {
   for (; len != 0; len--) { *b++ = 0; }
 }
 
-void Utils::restorePauseMenuScreen() {
-  loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-}
+// void Utils::restorePauseMenuScreen() {
+//   loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+// }
 
 void Utils::clearTopBar() {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_WIDTH_BYTES,COL::BRIGHT_BLACK_WHITE);

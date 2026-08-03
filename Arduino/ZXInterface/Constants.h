@@ -158,7 +158,7 @@ constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 //-----------------------------------------
 // .SNA FILE FORMAT - (27 byte header)
 //-----------------------------------------
-
+// TODO ... use the Z80Registers packed struct!
 #define SNA_I           0
 #define SNA_HL_PRIME_LOW 1
 #define SNA_HL_PRIME_HIGH 2

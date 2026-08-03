@@ -13,7 +13,7 @@ namespace InGamePauseMenu {
     int32_t readNumericInput(uint8_t maxDigits, int xPos, int yPos, const char* name,  uint16_t min, uint16_t max) ;
 
     void handlePokeMenu();
-    void handleScreenshotMenu();
+    void handleTakeScreenshot();
     void handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName);
 
     enum OPTIONS_PM : uint8_t {

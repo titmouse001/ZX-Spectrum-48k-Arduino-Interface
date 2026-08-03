@@ -420,11 +420,9 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     }
   }
 
-
-  
-  constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
-
   uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
+    
+  constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
   TransferPacket header( stackAddrForPushingPC, TRANSMIT_AMOUNT);  // commandPayloadPos will be the length
   uint8_t headerLen = sizeof(TransferPacket);
   Z80Bus::sendBytes((uint8_t*)&header, headerLen);

@@ -23,7 +23,7 @@ extern uint8_t getKeyboard();
 extern uint8_t get_IO_Byte();
 
 extern void rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* buf, uint8_t cmd);
-extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false);
+extern void transferSnaData(FatFile* pFile, bool borderLoadingEffect = false, uint8_t skipIntialBytes=0);
 extern void executeSnapshot(uint8_t* snaHeaderPacket);
 
 //extern void resetZ80();

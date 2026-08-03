@@ -66,7 +66,7 @@
 #define CHECK_FLASH_PROGRAMMING 1  // (cost 40 bytes)
 
 
-
+//#define  SPI_DRIVER_SELECT 1
 
 
 

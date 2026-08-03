@@ -38,7 +38,10 @@ struct __attribute__ ((packed)) Z80Registers {
     uint8_t im;
     uint8_t borderCol; // included, not tue at capture time
     
-    uint16_t AllocMark;
+    // TODO:  pc_lo,pc_hi future stuff
+    uint8_t pc_lo,pc_hi;    // extra - ignored during SNA file saving
+
+    uint16_t AllocMark;     // allocator free-me point
 };
 
 
@@ -56,7 +59,7 @@ void setupJoystick();
 uint8_t readJoystick();
 
 void clearScreen(uint8_t col);
-void restorePauseMenuScreen();
+//void restorePauseMenuScreen();
 void clearTopBar();
 
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);

@@ -225,13 +225,20 @@ command_NOP:
 
 ;------------------------------------------------------
 ; Transmit Data to Arduno 
+; Note: Output goes via a 74HC574PW and has it's own a supporting circuit low-to-high transition (CLK)
 command_SendData:	
 	READ_PAIR_WITH_HALT d,e  ; DE = amount 
  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
+	;ld hl,0xfff0
+
+;	READ_ACC_WITH_HALT
+;	ld h,a
+;	READ_ACC_WITH_HALT
+;	ld l,a
 
 .transmitLoop:
 	ld a,(hl)
-	OUT ($1f), A    	  ; Latch value (Game cart uses ic: 74HC574PW)
+	OUT ($1f), A    	  ; value will be latched (Game cart uses ic: 74HC574PW)
 	halt				  ; Sync with Arduino
     inc hl		
     DEC de
@@ -503,6 +510,8 @@ command_Poke:
 
 ;-------------------------------------------------------------------------------------------
 ; Restore snapshot states & execute stored jump point
+; Note: Using the screen as a stack - 1/2 way in the stack is updated with the real one
+;		so we have to be careful once the real stack is going!
 command_RestoreGameAndExecute: 
 ;-------------------------------------------------------------------------------------------
 
@@ -581,11 +590,26 @@ RestoreEI_IFFStateComplete:
 	; NOTE: The HALT instruction requires an active stack for synchronization. The 2 freed bytes is used 
 	; as a temporary single-level stack, just enough for the final "resource-critical" restore stages.
 	;
+	; *******************************
 	; Restore Program's Stack Pointer
+	; *******************************
 	READ_PAIR_WITH_HALT l, h      ; stack pointer
 	ld sp, hl   				  
 	pop hl                        ; SP+=2, move past RET location (now we can use this area as a tiny stack!)
-	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx with games startup address
+	
+	;ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx with games startup address
+	
+; NOT YET NEED TO WORK OUT WHY SP IS NOT CORRECT - SEEING PC: 0xFFFC !!!
+; OK found it ...Arduino side was trapping on /rd to find good spot to fire nmi
+; Was trying out using /rd /m1 and /iorq (all-in-one) - cut /rd away for now it, need it's own line !!!! Can trust /m1 (will need to fall back to using /rd in code if /m1 is not found)
+
+	; Going for a more general purpose way - now passing in PC rather than 
+	; using the SNA format and get the PC from the stack.  This will
+	; allow the .Z80 snapshot to work without hacking it into the sna mechanism.
+	; this is a first step - later will do the above stack pop at the Arduino end.
+	READ_PAIR_WITH_HALT l, h  ; PC
+	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl
+
 	;-----------------------------------------------
 
 	;------------------------------------------------------------------------
@@ -623,6 +647,7 @@ RestoreInterruptModeComplete:
 	;------------------------------------------------------------------------
 	; Restore AF using only register A and SP.
 	READ_ACC_WITH_HALT       ; Load original F (flags) into A
+
 	push af                  ; Save F_original (A) and current flags (F) to stack
 	inc sp                   ; Skip the current_flags byte (SP now points to F_original)
 	pop af                   ; F = F_original (from stack), A = garbage (ignored)
@@ -778,7 +803,7 @@ L04B0:
 	halt 
     in a, ($1f) 
 	ld l,a			
-	ld sp,hl		;sp
+;;;;;;;	ld sp,hl		;sp
 
 	pop de
 
@@ -864,10 +889,13 @@ L04B0:
 	; Enable Maskable Interrupts Path
 	halt
     in a, ($1f)   ; F
-	push af                  ; get F onto stack!
-	inc sp                   ; Align SP to F
-	pop af                   ; F now good (ignoring A holding junk)
-	dec sp                   ; re-align SP 
+;	push af                  ; get F onto stack!
+;	inc sp                   ; Align SP to F
+;	pop af                   ; F now good (ignoring A holding junk)
+;	dec sp                   ; re-align SP 
+	push af
+	pop af 
+
 
 	push de
 
@@ -879,7 +907,7 @@ L04B0:
 	ld e,a			; E
 
 	halt
-    in a, ($1f)   			 ; A - now we have 'AF'
+    in a, ($1f)   			 ; A 
 
 	jp .restoreInGameStateCompletedWithEI
 	; -------------------------------------------------------
@@ -889,10 +917,12 @@ L04B0:
 	; Disable Maskable Interrupts Path
 	halt 
     in a, ($1f)   ; F
-	push af                  ; get F onto stack!
-	inc sp                   ; Align SP to F
-	pop af                   ; F now good (ignoring A holding junk)
-	dec sp                   ; re-align SP 
+	;push af                  ; get F onto stack!
+	;inc sp                   ; Align SP to F
+	;pop af                   ; F now good (ignoring A holding junk)
+	;dec sp                   ; re-align SP 
+	push af
+	pop af 
 
 	push de		; give stack back
 

@@ -4,14 +4,6 @@
 // IMPORTANT: Do not modify PORTB directly without preserving the clock/crystal bits
 //
 // -------------------------------------------------------------------------------------
-// To upload via an external programmer instead of USB. Useful if the USB interface fails, and
-// saves flash memory (though the code currently fits onto the Nano with some room to spare).
-// see https://www.youtube.com/watch?v=ToKerwRR-70 for a quick start guide.
-// https://zadig.akeo.ie/  (for drivers - I used winusb )
-// For cheaper clone boards like ATmega328PB (not ATmega328P using standard options "Arduino AVR Boards" -> "Arduino Nano" )
-// Tools > Board > MiniCore -> select ATmega328
-// Settings -> board: 115200, "BOD 2.7v", Yes (UART0), External 16MHz, EEPROM retianed, LTO enabled, "328PB"
-// Make sure programmer is set to USBaspm, then -> "upload using programmer"
 
 // -------------------------------------------------------------------------------------
 // To upload via an external programmer (USBasp) instead of the onboard USB chip. 
@@ -32,7 +24,6 @@
 // -------------------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------------------
-// -------------------------------------------------------------------------------------
 // NOTE: USING CLONES OF CLONES (LGT8F328P LQFP32 MiniEVB)
 // Issue with the  LGT8F328 + SdFat combination (others also seen this)
 // The LGT's SPI hardware isn't a 100% register-compatible ATmega328P clone, and
@@ -43,16 +34,17 @@
 // BUT HAD TO UPLOAD USING "Arduino IDE 2.3.10"  (VSC extension wth same config same build/upload but just failed to run!!!)
 // FOR NOW AVOID USING PURPLE NANO LGT8F328 - looking like support on latest arduino nano setup is breaking something!!!
 // -------------------------------------------------------------------------------------
-// -------------------------------------------------------------------------------------
 
 // see README.MD for more info
 
 //Sketch uses 27500 bytes (89%) of program storage space. Maximum is 30720 bytes.
 //Global variables use 1392 bytes (67%) of dynamic memory, leaving 656 bytes for local variables. Maximum is 2048 bytes.
+//Sketch uses 27804 bytes (90%) of program storage space. Maximum is 30720 bytes.
+//Global variables use 1388 bytes (67%) of dynamic memory, leaving 660 bytes for local variables. Maximum is 2048 bytes.
 
 #include <Arduino.h>
-#include <avr/wdt.h>
-#include <EEPROM.h>
+//#include <avr/wdt.h>
+//#include <EEPROM.h>
 
 #include "Utils.h"
 #include "Menu.h"
@@ -142,7 +134,7 @@ void loop() {
 void handleScrFile(FatFile* pFile) {
   Utils::clearScreen(0);
   if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
-    Z80Bus::transferSnaData(pFile, false);  // No loading effects.
+    Z80Bus::transferSnaData(pFile); 
     Menu::waitForRelease();
     Menu::waitForAnyKey();
     Utils::clearScreen(0);
@@ -204,28 +196,111 @@ void restoreCorruptedScreenBytes(const uint8_t* damagedScreenBytes) {
 // -----------------------------------------------------------------------------------------------
 void handleSnaFile(FatFile* pFile) {
   uint8_t borderColour;
-  Utils::clearScreen(0);
-  
+   Utils::clearScreen(0);
+
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
     // Set stack NOW before sending data over
-    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3); 
+    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);
     uint8_t mark = BufferManager::getMark();
     {
-      uint8_t *snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-      pFile->read((void *)(snaHeaderPacket), SNA_TOTAL_ITEMS);
+      uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
+      pFile->read((void*)(snaHeaderPacket), SNA_TOTAL_ITEMS);
+
+      //This damagedScreenBytes[] is used by restoreCorruptedScreenBytes()
       uint8_t damagedScreenBytes[3];
       pFile->read(damagedScreenBytes, 3);
-      pFile->seekSet(pFile->curPosition() - 3);
+      // pFile->seekSet(pFile->curPosition() - 3);
 
-      Z80Bus::transferSnaData(pFile, true);
+      constexpr bool ENABLE_LOADING_EFFECTS = true;
+      constexpr uint8_t SKIP_STACK_BYTES = 3;
+      Z80Bus::transferSnaData(pFile, ENABLE_LOADING_EFFECTS, SKIP_STACK_BYTES);
+
+
+
+      // BUG HUNT ----> get_IO_Byte !!! AHHHHHHHHHHHHHHHHHHH
+
+      // This is debugging code to test with and without get_IO_Byte
+      // works if hand rolled without get_IO_Byte
+      // this took ages to find, was not expecting get_IO_Byte to fail
+      // think it could be timing thing, not had time to look at get_IO_Byte
+      // will not use it for now for any new code!!! Need to setup at large automatated fuzzing test.
+      // Was seeing get_IO_Byte when getting the PC from the stack like it was
+      // offset ahead by three bytes (missed 3 reads).  This test code to pull down 16 bytes from 
+      // speccy grabbed 13 from rom top then the other 3 from 0x0000 - 0x0002 rom!!!
+      // Very odd bug - pain to find as get_IO_Byte has be reliable but I most have
+      // some kind of H/W, S/W edge case.
+
+  #if 0  // BEBUG
+      Utils::clearScreen(COL::CYAN_BLACK);
+
+     // PC is in the stack's game data - grab it
+     // Z80 is little-endian, the stack holds the Low Byte first, followed by
+      //the High Byte.
+      Z80Registers* z80 = (Z80Registers*)snaHeaderPacket;
+      uint16_t sp_addr = ((uint16_t)z80->sp_hi << 8) | (z80->sp_lo);
+
+      sp_addr = 0xfff0;
+
+      uint8_t data[16];
+      // RequestSendDataPacket reqpkt(16, sp_addr);
+      // Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
+
+      uint8_t cmd[6] = {cmd_addr(CMD_SendData) >> 8,
+                        cmd_addr(CMD_SendData) & 0xff,
+                        0,
+                        16,
+                        0xff,
+                        0xf0};
+      Z80Bus::sendBytes(cmd, 6);
+
+      // Small delay buffer allowing hardware states to equalize
+      Utils::delay16(1);
+
+  #if 1
+     for (uint16_t i = 0; i < 16; i++) {
+      // IC timings/temperature ??!?!?!? 
+      // To fix tried tweaking get_IO_Byte
+      // Reverted the tweaks from get_IO_Byte to prove cdoe diffrence is working - but now it's working ok with old code ?!?!?!?! WTF
+      // Left in tweaks on !!! Will need to keep an eye on this
+      // maybe...current PCB I'm testing with does not have caps
+      data[i]  = Z80Bus::get_IO_Byte();  
+     }
+  #else
+
+      DDRD = 0x00;  // Set PORTD data pins to inputs
+      digitalWriteFast(PIN_A5,
+                       LOW);  // Enable output latch for reading bus data
+      __asm__ __volatile__("nop; nop");
+
+      // Stream data out of the Z80 bus directly onto the SD file stream
+      for (uint16_t i = 0; i < 16; i++) {
+        Z80Bus::waitHalt_syncWithZ80();
+        data[i] = (uint8_t)PIND;  // Capture latched data from lines
+        Z80Bus::triggerZ80NMI();
+      }
+      digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+      DDRD = 0xFF; 
+  #endif
+
+      char _c[8];
+      ltoa(sp_addr, _c, 16);
+      Draw::text(32, 32, _c);
+
+      for (int i = 0; i < 16; i++) {
+        itoa(data[i], _c, 16);
+        Draw::text(128, (10 * i), _c);
+      }
+      delay(10000);
+#endif
+
       Z80Bus::executeSnapshot(snaHeaderPacket);
       borderColour = snaHeaderPacket[SNA_BORDER_COLOUR];
       restoreCorruptedScreenBytes(damagedScreenBytes);
-    } 
+    }
     BufferManager::freeToMark(mark);
     InGamePauseMenu::waitForUserExit(borderColour);
     Z80Bus::setSnaRom();
-   // Z80Bus::resetZ80();
+    // Z80Bus::resetZ80();
   }
 }
 

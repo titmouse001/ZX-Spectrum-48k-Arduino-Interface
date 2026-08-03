@@ -74,12 +74,54 @@ void Z80Bus::sendByte(uint8_t* byte) {
 }
 
 void Z80Bus::sendSnaHeader(uint8_t* header) {
+
+ // PC is in the stack's game data - grab it
+ // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
+ Z80Registers* z80 = (Z80Registers*)header;
+ uint16_t sp_addr = ((uint16_t)z80->sp_hi << 8) | z80->sp_lo;
+ uint8_t data[2];
+ RequestSendDataPacket reqpkt(2, sp_addr);
+ Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
+ // send
+
+ //  !!!looks like have a bug with get_IO_Byte !!!
+// data[0] = Z80Bus::get_IO_Byte();  // get PC from first address in stack (Low Byte)
+// data[1] = Z80Bus::get_IO_Byte();  // (High Byte)
+
+  //--------------------------------------------------
+  // RequestSendDataPacket = Z80 command_SendData:  
+  // At this point Z80 side is past reading amount and start address.
+  // It will only need to  ld a,(hl), OUT ($1f), A , halt 
+  // before it's in a good place.
+  Utils::delay16(1);  // TODO: needed ? 
+
+  DDRD = 0x00;  // Set PORTD data pins to inputs
+  digitalWriteFast(PIN_A5,  LOW);  // Enable output latch for reading bus data
+  __asm__ __volatile__("nop; nop");
+
+  // Stream data out of the Z80 bus directly onto the SD file stream
+  for (uint16_t i = 0; i < 2; i++) {
+    Z80Bus::waitHalt_syncWithZ80();
+    data[i] = (uint8_t)PIND;  // Capture sent data rom Z80
+    Z80Bus::triggerZ80NMI();
+  }
+  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+  DDRD = 0xFF; 
+
+
   RestoreGameAndExecute pkt;
   sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
   // Execute Command expects registers to follow in this order
   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
-  sendBytes(&header[SNA_SP_LOW], 2);              // The rest aren't in SNA header sequence...
+
+  // The rest aren't in SNA header sequence...
+
+  sendBytes(&header[SNA_SP_LOW], 2);     
+
+  // send PC - extra outside SNA format for future flexibility 
+  sendBytes(data, 2);     
+
   sendBytes(&header[SNA_HL_LOW], 2);
   sendBytes(&header[SNA_IM_MODE], 1);
   sendBytes(&header[SNA_BORDER_COLOUR], 1);
@@ -114,6 +156,8 @@ uint8_t Z80Bus::get_IO_Byte() {
   DDRD = 0x00;                    // Nano data pins to input
 
   waitHalt_syncWithZ80();         // Wait for OUT cycle
+  // 74HC574PW has it's own a supporting circuit low-to-high transition (CLK)
+  // Operation of the OE input does not affect the state of the flip-flops. 
   digitalWriteFast(Pin::OE_LATCH, LOW);  // Drive bus with latch data
 
   // Capture time for latch - spec says around 38ns (nanoseconds)
@@ -121,10 +165,12 @@ uint8_t Z80Bus::get_IO_Byte() {
                        "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
 
   uint8_t byte = PIND;  
-
+  
   digitalWriteFast(Pin::OE_LATCH, HIGH);   // IC to tri-state
-  triggerZ80NMI();                  // Z80 handshake
   DDRD = 0xFF;                      // default - rest of code expects active bus driving
+
+  triggerZ80NMI();                  // Z80 handshake
+
   return byte;
 }
   
@@ -140,7 +186,7 @@ void Z80Bus::Z80_NOP() {
 }
 
 //#include "Draw.h"
-void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
+void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect, uint8_t skipIntialBytes) {
    //uint32_t startTime = millis();
 
   const uint8_t cmd = borderLoadingEffect ? CMD_Transfer : CMD_Copy;
@@ -149,12 +195,24 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect) {
   // due to RLE and max limit of 255
   constexpr uint8_t BUFFER_SIZE_U8 = 255;
   uint8_t* Buf = BufferManager::allocate(BUFFER_SIZE_U8);
-  uint16_t currentAddress = ZX_SCREEN_ADDRESS_START;
+  uint16_t currentAddress = ZX_SCREEN_ADDRESS_START + skipIntialBytes;
+
+//pFile->read(Buf, 3);
+//currentAddress += 3;
+
   // Transfer data to Spectrum RAM
   while (pFile->available()) {
     uint16_t bytesRead = pFile->read(Buf, BUFFER_SIZE_U8);
+
+    // if (!pFile->available()) {
+    //   for (int i=0; i<bytesRead; i++) {
+    //    Buf[i] = bytesRead - i;
+    //    }
+    // }
+
     rleOptimisedTransfer(bytesRead, currentAddress, Buf, cmd);
     currentAddress += bytesRead;
+
   }
   BufferManager::freeToMark(mark);
 
@@ -267,7 +325,7 @@ void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
   hasZ80Resumed();         // Wait for the interrupt to clear and Z80 to resume
   // ---------------------------------------------------------------------------------------------
 
-  sendSnaHeader(snaHeaderPacket); // BufferManager::head27_Execute);
+  sendSnaHeader(snaHeaderPacket);
 
   Utils::delay16(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
   Z80Bus::setStockRom();
