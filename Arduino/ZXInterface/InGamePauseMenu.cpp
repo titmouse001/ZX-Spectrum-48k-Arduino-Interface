@@ -156,7 +156,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   // If exiting without calling restoreZ80States, free structs marker manually.
   Z80Registers* z80Registers = Utils::storeZ80States();
    // borderColour: using original snapshot loaded value as we can't extract this at game time!
-  z80Registers->borderCol = borderColour; 
+  z80Registers->header.borderCol = borderColour; 
 
   //  Get filename before we destroy the shared working FatFile
   static char cacheDirName[ZX_FILENAME_MAX_DISPLAY_LEN+1];

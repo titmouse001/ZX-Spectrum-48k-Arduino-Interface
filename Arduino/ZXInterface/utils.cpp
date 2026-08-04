@@ -56,72 +56,78 @@ Z80Registers* Utils::storeZ80States() {
   uint16_t mark = BufferManager::getMark();
   Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
 
-  regs->a = Z80Bus::get_IO_Byte();
-  regs->b = Z80Bus::get_IO_Byte();
-  regs->c = Z80Bus::get_IO_Byte();
-  regs->d = Z80Bus::get_IO_Byte();
-  regs->e = Z80Bus::get_IO_Byte();
-  regs->h = Z80Bus::get_IO_Byte();
-  regs->l = Z80Bus::get_IO_Byte();
-  regs->sp_hi = Z80Bus::get_IO_Byte();
-  regs->sp_lo = Z80Bus::get_IO_Byte();
-  regs->i = Z80Bus::get_IO_Byte();
-  regs->iff2 = Z80Bus::get_IO_Byte();
-  regs->f = Z80Bus::get_IO_Byte();
-  regs->ixh = Z80Bus::get_IO_Byte();
-  regs->ixl = Z80Bus::get_IO_Byte();
-  regs->iyh = Z80Bus::get_IO_Byte();
-  regs->iyl = Z80Bus::get_IO_Byte();
-  regs->a_prime = Z80Bus::get_IO_Byte(); 
-  regs->b_prime = Z80Bus::get_IO_Byte();
-  regs->c_prime = Z80Bus::get_IO_Byte();
-  regs->f_prime = Z80Bus::get_IO_Byte();
-  regs->d_prime = Z80Bus::get_IO_Byte();
-  regs->e_prime = Z80Bus::get_IO_Byte();
-  regs->h_prime = Z80Bus::get_IO_Byte();
-  regs->l_prime = Z80Bus::get_IO_Byte();
-  regs->r = 127; // memory refresh register - from mid point
-  regs->borderCol = COL::RED;  // red to stand out if this failes as will be overwritten later
+  SNAHeader* sna = &regs->header;
+
+  sna->a = Z80Bus::get_IO_Byte();
+  sna->b = Z80Bus::get_IO_Byte();
+  sna->c = Z80Bus::get_IO_Byte();
+  sna->d = Z80Bus::get_IO_Byte();
+  sna->e = Z80Bus::get_IO_Byte();
+  sna->h = Z80Bus::get_IO_Byte();
+  sna->l = Z80Bus::get_IO_Byte();
+  sna->sp_hi = Z80Bus::get_IO_Byte();
+  sna->sp_lo = Z80Bus::get_IO_Byte();
+  sna->i = Z80Bus::get_IO_Byte();
+  sna->iff2 = Z80Bus::get_IO_Byte();
+  sna->f = Z80Bus::get_IO_Byte();
+  sna->ixh = Z80Bus::get_IO_Byte();
+  sna->ixl = Z80Bus::get_IO_Byte();
+  sna->iyh = Z80Bus::get_IO_Byte();
+  sna->iyl = Z80Bus::get_IO_Byte();
+  sna->a_prime = Z80Bus::get_IO_Byte(); 
+  sna->b_prime = Z80Bus::get_IO_Byte();
+  sna->c_prime = Z80Bus::get_IO_Byte();
+  sna->f_prime = Z80Bus::get_IO_Byte();
+  sna->d_prime = Z80Bus::get_IO_Byte();
+  sna->e_prime = Z80Bus::get_IO_Byte();
+  sna->h_prime = Z80Bus::get_IO_Byte();
+  sna->l_prime = Z80Bus::get_IO_Byte();
+  sna->r = 127; // memory refresh register - from mid point
+  sna->borderCol = COL::RED;  // red to stand out if this failes as will be overwritten later
   // 0x3f is the Speccys default ROM's startup
   // Anything other then 99% chance the games uses IM2 (i.e. it's something like i==0xfe)
-  regs->im = (regs->i == 0x3f) ? 1 : 2;
+  sna->im = (sna->i == 0x3f) ? 1 : 2;
+
   regs->AllocMark = mark;
+
   return regs;
 }
 
 // Internal storage for restoring Z80 states (not part of the SNA header format).
 void Utils::restoreZ80States(Z80Registers* regs) {
   
+  SNAHeader* sna = &regs->header;
+
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
   // This allows time for the ROM to swap back to the stock ROM and begin the restore process.
   uint8_t addr0x04AA[] = { 0x04, 0xAA };  // jump to address
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
-  Z80Bus::sendBytes(&regs->sp_hi, 1);
-  Z80Bus::sendBytes(&regs->sp_lo, 1);
-  Z80Bus::sendBytes(&regs->b, 1);
-  Z80Bus::sendBytes(&regs->c, 1);
-  Z80Bus::sendBytes(&regs->h, 1);
-  Z80Bus::sendBytes(&regs->l, 1);
-  Z80Bus::sendBytes(&regs->i, 1);
-  Z80Bus::sendBytes(&regs->ixh, 1);
-  Z80Bus::sendBytes(&regs->ixl, 1);
-  Z80Bus::sendBytes(&regs->iyh, 1);
-  Z80Bus::sendBytes(&regs->iyl, 1);
-  Z80Bus::sendBytes(&regs->b_prime, 1);
-  Z80Bus::sendBytes(&regs->c_prime, 1);
-  Z80Bus::sendBytes(&regs->f_prime, 1);
-  Z80Bus::sendBytes(&regs->d_prime, 1);
-  Z80Bus::sendBytes(&regs->e_prime, 1);
-  Z80Bus::sendBytes(&regs->h_prime, 1);
-  Z80Bus::sendBytes(&regs->l_prime, 1);
-  Z80Bus::sendBytes(&regs->a_prime, 1);
-  Z80Bus::sendBytes(&regs->iff2, 1);
+  Z80Bus::sendBytes(&sna->sp_hi, 1);
+  Z80Bus::sendBytes(&sna->sp_lo, 1);
+  Z80Bus::sendBytes(&sna->b, 1);
+  Z80Bus::sendBytes(&sna->c, 1);
+  Z80Bus::sendBytes(&sna->h, 1);
+  Z80Bus::sendBytes(&sna->l, 1);
+  Z80Bus::sendBytes(&sna->i, 1);
+  Z80Bus::sendBytes(&sna->ixh, 1);
+  Z80Bus::sendBytes(&sna->ixl, 1);
+  Z80Bus::sendBytes(&sna->iyh, 1);
+  Z80Bus::sendBytes(&sna->iyl, 1);
+  Z80Bus::sendBytes(&sna->b_prime, 1);
+  Z80Bus::sendBytes(&sna->c_prime, 1);
+  Z80Bus::sendBytes(&sna->f_prime, 1);
+  Z80Bus::sendBytes(&sna->d_prime, 1);
+  Z80Bus::sendBytes(&sna->e_prime, 1);
+  Z80Bus::sendBytes(&sna->h_prime, 1);
+  Z80Bus::sendBytes(&sna->l_prime, 1);
+  Z80Bus::sendBytes(&sna->a_prime, 1);
+  Z80Bus::sendBytes(&sna->iff2, 1);
   //z80's .restoreInGameState: skips reg-R (hard coded as 127 in store above)
-  Z80Bus::sendBytes(&regs->f, 1);  
-  Z80Bus::sendBytes(&regs->d, 1);
-  Z80Bus::sendBytes(&regs->e, 1);
-  Z80Bus::sendBytes(&regs->a, 1);
+  Z80Bus::sendBytes(&sna->f, 1);  
+  Z80Bus::sendBytes(&sna->d, 1);
+  Z80Bus::sendBytes(&sna->e, 1);
+  Z80Bus::sendBytes(&sna->a, 1);
 
   BufferManager::freeToMark(regs->AllocMark);
 }
@@ -133,7 +139,7 @@ void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& di
     return;
   }
   
-  file.write((const uint8_t*)regs, sizeof(Z80Registers) - 2 - 2);  // -4 don't include extra non sna attributes
+  file.write((const uint8_t*)regs, sizeof(SNAHeader));  
 
   constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
   

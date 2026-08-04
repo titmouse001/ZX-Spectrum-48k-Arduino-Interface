@@ -73,62 +73,148 @@ void Z80Bus::sendByte(uint8_t* byte) {
   triggerZ80NMI();
 }
 
-void Z80Bus::sendSnaHeader(uint8_t* header) {
 
- // PC is in the stack's game data - grab it
- // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
- Z80Registers* z80 = (Z80Registers*)header;
- uint16_t sp_addr = ((uint16_t)z80->sp_hi << 8) | z80->sp_lo;
- uint8_t data[2];
- RequestSendDataPacket reqpkt(2, sp_addr);
- Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
- // send
+void Z80Bus::sendSnaHeader(Z80Registers* regs) {
+  SNAHeader* snaHeader = &regs->header;
 
- //  !!!looks like have a bug with get_IO_Byte !!!
-// data[0] = Z80Bus::get_IO_Byte();  // get PC from first address in stack (Low Byte)
-// data[1] = Z80Bus::get_IO_Byte();  // (High Byte)
+  if (!regs->Z80Snapshot) {
+    // PC is in the stack's game data - grab it
+    // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
+    uint16_t sp_addr = ((uint16_t)snaHeader->sp_hi << 8) | snaHeader->sp_lo;
+    uint8_t data[2];
+    RequestSendDataPacket reqpkt(2, sp_addr);
+    Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
 
-  //--------------------------------------------------
-  // RequestSendDataPacket = Z80 command_SendData:  
-  // At this point Z80 side is past reading amount and start address.
-  // It will only need to  ld a,(hl), OUT ($1f), A , halt 
-  // before it's in a good place.
-  Utils::delay16(1);  // TODO: needed ? 
+    // RequestSendDataPacket = Z80 command_SendData:  
+    // At this point Z80 side is past reading amount and start address.
+    // It will only need to ld a,(hl), OUT ($1f), A , halt 
+    // before it's in a good place.
+    Utils::delay16(1);  // TODO: needed ? 
 
-  DDRD = 0x00;  // Set PORTD data pins to inputs
-  digitalWriteFast(PIN_A5,  LOW);  // Enable output latch for reading bus data
-  __asm__ __volatile__("nop; nop");
+    DDRD = 0x00;  // Set PORTD data pins to inputs
+    digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
+    __asm__ __volatile__("nop; nop");
 
-  // Stream data out of the Z80 bus directly onto the SD file stream
-  for (uint16_t i = 0; i < 2; i++) {
-    Z80Bus::waitHalt_syncWithZ80();
-    data[i] = (uint8_t)PIND;  // Capture sent data rom Z80
-    Z80Bus::triggerZ80NMI();
+    // Stream data out of the Z80 bus directly onto the SD file stream
+    for (uint16_t i = 0; i < 2; i++) {
+      Z80Bus::waitHalt_syncWithZ80();
+      data[i] = (uint8_t)PIND;  // Capture sent data from Z80
+      Z80Bus::triggerZ80NMI();
+    }
+    digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+    DDRD = 0xFF; 
+
+    regs->pc_lo = data[0];
+    regs->pc_hi = data[1];
   }
-  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-  DDRD = 0xFF; 
-
 
   RestoreGameAndExecute pkt;
   sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
-  // Execute Command expects registers to follow in this order
-  sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
-  sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
 
-  // The rest aren't in SNA header sequence...
+  // Execute Command expects registers to follow in sequential layout:
+  // 1. I, HL', DE', BC', AF' (9 bytes contiguous from 'i')
+  sendBytes(&snaHeader->i, sizeof(snaHeader->i) + 
+                           sizeof(snaHeader->l_prime) + sizeof(snaHeader->h_prime) + 
+                           sizeof(snaHeader->e_prime) + sizeof(snaHeader->d_prime) + 
+                           sizeof(snaHeader->c_prime) + sizeof(snaHeader->b_prime) + 
+                           sizeof(snaHeader->f_prime) + sizeof(snaHeader->a_prime));
 
-  sendBytes(&header[SNA_SP_LOW], 2);     
+  // 2. IY, IX, IFF2, R (6 bytes contiguous from 'iyl')
+  sendBytes(&snaHeader->iyl, sizeof(snaHeader->iyl) + sizeof(snaHeader->iyh) + 
+                             sizeof(snaHeader->ixl) + sizeof(snaHeader->ixh) + 
+                             sizeof(snaHeader->iff2) + sizeof(snaHeader->r));
 
-  // send PC - extra outside SNA format for future flexibility 
-  sendBytes(data, 2);     
+  if (!regs->Z80Snapshot) {
+    uint16_t sp = (uint16_t)snaHeader->sp_lo | ((uint16_t)snaHeader->sp_hi << 8);
+    sp += 2;
+    snaHeader->sp_lo = (uint8_t)(sp & 0xFF);
+    snaHeader->sp_hi = (uint8_t)(sp >> 8);
+  }
+  
+  sendBytes(&snaHeader->sp_lo, 2);     
 
-  sendBytes(&header[SNA_HL_LOW], 2);
-  sendBytes(&header[SNA_IM_MODE], 1);
-  sendBytes(&header[SNA_BORDER_COLOUR], 1);
-  sendBytes(&header[SNA_DE_LOW], 2);
-  sendBytes(&header[SNA_BC_LOW], 2);
-  sendBytes(&header[SNA_AF_LOW], 2);
+  // Send PC - extra outside SNA format for future flexibility 
+  sendBytes(&regs->pc_lo, 2);     
+
+  // Send remaining header fields using direct references
+  sendBytes(&snaHeader->l, 2);        // HL (l, h)
+  sendBytes(&snaHeader->im, 1);       // IM mode
+  sendBytes(&snaHeader->borderCol, 1);// Border color
+  sendBytes(&snaHeader->e, 2);        // DE (e, d)
+  sendBytes(&snaHeader->c, 2);        // BC (c, b)
+  sendBytes(&snaHeader->f, 2);        // AF (f, a)
 }
+
+// void Z80Bus::sendSnaHeader(Z80Registers* regs) {
+
+//   if (!regs->Z80Snapshot) {
+//     // PC is in the stack's game data - grab it
+//     // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
+//     //Z80Registers* z80 = (Z80Registers*)header;
+//     uint16_t sp_addr = ((uint16_t)regs->header.sp_hi << 8) | regs->header.sp_lo;
+//     uint8_t data[2];
+//     RequestSendDataPacket reqpkt(2, sp_addr);
+//     Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
+//     // send
+
+//   //  !!!looks like have a bug with get_IO_Byte !!!
+//   // data[0] = Z80Bus::get_IO_Byte();  // get PC from first address in stack (Low Byte)
+//   // data[1] = Z80Bus::get_IO_Byte();  // (High Byte)
+
+//     //--------------------------------------------------
+//     // RequestSendDataPacket = Z80 command_SendData:  
+//     // At this point Z80 side is past reading amount and start address.
+//     // It will only need to  ld a,(hl), OUT ($1f), A , halt 
+//     // before it's in a good place.
+//     Utils::delay16(1);  // TODO: needed ? 
+
+//     DDRD = 0x00;  // Set PORTD data pins to inputs
+//     digitalWriteFast(PIN_A5,  LOW);  // Enable output latch for reading bus data
+//     __asm__ __volatile__("nop; nop");
+
+//     // Stream data out of the Z80 bus directly onto the SD file stream
+//     for (uint16_t i = 0; i < 2; i++) {
+//       Z80Bus::waitHalt_syncWithZ80();
+//       data[i] = (uint8_t)PIND;  // Capture sent data rom Z80
+//       Z80Bus::triggerZ80NMI();
+//     }
+//     digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+//     DDRD = 0xFF; 
+
+//     regs->pc_lo = data[0];
+//     regs->pc_hi = data[1];
+//   }
+
+
+//   uint8_t* header = (uint8_t*)&regs->header;
+
+//   RestoreGameAndExecute pkt;
+//   sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
+//   // Execute Command expects registers to follow in this order
+//   sendBytes(&header[SNA_I],  1 + 2 + 2 + 2 + 2);  // I,HL',DE',BC',AF'
+//   sendBytes(&header[SNA_IY_LOW], 2 + 2 + 1 + 1);  // IY,IX,IFF2,R
+
+//   // The rest aren't in SNA header sequence...
+
+//   if (!regs->Z80Snapshot) {
+//     uint16_t sp = header[SNA_SP_LOW] | (header[SNA_SP_HIGH] << 8);
+//     sp += 2;
+//     header[SNA_SP_LOW]  = (uint8_t)(sp & 0xFF);
+//     header[SNA_SP_HIGH] = (uint8_t)(sp >> 8);
+//   }
+  
+//   sendBytes(&header[SNA_SP_LOW], 2);     
+
+//   // send PC - extra outside SNA format for future flexibility 
+//   sendBytes(&regs->pc_lo, 2);     
+
+//   sendBytes(&header[SNA_HL_LOW], 2);
+//   sendBytes(&header[SNA_IM_MODE], 1);
+//   sendBytes(&header[SNA_BORDER_COLOUR], 1);
+//   sendBytes(&header[SNA_DE_LOW], 2);
+//   sendBytes(&header[SNA_BC_LOW], 2);
+//   sendBytes(&header[SNA_AF_LOW], 2);
+// }
 
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
   FillPacket pkt(address, amount, color);
@@ -310,7 +396,7 @@ void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* inp
  * stock ROM to continue execution into RAM to jump back into game code. 
  * (Previously this needed an extra messy HALT and a precise wait for the NMI to complete)
  */
-void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
+void Z80Bus::executeSnapshot(Z80Registers* regs) {
 
   // --------------------------------------------------------------------------------------------
   // Create a safety gap around the Spectrum's 50Hz maskable interrupt (IM 1) at vector 0x0038.
@@ -325,7 +411,7 @@ void Z80Bus::executeSnapshot(uint8_t* snaHeaderPacket) {
   hasZ80Resumed();         // Wait for the interrupt to clear and Z80 to resume
   // ---------------------------------------------------------------------------------------------
 
-  sendSnaHeader(snaHeaderPacket);
+  sendSnaHeader(regs);
 
   Utils::delay16(1);  // allow 'L16D4' routine in SNA rom time to reach idle loop
   Z80Bus::setStockRom();

@@ -89,13 +89,16 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
     return Z80_VERSION_1;
   } 
   
-  // Ver2/Ver3 Check (PC is 0, read extended header length)
+  // Ver2/Ver3 Check 
+  // Next 2 bytes - Length of additional header block 
   uint8_t len_buf[2];
   if (pFile->read(len_buf, 2) != 2) return Z80_VERSION_UNKNOWN;
   
+  // Check length of block
   uint16_t ext_len = len_buf[0] | ((uint16_t)len_buf[1] << 8);
   if (ext_len < 3) return Z80_VERSION_UNKNOWN; 
 
+  // Next 3 bytes - Program counter / Hardware mode
   uint8_t ext_data[3];
   if (pFile->read(ext_data, 3) != 3) return Z80_VERSION_UNKNOWN;
   headerInfo->pc_low = ext_data[Z80_EXT_PC_LOW];
@@ -104,7 +107,7 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
   headerInfo->isV1Compressed = false; 
   headerInfo->version = (ext_len == Z80_V2_HEADERLENGTH) ? Z80_VERSION_2 : Z80_VERSION_3;
 
-	// Jump past the extended header
+  // Skip rest of the extended header
   if (!pFile->seekCur(ext_len - 3)) {
     return Z80_VERSION_UNKNOWN; // Seek failed
   }
@@ -382,18 +385,22 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
 
 // .z80 files get converted to reuse existing ".SNA" game loading functionaliy
 bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
-                                  uint8_t* snaHeader) {
-  uint8_t* v1_header = headerInfo->headerV1Data;
+                                  Z80Registers* regs) {
+  //uint8_t* v1_header = headerInfo->headerV1Data;
+ Z802SNA::Z80V1Header* v1_header = (Z802SNA::Z80V1Header*) &headerInfo->headerV1Data[0];
+
   if (headerInfo->version >= 2) {
     //
     // >>> V2 or V3 format <<<
     //
     // V2/V3 don't store the PC (it's zero)
     // Restore PC from extended header and convert to V1 format for processing
-    v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;
-    v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
+  //  v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;
+   // v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
+
     // Clear bit 7 of R register
-    v1_header[Z80_V1_R_7BITS] &= ~0x80;
+    //v1_header[Z80_V1_R_7BITS] &= ~0x80;
+	v1_header->r &= ~0x80;
 
     while (true) {
       BlockReadResult block_result = readAndWriteBlock(pFile);
@@ -420,16 +427,22 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     }
   }
 
-  uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header, snaHeader);
-    
-  constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
-  TransferPacket header( stackAddrForPushingPC, TRANSMIT_AMOUNT);  // commandPayloadPos will be the length
-  uint8_t headerLen = sizeof(TransferPacket);
-  Z80Bus::sendBytes((uint8_t*)&header, headerLen);
+  regs->pc_lo = headerInfo->pc_low;
+ regs->pc_hi = headerInfo->pc_high;
 
-  uint8_t buf[TRANSMIT_AMOUNT] = {  headerInfo->pc_low, headerInfo->pc_high};  // note order [0]=low , [1]=high
-  Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);
+ // Z802SNA::convertZ80HeaderToSna(v1_header, regs);
 
+  // uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header,
+  // regs);
+
+  //   constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
+  //   TransferPacket header( stackAddrForPushingPC, TRANSMIT_AMOUNT);  //
+  //   commandPayloadPos will be the length uint8_t headerLen =
+  //   sizeof(TransferPacket); Z80Bus::sendBytes((uint8_t*)&header, headerLen);
+
+  // uint8_t buf[TRANSMIT_AMOUNT] = {  headerInfo->pc_low, headerInfo->pc_high};
+  // // note order [0]=low , [1]=high
+  // Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);
 
   return true;
 }

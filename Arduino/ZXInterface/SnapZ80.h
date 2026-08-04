@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "Constants.h"
 #include "src/fatlib/SdFat.h"
+#include "snapZ802SNA.h"
 
 namespace SnapZ80 {
 
@@ -24,7 +25,7 @@ bool checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo);
 Z80HeaderVersion readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
 bool locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length);
 BlockReadResult readAndWriteBlock(FatFile* pFile);
-bool convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, uint8_t* snaHeader);
+bool convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, Z80Registers* regs);
 void decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress);
 void sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t currentAddress);
 }

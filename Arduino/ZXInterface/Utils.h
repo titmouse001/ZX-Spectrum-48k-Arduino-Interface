@@ -12,36 +12,68 @@
 //      REG_IY =15, REG_IX =17, REG_IFF=19, REG_R  =20
 //      REG_AF =21, REG_SP =23, REG_IM =25, REG_BDR=26
 
-struct __attribute__ ((packed)) Z80Registers {
-    // This struct will be raw-copied to the SNA file header when saving snapshot files.
-    // It matches the SNA Little-Endian byte order (low byte first), allowing these 
-    // saved files to be loaded by ZX Spectrum emulators.
-    // 
-    // Note: The in-game pause menu uses this structure to save z80 states, but it
-    // does not use the structs memory order; since transferring registers to and from the Speccy 
-    // requires a controlled process, it cannot follow this specific file-format order.
-    uint8_t i;
-    uint8_t l_prime,h_prime;
-    uint8_t e_prime,d_prime;
-    uint8_t c_prime,b_prime;
-    uint8_t f_prime,a_prime; 
-    uint8_t l,h;
-    uint8_t e,d;
-    uint8_t c,b;
-    uint8_t iyl,iyh;
-    uint8_t ixl,ixh;
-    uint8_t iff2;
-    uint8_t r;  // included, not not true value at capture (pain and not really needed)
-    uint8_t f;
-    uint8_t a;
-    uint8_t sp_lo,sp_hi;
-    uint8_t im;
-    uint8_t borderCol; // included, not tue at capture time
+// struct __attribute__ ((packed)) Z80Registers {
+//     // This struct will be raw-copied to the SNA file header when saving snapshot files.
+//     // It matches the SNA Little-Endian byte order (low byte first), allowing these 
+//     // saved files to be loaded by ZX Spectrum emulators.
+//     // 
+//     // Note: The in-game pause menu uses this structure to save z80 states, but it
+//     // does not use the structs memory order; since transferring registers to and from the Speccy 
+//     // requires a controlled process, it cannot follow this specific file-format order.
+//     uint8_t i;
+//     uint8_t l_prime,h_prime;
+//     uint8_t e_prime,d_prime;
+//     uint8_t c_prime,b_prime;
+//     uint8_t f_prime,a_prime; 
+//     uint8_t l,h;
+//     uint8_t e,d;
+//     uint8_t c,b;
+//     uint8_t iyl,iyh;
+//     uint8_t ixl,ixh;
+//     uint8_t iff2;
+//     uint8_t r;  // included, not not true value at capture (pain and not really needed)
+//     uint8_t f;
+//     uint8_t a;
+//     uint8_t sp_lo,sp_hi;
+//     uint8_t im;
+//     uint8_t borderCol; // included, not tue at capture time
     
-    // TODO:  pc_lo,pc_hi future stuff
-    uint8_t pc_lo,pc_hi;    // extra - ignored during SNA file saving
+//     // TODO:  pc_lo,pc_hi future stuff
+//     uint8_t pc_lo,pc_hi;    // extra - ignored during SNA file saving
 
-    uint16_t AllocMark;     // allocator free-me point
+//     uint16_t AllocMark;     // allocator free-me point
+// };
+
+
+//  27 byte SNA File Header
+struct __attribute__ ((packed)) SNAHeader {
+    uint8_t i;
+    uint8_t l_prime, h_prime;
+    uint8_t e_prime, d_prime;
+    uint8_t c_prime, b_prime;
+    uint8_t f_prime, a_prime; 
+    uint8_t l, h;
+    uint8_t e, d;
+    uint8_t c, b;
+    uint8_t iyl, iyh;
+    uint8_t ixl, ixh;
+    uint8_t iff2;
+    uint8_t r;
+    uint8_t f, a;
+    uint8_t sp_lo, sp_hi;
+    uint8_t im;
+    uint8_t borderCol;
+};
+
+static_assert(sizeof(SNAHeader) == 27, "SNAHeader must be 27 bytes");
+
+// Full runtime struct wrapping the header + extra fields
+struct __attribute__ ((packed)) Z80Registers {
+    SNAHeader header;       // 27 bytes
+
+    uint8_t  pc_lo, pc_hi;  
+    bool     Z80Snapshot;
+    uint16_t AllocMark; 
 };
 
 

@@ -159,35 +159,35 @@ constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
 // .SNA FILE FORMAT - (27 byte header)
 //-----------------------------------------
 // TODO ... use the Z80Registers packed struct!
-#define SNA_I           0
-#define SNA_HL_PRIME_LOW 1
-#define SNA_HL_PRIME_HIGH 2
-#define SNA_DE_PRIME_LOW 3
-#define SNA_DE_PRIME_HIGH 4
-#define SNA_BC_PRIME_LOW 5
-#define SNA_BC_PRIME_HIGH 6
-#define SNA_AF_PRIME_LOW 7
-#define SNA_AF_PRIME_HIGH 8
-#define SNA_HL_LOW      9
-#define SNA_HL_HIGH     10
-#define SNA_DE_LOW      11
-#define SNA_DE_HIGH     12
-#define SNA_BC_LOW      13
-#define SNA_BC_HIGH     14
-#define SNA_IY_LOW      15
-#define SNA_IY_HIGH     16
-#define SNA_IX_LOW      17
-#define SNA_IX_HIGH     18
-#define SNA_IFF2_BIT    19 // IFF2 bit (bit 2 of this byte)
-#define SNA_R_REGISTER  20
-#define SNA_AF_LOW      21
-#define SNA_AF_HIGH     22
-#define SNA_SP_LOW      23
-#define SNA_SP_HIGH     24
-#define SNA_IM_MODE     25
-#define SNA_BORDER_COLOUR 26
-#define SNA_TOTAL_ITEMS    27  // TOTAL ITEMS
+// #define SNA_I           0
+// #define SNA_HL_PRIME_LOW 1
+// #define SNA_HL_PRIME_HIGH 2
+// #define SNA_DE_PRIME_LOW 3
+// #define SNA_DE_PRIME_HIGH 4
+// #define SNA_BC_PRIME_LOW 5
+// #define SNA_BC_PRIME_HIGH 6
+// #define SNA_AF_PRIME_LOW 7
+// #define SNA_AF_PRIME_HIGH 8
+// #define SNA_HL_LOW      9
+// #define SNA_HL_HIGH     10
+// #define SNA_DE_LOW      11
+// #define SNA_DE_HIGH     12
+// #define SNA_BC_LOW      13
+// #define SNA_BC_HIGH     14
+// #define SNA_IY_LOW      15
+// #define SNA_IY_HIGH     16
+// #define SNA_IX_LOW      17
+// #define SNA_IX_HIGH     18
+// #define SNA_IFF2_BIT    19 // IFF2 bit (bit 2 of this byte)
+// #define SNA_R_REGISTER  20
+// #define SNA_AF_LOW      21
+// #define SNA_AF_HIGH     22
+// #define SNA_SP_LOW      23
+// #define SNA_SP_HIGH     24
+// #define SNA_IM_MODE     25
+// #define SNA_BORDER_COLOUR 26
 
+#define SNA_TOTAL_ITEMS    27  // TOTAL ITEMS
 constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + SNA_TOTAL_ITEMS;  // total: 49179 for all .sna files
 
 //-----------------------------------------

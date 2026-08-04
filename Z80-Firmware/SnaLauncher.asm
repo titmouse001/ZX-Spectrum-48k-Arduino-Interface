@@ -595,7 +595,9 @@ RestoreEI_IFFStateComplete:
 	; *******************************
 	READ_PAIR_WITH_HALT l, h      ; stack pointer
 	ld sp, hl   				  
-	pop hl                        ; SP+=2, move past RET location (now we can use this area as a tiny stack!)
+
+; CAN'T DO THIS FOR .z80 files!!!!	
+;	pop hl                        ; SP+=2, move past RET location (now we can use this area as a tiny stack!)
 	
 	;ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx with games startup address
 	

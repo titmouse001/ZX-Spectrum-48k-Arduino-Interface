@@ -203,8 +203,9 @@ void handleSnaFile(FatFile* pFile) {
     Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);
     uint8_t mark = BufferManager::getMark();
     {
-      uint8_t* snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-      pFile->read((void*)(snaHeaderPacket), SNA_TOTAL_ITEMS);
+      Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
+      pFile->read((void*)&regs->header, sizeof(SNAHeader));
+      regs->Z80Snapshot = false;
 
       //This damagedScreenBytes[] is used by restoreCorruptedScreenBytes()
       uint8_t damagedScreenBytes[3];
@@ -293,8 +294,8 @@ void handleSnaFile(FatFile* pFile) {
       delay(10000);
 #endif
 
-      Z80Bus::executeSnapshot(snaHeaderPacket);
-      borderColour = snaHeaderPacket[SNA_BORDER_COLOUR];
+      Z80Bus::executeSnapshot(regs);
+      borderColour =regs->header.borderCol;  // snaHeaderPacket[SNA_BORDER_COLOUR];
       restoreCorruptedScreenBytes(damagedScreenBytes);
     }
     BufferManager::freeToMark(mark);
@@ -319,8 +320,10 @@ void handleZ80File(FatFile* pFile) {
       Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);  
       uint8_t mark = BufferManager::getMark();
       {
-        uint8_t *snaHeaderPacket = BufferManager::allocate(SNA_TOTAL_ITEMS);
-        SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, snaHeaderPacket );
+        Z80Registers* regs = (Z80Registers*) BufferManager::allocate(sizeof(Z80Registers));
+        regs->Z80Snapshot = true;
+        SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, regs );
+        Z802SNA::convertZ80HeaderToSna((Z802SNA::Z80V1Header*)&headerInfo.headerV1Data, regs);
 
         // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file data sent to convertSendZ80toSNA() is compressed!
         uint8_t damagedScreenBytes[3];
@@ -330,8 +333,8 @@ void handleZ80File(FatFile* pFile) {
         damagedScreenBytes[1] = Z80Bus::get_IO_Byte();
         damagedScreenBytes[2] = Z80Bus::get_IO_Byte();
 
-        Z80Bus::executeSnapshot(snaHeaderPacket);
-        borderColour = snaHeaderPacket[SNA_BORDER_COLOUR];
+        Z80Bus::executeSnapshot(regs);
+        borderColour = regs->header.borderCol; // snaHeaderPacket[SNA_BORDER_COLOUR];
         restoreCorruptedScreenBytes(damagedScreenBytes);
       }
       BufferManager::freeToMark(mark);
