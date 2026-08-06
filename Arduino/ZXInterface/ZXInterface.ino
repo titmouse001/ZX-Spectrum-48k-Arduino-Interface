@@ -64,11 +64,6 @@ void setup() {
   // To get around this, the A3 (ROM Half) pin has now been tied to GND via a 10K pull-down resistor, 
   // so at power-up it defaults to LOW (SNA-ROM).
   // *************************************************************************************
-  // Reset now removed to free up pin - see above (this is a pain but need a
-  // free pin) pinModeFast(Pin::Z80_REST, OUTPUT);
-  // digitalWriteFast(Pin::Z80_REST, LOW);
-  // Utils::delay16(Z80_RESET_TIME);
-  // digitalWriteFast(Pin::Z80_REST, HIGH);
 
 #ifdef SERIAL_DEBUG
   Debug::setupSerial();  // For debugging
@@ -83,8 +78,7 @@ void setup() {
   // At this point HALT has been spotted by the Arduino and we carry on!
   // ----------------------------------------------------------------------
   //
-  // WARNING: Switching a floating/high-Z input to OUTPUT will drive the line
-  // LOW because the pin defaults to LOW on power-up. Changing the pin to OUTPUT
+  // WARNING: Pin defaults to LOW on power-up. Changing the pin to OUTPUT
   // generates a falling edge that triggers the Z80's edge-sensitive /NMI.
   pinModeFast(Pin::Z80_NMI, OUTPUT);
   //
@@ -110,18 +104,16 @@ void setup() {
 void loop() {
   
   FatFile* pFile = Menu::handleMenu();
-  char extBuff[4];
-  pFile->getExtension((char*)&extBuff, sizeof(extBuff));
-  char* ext = extBuff;
-
-  if (ext) {
-    if (strcasecmp(ext, "scr") == 0) {
+  char extension[4];
+  uint8_t amount =pFile->getExtension(extension, sizeof(extension));
+  if (amount==3) {
+    if (strcasecmp(extension, "scr") == 0) {
       handleScrFile(pFile);
-    } else if (strcasecmp(ext, "sna") == 0) {
+    } else if (strcasecmp(extension, "sna") == 0) {
       handleSnaFile(pFile);
-    } else if (strcasecmp(ext, "z80") == 0) {
+    } else if (strcasecmp(extension, "z80") == 0) {
       handleZ80File(pFile);
-    } else if (strcasecmp(ext, "txt") == 0) {
+    } else if (strcasecmp(extension, "txt") == 0) {
       handleTxtFile(pFile);
     }
   }
@@ -323,7 +315,7 @@ void handleZ80File(FatFile* pFile) {
         Z80Registers* regs = (Z80Registers*) BufferManager::allocate(sizeof(Z80Registers));
         regs->Z80Snapshot = true;
         SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, regs );
-        Z802SNA::convertZ80HeaderToSna((Z802SNA::Z80V1Header*)&headerInfo.headerV1Data, regs);
+        SnapZ80::convertZ80HeaderToSna(&headerInfo.headerV1Data, regs);
 
         // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file data sent to convertSendZ80toSNA() is compressed!
         uint8_t damagedScreenBytes[3];

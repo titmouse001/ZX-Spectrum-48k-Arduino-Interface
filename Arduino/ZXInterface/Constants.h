@@ -107,37 +107,37 @@ constexpr uint16_t ZX_SCREEN_HEIGHT_BYTES        = ZX_SCREEN_HEIGHT_PIXELS/8;
 //-----------------------------------------
 // .Z80 FILE FORMAT - HEADER ver1
 //-----------------------------------------
-constexpr uint8_t Z80_V1_AF_HIGH = 0;
-constexpr uint8_t Z80_V1_AF_LOW = 1;
-constexpr uint8_t Z80_V1_BC_LOW = 2;
-constexpr uint8_t Z80_V1_BC_HIGH = 3;
-constexpr uint8_t Z80_V1_HL_LOW = 4;
-constexpr uint8_t Z80_V1_HL_HIGH = 5;
-constexpr uint8_t Z80_V1_PC_LOW = 6;
-constexpr uint8_t Z80_V1_PC_HIGH = 7;
-constexpr uint8_t Z80_V1_SP_LOW = 8;
-constexpr uint8_t Z80_V1_SP_HIGH = 9;
-constexpr uint8_t Z80_V1_I = 10;
-constexpr uint8_t Z80_V1_R_7BITS = 11;
-constexpr uint8_t Z80_V1_FLAGS1 = 12; // Bit 0: R bit 7; Bits 1-3: Border; Bit 5: Compressed (0=no, 1=yes)
-constexpr uint8_t Z80_V1_DE_LOW = 13;
-constexpr uint8_t Z80_V1_DE_HIGH = 14;
-constexpr uint8_t Z80_V1_BC_PRIME_LOW = 15;
-constexpr uint8_t Z80_V1_BC_PRIME_HIGH = 16;
-constexpr uint8_t Z80_V1_DE_PRIME_LOW = 17;
-constexpr uint8_t Z80_V1_DE_PRIME_HIGH = 18;
-constexpr uint8_t Z80_V1_HL_PRIME_LOW = 19;
-constexpr uint8_t Z80_V1_HL_PRIME_HIGH = 20;
-constexpr uint8_t Z80_V1_AF_PRIME_HIGH = 21;
-constexpr uint8_t Z80_V1_AF_PRIME_LOW = 22;
-constexpr uint8_t Z80_V1_IY_LOW = 23;
-constexpr uint8_t Z80_V1_IY_HIGH = 24;
-constexpr uint8_t Z80_V1_IX_LOW = 25;
-constexpr uint8_t Z80_V1_IX_HIGH = 26;
-constexpr uint8_t Z80_V1_IFF1 = 27;
-constexpr uint8_t Z80_V1_IFF2 = 28;
-constexpr uint8_t Z80_V1_IM_AND_FLAGS2 = 29; // Bits 0-1: IM; Bit 2: Issue 2; Bit 3: Double int; Bits 4-5: Video sync; Bits 6-7: Joystick
-constexpr uint8_t Z80_V1_HEADERLENGTH = 30;  // TOTAL Ver1 ITEMS
+// constexpr uint8_t Z80_V1_AF_HIGH = 0;
+// constexpr uint8_t Z80_V1_AF_LOW = 1;
+// constexpr uint8_t Z80_V1_BC_LOW = 2;
+// constexpr uint8_t Z80_V1_BC_HIGH = 3;
+// constexpr uint8_t Z80_V1_HL_LOW = 4;
+// constexpr uint8_t Z80_V1_HL_HIGH = 5;
+// constexpr uint8_t Z80_V1_PC_LOW = 6;
+// constexpr uint8_t Z80_V1_PC_HIGH = 7;
+// constexpr uint8_t Z80_V1_SP_LOW = 8;
+// constexpr uint8_t Z80_V1_SP_HIGH = 9;
+// constexpr uint8_t Z80_V1_I = 10;
+// constexpr uint8_t Z80_V1_R_7BITS = 11;
+// constexpr uint8_t Z80_V1_FLAGS1 = 12; // Bit 0: R bit 7; Bits 1-3: Border; Bit 5: Compressed (0=no, 1=yes)
+// constexpr uint8_t Z80_V1_DE_LOW = 13;
+// constexpr uint8_t Z80_V1_DE_HIGH = 14;
+// constexpr uint8_t Z80_V1_BC_PRIME_LOW = 15;
+// constexpr uint8_t Z80_V1_BC_PRIME_HIGH = 16;
+// constexpr uint8_t Z80_V1_DE_PRIME_LOW = 17;
+// constexpr uint8_t Z80_V1_DE_PRIME_HIGH = 18;
+// constexpr uint8_t Z80_V1_HL_PRIME_LOW = 19;
+// constexpr uint8_t Z80_V1_HL_PRIME_HIGH = 20;
+// constexpr uint8_t Z80_V1_AF_PRIME_HIGH = 21;
+// constexpr uint8_t Z80_V1_AF_PRIME_LOW = 22;
+// constexpr uint8_t Z80_V1_IY_LOW = 23;
+// constexpr uint8_t Z80_V1_IY_HIGH = 24;
+// constexpr uint8_t Z80_V1_IX_LOW = 25;
+// constexpr uint8_t Z80_V1_IX_HIGH = 26;
+// constexpr uint8_t Z80_V1_IFF1 = 27;
+// constexpr uint8_t Z80_V1_IFF2 = 28;
+// constexpr uint8_t Z80_V1_IM_AND_FLAGS2 = 29; // Bits 0-1: IM; Bit 2: Issue 2; Bit 3: Double int; Bits 4-5: Video sync; Bits 6-7: Joystick
+//constexpr uint8_t Z80_V1_HEADERLENGTH = 30;  // TOTAL Ver1 ITEMS
 
 //-----------------------------------------
 // .Z80 FILE FORMAT - EXTENDED HEADERS ver2/3

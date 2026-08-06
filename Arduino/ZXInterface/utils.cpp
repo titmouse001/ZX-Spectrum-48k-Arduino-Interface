@@ -322,12 +322,14 @@ void Utils::viewSpeccyMemory() {
 }
 
 void Utils::stockRomBoot_Blocking() {
-  // !!! NO Z80 RESET AVAILABLE - STOLE THAT PIN FOR FUTURE USE !!!
-  // TODO: get back into SNA ROM via PCB button
-  //
+
+  uint8_t ResetJmpAddr[2] = {0,0};
+  Z80Bus::sendBytes(ResetJmpAddr, sizeof(ResetJmpAddr));  
+  delayMicroseconds(12);  // fudge wait this for now - give PC time to end up at 0x0000
   Z80Bus::setStockRom();
- //////////// Z80Bus::resetZ80(); // Resets Z80 for a clean boot from internal ROM.
-  //while ((Utils::readJoystick() & INPUT_SELECT) != 0){} // Debounces button release.
+
+  // Above, would be better to run something in Z80's ram to wait then do the 0x0000 jmp.
+
   while (true) {
     // // Allow the user to return back to the game loader screen.
     // if (Utils::readJoystick() & INPUT_SELECT) {

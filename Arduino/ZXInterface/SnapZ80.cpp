@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "snapZ802SNA.h"
+//#include "snapZ802SNA.h"
 #include "SnapZ80.h"
 #include "BufferManager.h" 
 #include "Z80Bus.h" 
@@ -73,18 +73,20 @@ MachineType SnapZ80::getMachineDetails(int8_t z80_version, uint8_t Z80_EXT_HW_MO
 
 Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo) {
 
-  if (pFile->read(headerInfo->headerV1Data, Z80_V1_HEADERLENGTH) != Z80_V1_HEADERLENGTH) {
+  if (pFile->read(&headerInfo->headerV1Data, sizeof(Z80V1Header)) != sizeof(Z80V1Header)) {
     return Z80_VERSION_UNKNOWN; 
   }
 
-  uint8_t* v1_header = headerInfo->headerV1Data;
+  //uint8_t* v1_header = headerInfo->headerV1Data;
+
+  Z80V1Header* v1_header = &headerInfo->headerV1Data;
 
   // Ver1 Check: PC != 0
-  if (v1_header[Z80_V1_PC_LOW] || v1_header[Z80_V1_PC_HIGH]) { 
-    headerInfo->pc_low = v1_header[Z80_V1_PC_LOW];
-    headerInfo->pc_high = v1_header[Z80_V1_PC_HIGH];
+  if (v1_header->pc_lo || v1_header->pc_hi) { 
+    headerInfo->pc_low = v1_header->pc_lo;
+    headerInfo->pc_high = v1_header->pc_hi;
     headerInfo->hw_mode = 0;
-    headerInfo->isV1Compressed = (v1_header[Z80_V1_FLAGS1] & 0x20) >> 5;
+    headerInfo->isV1Compressed = (v1_header->flags1 & 0x20) >> 5;
     headerInfo->version = Z80_VERSION_1;
     return Z80_VERSION_1;
   } 
@@ -197,7 +199,7 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
         result = false;
       }
     } else {  // check uncompressed data is a least 48k + file header (will ignore extra later)
-		if (pFile->fileSize() < (0xC000 + Z80_V1_HEADERLENGTH)) {
+		if (pFile->fileSize() < (0xC000 + sizeof(SnapZ80::Z80V1Header))) {
         	result = false;
       	}
     }
@@ -387,7 +389,7 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
 bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
                                   Z80Registers* regs) {
   //uint8_t* v1_header = headerInfo->headerV1Data;
- Z802SNA::Z80V1Header* v1_header = (Z802SNA::Z80V1Header*) &headerInfo->headerV1Data[0];
+ Z80V1Header* v1_header = &headerInfo->headerV1Data;
 
   if (headerInfo->version >= 2) {
     //
@@ -445,4 +447,50 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
   // Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);
 
   return true;
+}
+
+
+
+
+void SnapZ80::convertZ80HeaderToSna(const Z80V1Header* z80Header_v1, Z80Registers* regs) {
+    SNAHeader* snaHeader = &regs->header;
+
+    snaHeader->i         = z80Header_v1->i;
+    snaHeader->l_prime   = z80Header_v1->l_prime;
+    snaHeader->h_prime   = z80Header_v1->h_prime;
+    snaHeader->e_prime   = z80Header_v1->e_prime;
+    snaHeader->d_prime   = z80Header_v1->d_prime;
+    snaHeader->c_prime   = z80Header_v1->c_prime;
+    snaHeader->b_prime   = z80Header_v1->b_prime;
+    snaHeader->f_prime   = z80Header_v1->f_prime;
+    snaHeader->a_prime   = z80Header_v1->a_prime;
+    snaHeader->l         = z80Header_v1->l;
+    snaHeader->h         = z80Header_v1->h;
+    snaHeader->e         = z80Header_v1->e;
+    snaHeader->d         = z80Header_v1->d;
+    snaHeader->c         = z80Header_v1->c;
+    snaHeader->b         = z80Header_v1->b;
+    snaHeader->iyl       = z80Header_v1->iyl;
+    snaHeader->iyh       = z80Header_v1->iyh;
+    snaHeader->ixl       = z80Header_v1->ixl;
+    snaHeader->ixh       = z80Header_v1->ixh;
+    
+    // Active interrupt flip-flop
+    snaHeader->iff2      = z80Header_v1->iff1;
+    
+    // Combine 7-bit R register with bit 7 from flags1
+    snaHeader->r         = (z80Header_v1->r & 0x7F) | ((z80Header_v1->flags1 & 0x01) << 7);
+    
+    snaHeader->f         = z80Header_v1->f;
+    snaHeader->a         = z80Header_v1->a;
+    snaHeader->sp_lo     = z80Header_v1->sp_lo;
+    snaHeader->sp_hi     = z80Header_v1->sp_hi;
+    
+    // Bitfield masking for IM mode and border color
+    snaHeader->im        = z80Header_v1->flags2 & 0x03; 
+    snaHeader->borderCol = (z80Header_v1->flags1 >> 1) & 0x07; 
+
+    // Store Program Counter in regs container
+   // regs->pc_lo          = z80Header_v1->pc_lo;
+   // regs->pc_hi          = z80Header_v1->pc_hi;
 }
