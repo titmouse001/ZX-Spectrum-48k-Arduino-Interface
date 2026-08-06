@@ -117,95 +117,96 @@ Z80HeaderVersion SnapZ80::readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInf
   return headerInfo->version;
 }
 
+uint32_t SnapZ80::locateV1Terminator(FatFile* pFile, uint32_t start_pos) {
+    uint32_t file_size = pFile->fileSize();
+    // Quick check: Most valid .Z80 Ver1 files end with the 4-byte marker
+    if (file_size >= (start_pos + MARKER_SIZE)) {
+        uint32_t end_pos = file_size - MARKER_SIZE;
+        if (pFile->seekSet(end_pos)) {
+            uint8_t buf[4];
+            if (pFile->read(buf, 4) == 4) {
+                if (buf[0] == 0x00 && buf[1] == 0xED && 
+                    buf[2] == 0xED && buf[3] == 0x00) {
+                    if (!pFile->seekSet(start_pos)) return 0;
+                    return end_pos - start_pos;
+                }
+            }
+        }
+    }
 
-
-bool SnapZ80::locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length) {
-	uint32_t file_size = pFile->fileSize();
-
-	// Quick check: Most valid .Z80 Ver1 files end with the 4-byte marker
-	if (file_size >= (start_pos + MARKER_SIZE)) {
-		uint32_t end_pos = file_size - MARKER_SIZE;
-		if (pFile->seekSet(end_pos)) {
-			uint8_t buf[4];
-			if (pFile->read(buf, 4) == 4) {
-				if (buf[0] == 0x00 && buf[1] == 0xED && 
-					  buf[2] == 0xED && buf[3] == 0x00) {
-					rle_data_length = end_pos - start_pos;
-					return pFile->seekSet(start_pos);
-				}
-			}
-		}
-	}
-
-	// Fallback: Full Scan (In case there is trailing junk or an early termination)
-	if (!pFile->seekSet(start_pos)) return false;
-
-	uint16_t mark = BufferManager::getMark();
-	uint8_t* search_buffer = BufferManager::allocate(SEARCH_BUFFER_SIZE);
-
-	uint8_t state = 0;  // Counts marker bytes
-	uint32_t absolute_pos = start_pos;
-
-	while (pFile->available()) {
-		int16_t bytes_read = pFile->read(search_buffer, SEARCH_BUFFER_SIZE);
-		if (bytes_read <= 0) break;
-
-		for (int16_t i = 0; i < bytes_read; i++) {
-			absolute_pos++;  // where are we in the file
-
-			// State machine logic for {0x00, 0xED, 0xED, 0x00}
-			if (search_buffer[i] == END_MARKER[state]) {
-				state++;
-				if (state == MARKER_SIZE) {
-					rle_data_length = (absolute_pos - MARKER_SIZE) - start_pos;
-					BufferManager::freeToMark(mark);
-					return pFile->seekSet(start_pos);  // found it!
-				}
-			} else {
-				// Reset state - allow continue for start of marker
-				state = (search_buffer[i] == END_MARKER[0]) ? 1 : 0;
-			}
-		}
-	}
-
-	BufferManager::freeToMark(mark);
-	return false;
+    // Fallback: Full Scan (In case there is trailing junk or an early termination)
+    if (!pFile->seekSet(start_pos)) return 0;
+    uint16_t mark = BufferManager::getMark();
+    uint8_t* search_buffer = BufferManager::allocate(SEARCH_BUFFER_SIZE);
+    uint8_t state = 0;  // Counts marker bytes
+    uint32_t absolute_pos = start_pos;
+    uint32_t rle_length = 0;
+    while (pFile->available()) {
+        int16_t bytes_read = pFile->read(search_buffer, SEARCH_BUFFER_SIZE);
+        if (bytes_read <= 0) break;
+        for (int16_t i = 0; i < bytes_read; i++) {
+            absolute_pos++;  // where are we in the file
+            // State machine logic for {0x00, 0xED, 0xED, 0x00}
+            if (search_buffer[i] == END_MARKER[state]) {
+                state++;
+                if (state == MARKER_SIZE) {
+                    rle_length = (absolute_pos - MARKER_SIZE) - start_pos;
+                    break;
+                }
+            } else {
+                // Reset state - allow continue for start of marker
+                state = (search_buffer[i] == END_MARKER[0]) ? 1 : 0;
+            }
+        }
+        if (rle_length > 0) break; // Exit outer file-read loop on match
+    }
+    // Consolidated single cleanup point for allocated search memory
+    BufferManager::freeToMark(mark);
+    if (rle_length > 0) {
+        if (!pFile->seekSet(start_pos)) return 0;
+    }
+    return rle_length; // Returns calculated length or 0 if not found/seek failed
 }
 
 bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
-  bool result = true;
+  bool result = false;
   uint32_t initial_file_pos = pFile->curPosition();
 
-  if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) != MACHINE_48K) {
-    result = false;
-  } else if (headerInfo->version >= Z80_VERSION_2) {
-    while (pFile->available()) {
-      uint8_t len_buf[3];  // compressed length (2 bytes), page number (1 byte)
-      if (pFile->read(len_buf, 3) != 3) {
-        return false;
-      }
-      uint16_t compressed_len = len_buf[0] | (len_buf[1] << 8);
-      constexpr uint16_t UNCOMPRESSED_16KB = 0x4000;  // uses 16KB (0x4000)
-      constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF;  // flags uncompressed
-      uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? UNCOMPRESSED_16KB : compressed_len;
-	  //  If seeking the block pushes past, assume EOF.							  
-	  if (!pFile->seekCur(skip_len)) {  
-        break;                   
+  // Hardware check: must be a 48K machine snapshot
+  if (getMachineDetails(headerInfo->version, headerInfo->hw_mode) == MACHINE_48K) {
+
+    // Version 2+ validation (Block-based payload)
+    if (headerInfo->version >= Z80_VERSION_2) {
+      result = true;  // Assume valid, invalidate if any block is corrupted
+      while (pFile->available()) {
+        uint8_t len_buf[3];  // compressed length (2 bytes), page number (1 byte)
+        if (pFile->read(len_buf, 3) != 3) {
+          result = false;  // Truncated block header
+          break;
+        }
+
+        uint16_t compressed_len = len_buf[0] | (static_cast<uint16_t>(len_buf[1]) << 8);
+        constexpr uint16_t UNCOMPRESSED_16KB = 0x4000;
+        constexpr uint16_t UNCOMPRESSED_FLAG = 0xFFFF;
+        uint16_t skip_len = (compressed_len == UNCOMPRESSED_FLAG) ? UNCOMPRESSED_16KB : compressed_len;
+        if (!pFile->seekCur(skip_len)) {
+          result = false;  // Truncated block payload
+          break;
+        }
       }
     }
-  } else {  // V1
-    if (headerInfo->isV1Compressed) {
-      if (!locateV1Terminator(pFile, initial_file_pos, headerInfo->v1PayloadLength)) {
-        result = false;
-      }
-    } else {  // check uncompressed data is a least 48k + file header (will ignore extra later)
-		if (pFile->fileSize() < (0xC000 + sizeof(SnapZ80::Z80V1Header))) {
-        	result = false;
-      	}
+    // Version 1 Compressed
+    else if (headerInfo->isV1Compressed) {
+      headerInfo->v1PayloadLength = locateV1Terminator(pFile, initial_file_pos);
+      result = (headerInfo->v1PayloadLength > 0);
+    }
+    // Version 1 Uncompressed
+    else {
+      constexpr uint32_t RAM_48K_SIZE = 0xC000;
+      result = (pFile->fileSize() >= (RAM_48K_SIZE + sizeof(SnapZ80::Z80V1Header)));
     }
   }
-
-  pFile->seekSet(initial_file_pos);
+  pFile->seekSet(initial_file_pos);  // Restore original file position
   return result;
 }
 

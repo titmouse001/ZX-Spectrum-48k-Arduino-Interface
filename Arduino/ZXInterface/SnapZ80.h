@@ -48,7 +48,7 @@ struct Z80HeaderInfo {
 MachineType getMachineDetails(int8_t z80_version, uint8_t Z80_EXT_HW_MODE);
 bool checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo);
 Z80HeaderVersion readZ80Header(FatFile* pFile, Z80HeaderInfo* headerInfo);
-bool locateV1Terminator(FatFile* pFile, uint32_t start_pos, uint32_t& rle_data_length);
+uint32_t locateV1Terminator(FatFile* pFile, uint32_t start_pos);
 BlockReadResult readAndWriteBlock(FatFile* pFile);
 bool convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, Z80Registers* regs);
 void decodeRLE_core(FatFile* pFile, uint16_t sourceLengthLimit, uint16_t currentAddress);
