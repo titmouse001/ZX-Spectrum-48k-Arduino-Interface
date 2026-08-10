@@ -29,11 +29,15 @@ constexpr uint8_t getY(int8_t line) {
 
 static const char SAVED_MSG[] PROGMEM = "SAVED";
 
+static bool enableSlowMo = false;
+static uint16_t runTime = 5;
+static uint16_t haltTime = 0; 
+
 // ----------------------------------------------------------------------------------------------
 // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
 // ----------------------------------------------------------------------------------------------
 // PCB UPDATE:   (double duty for ShiftRegClockPin)
-// Nano A2 monitors /RD and /IORQ via a passive resistor logic gate (4.7K per
+// Nano A2 monitors /M1 and /IORQ via a passive resistor logic gate (4.7K per
 // line). This acts as a hardware AND gate for active-low signals: A2 only hits
 // a Logic LOW when both Z80 lines are active, pinpointing the I/O Read cycle.
 // WHY: Most games poll input (IN) when the stack is stable, so using NMI
@@ -45,26 +49,37 @@ static const char SAVED_MSG[] PROGMEM = "SAVED";
 //    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
 // ----------------------------------------------------------------------------------------------
 void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
+  constexpr uint8_t INPUT_UP_MASK = 0b00001000;
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
 
   while (true) {
+    if (enableSlowMo) {
+      digitalWrite(Pin::Z80_BUSREQ, HIGH);  // Resume Z80 (refresh speccys RAM!)
+      delayMicroseconds(runTime);
+    }
+
     uint8_t buttonData = Utils::readJoystick();
 
     // Remap 2nd fire to jump (Todo: Needs config mapping framework)
     if (buttonData & INPUT_FIRE2) {
-      buttonData |= 0b00001000;  // up  (BITS: XsfFUDLR)
+      buttonData |= INPUT_UP_MASK;  // up  (BITS: XsfFUDLR)
     }
 
     PORTD = buttonData & INPUT_MASK;
 
-//  static uint32_t a=10000;  // AUTO TEST PAUSING GAME NON STOP
-//  a--;
- //   if (a==0) { 
-   if (buttonData & INPUT_SELECT) {
-//      a=10000;
+    //  static uint32_t a=10000;  // AUTO TEST PAUSING GAME NON STOP
+    //  a--;
+    //   if (a==0) {
+    if (buttonData & INPUT_SELECT) {
+      digitalWrite(Pin::Z80_BUSREQ, HIGH);
+      //      a=10000;
       if (process(borderColour)) {
         break;  // back to game loader menu
       }
+    }
+    if (enableSlowMo) {
+      digitalWrite(Pin::Z80_BUSREQ, LOW);  // Halt Z80
+      delayMicroseconds(haltTime);
     }
   }
 }
@@ -114,11 +129,10 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
 
   // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's
-  // combined /RD AND /IORQ lines (Detects Keyboard/Joystick IN instructions)
+  // combined /M1 AND /IORQ lines.
   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
-  // Using Inline ASM for cycle-accurate timing.
-  // Equivalent to:
+  // ASM equivalent:
   //   while (digitalRead(A2) == HIGH); // Wait for external signal on A2
   //   NMI_LOW(); NMI_HIGH();           // Pulse NMI on A0 immediately
   asm volatile(
@@ -176,6 +190,24 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
     Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
     Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
+    // Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO),F("SlowMo")  );
+    // char _c[5];
+    // Draw::text(PAUSE_XPOS+60, getY(MEM_SLOWMO), enableSlowMo ? itoa(haltTime,_c,10) : "off" );
+
+Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO),F("SlowMo")  );
+    
+    char _c[6];
+    if (enableSlowMo) {
+      itoa(haltTime*10, _c, 10);
+      uint8_t len = 0;
+      while(_c[len]) len++; // Find end of the string
+      _c[len] = '%';        // Append percentage sign
+      _c[len+1] = '\0';     // Null terminate
+    } else {
+      _c[0] = 'O'; _c[1] = 'f'; _c[2] = 'f'; _c[3] = '\0'; 
+    }
+    Draw::text(PAUSE_XPOS+52, getY(MEM_SLOWMO), _c);
+
     Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
 
     result = getSelectedMenuOption_Blocking(selectedIndex);
@@ -197,6 +229,16 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
         break;
       case RESUME:
         Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+        break;
+      case MEM_SLOWMO:
+        haltTime += 1;
+        if (haltTime > 10) {
+          haltTime = 0;
+          enableSlowMo = false;
+        } else {
+          enableSlowMo = true;
+        }
+        break;
         break;
       case EXIT:
         Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);

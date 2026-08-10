@@ -21,6 +21,9 @@ void Z80Bus::setupPins() {
 
   pinModeFast(Pin::Z80_HALT, INPUT);
  
+  pinMode(Pin::Z80_BUSREQ, OUTPUT);
+  digitalWriteFast(Pin::Z80_BUSREQ,HIGH); 
+
   DDRD = 0xFF;                     // Set all PORTD pins as outputs
   // pinModeFast(Pin::Z80_D0Pin, OUTPUT);
   // pinModeFast(Pin::Z80_D1Pin, OUTPUT);

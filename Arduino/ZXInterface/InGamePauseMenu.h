@@ -22,6 +22,7 @@ namespace InGamePauseMenu {
         POKE,
         SCREENSHOT,
         MEM_VIEW,
+        MEM_SLOWMO,
         EXIT
     };
 }

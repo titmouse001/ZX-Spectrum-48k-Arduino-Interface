@@ -43,7 +43,8 @@ constexpr uint8_t Z80_D7Pin = 7;  // Arduino to z80 data (pin7)
 constexpr uint8_t Z80_HALT = 8;   // Arduino pin8, PINB0 (PORT B) to Z80 'HALT' Status
 constexpr uint8_t Z80_NMI = A0;   // pin14, PIN_A0 to Z80 NMI
 constexpr uint8_t ROM_HALF = A1;  // pin15, PIN_A1 to ROM pin27 high/low bank select (sna or modified stock rom)
-constexpr uint8_t Z80_REST = A3; // 17;  // PIN_A3 to the Z80 Reset line
+//constexpr uint8_t Z80_REST = A3; // 17;  // PIN_A3 to the Z80 Reset line (RESET REMOVED - NOW FREE)
+constexpr uint8_t Z80_BUSREQ = A3;
 constexpr uint8_t SD_CARD_CS = A4;
 constexpr uint8_t OE_LATCH = A5;
 //TODO ... A4  <->  SD-CARD CS    PCB NOW USES THIS PIN ... NEED TO UPDATE ALL COMMENTS

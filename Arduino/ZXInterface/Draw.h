@@ -6,7 +6,6 @@
 
 namespace Draw {
 
-        // The unified core function
     void textCore(int xpos, int ypos, const void *str, bool isFlash);
     
     inline void text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {

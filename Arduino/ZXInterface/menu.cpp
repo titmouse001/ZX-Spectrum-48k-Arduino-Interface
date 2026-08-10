@@ -108,11 +108,22 @@ FatFile* Menu::handleMenu() {
 }
 
 void Menu::drawFileList(bool updateText) {
+
+
+//  uint32_t startTime = millis();
+
+
+
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
   uint16_t mark = BufferManager::getMark();
   char* nameBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
+
+
+//  char nameBuffer[] = "1234567890123456789012345678901234567890ab";
+
+
   uint16_t linesDrawn = 0;
   uint16_t filesSkipped = 0;
 
@@ -139,6 +150,7 @@ void Menu::drawFileList(bool updateText) {
       } else {
         bool isDirectory = file.isDir();
         if (updateText) {
+       //   uint8_t len = 42; 
           uint8_t len = file.getDisplayName7(nameBuffer, ZX_FILENAME_MAX_DISPLAY_LEN + 1);
           if (isDirectory && len < ZX_FILENAME_MAX_DISPLAY_LEN) {
             nameBuffer[len] = '/';
@@ -167,6 +179,18 @@ void Menu::drawFileList(bool updateText) {
   }
 
   BufferManager::freeToMark(mark);
+
+
+  // Utils::clearScreen(COL::CYAN_BLACK);
+  // char _c[10];
+  // uint32_t endTime = millis();
+  // uint16_t duration = endTime - startTime;
+  // itoa(duration, _c, 10);
+  // Draw::text(8, 8, _c);
+  // itoa(duration / 1000, _c, 10);
+  // Draw::text(8, 8 + 16, _c);
+  // delay(20);
+
 }
 
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {

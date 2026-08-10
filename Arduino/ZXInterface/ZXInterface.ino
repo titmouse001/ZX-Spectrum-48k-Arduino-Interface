@@ -41,6 +41,8 @@
 //Global variables use 1392 bytes (67%) of dynamic memory, leaving 656 bytes for local variables. Maximum is 2048 bytes.
 //Sketch uses 27804 bytes (90%) of program storage space. Maximum is 30720 bytes.
 //Global variables use 1388 bytes (67%) of dynamic memory, leaving 660 bytes for local variables. Maximum is 2048 bytes.
+//Sketch uses 28042 bytes (91%) of program storage space. Maximum is 30720 bytes.
+//Global variables use 1388 bytes (67%) of dynamic memory, leaving 660 bytes for local variables. Maximum is 2048 bytes.
 
 #include <Arduino.h>
 //#include <avr/wdt.h>
@@ -54,7 +56,6 @@
 #include "BufferManager.h"
 #include "Z80Bus.h"
 #include "SnapZ80.h"
-#include "Debug.h"  // see #defines to enable
 #include "PacketTypes.h"
 
 void setup() {
@@ -64,10 +65,6 @@ void setup() {
   // To get around this, the A3 (ROM Half) pin has now been tied to GND via a 10K pull-down resistor, 
   // so at power-up it defaults to LOW (SNA-ROM).
   // *************************************************************************************
-
-#ifdef SERIAL_DEBUG
-  Debug::setupSerial();  // For debugging
-#endif
 
   Z80Bus::setupPins();
   Utils::setupJoystick();
@@ -428,3 +425,71 @@ void handleTxtFile(FatFile* pFile) {
 
 // Generate Map file
 // >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt
+
+
+
+
+
+// Temp main code to transpose Adafruit5x7 font data into a 7x5 lookup table 
+//
+// #include <SPI.h>
+// #include "src/fatlib/SdFat.h"
+// #include "FontData.h" 
+
+// SdFat SD;
+// File file;
+
+// void setup() {
+  
+//   file = SD.open("font_out.txt", O_WRITE | O_CREAT | O_TRUNC);
+//   if (!file) {
+//     return;
+//   }
+
+//   file.println("static const uint8_t __attribute__((progmem)) precalced_font5x7[] = {");
+  
+//   // Iterate through all 95 characters (0x20 to 0x7E)
+//   for (int c = 0; c < 95; c++) {
+//     // Read the 5 vertical columns for the current character[cite: 1]
+//     uint8_t d0 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 0]);
+//     uint8_t d1 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 1]);
+//     uint8_t d2 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 2]);
+//     uint8_t d3 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 3]);
+//     uint8_t d4 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 4]);
+
+//     file.print("\t");
+    
+//     // Generate the 7 horizontal rows
+//     for (int r = 0; r < 7; r++) {
+//       // The original transposition logic[cite: 1]
+//       uint8_t transposedRow = 
+//           ((d0 & 1) << 4) | 
+//           ((d1 & 1) << 3) | 
+//           ((d2 & 1) << 2) | 
+//           ((d3 & 1) << 1) | 
+//            (d4 & 1);
+      
+//       // Write out in zero-padded hex format
+//       file.print("0x");
+//       if (transposedRow < 0x10) file.print("0");
+//       file.print(transposedRow, HEX);
+//       file.print(", ");
+      
+//       // Shift down to prepare for the next row[cite: 1]
+//       d0 >>= 1; d1 >>= 1; d2 >>= 1; d3 >>= 1; d4 >>= 1;
+//     }
+    
+//     // Append a comment identifying the character for easy code reading
+//     file.print("// '");
+//     file.print((char)(c + 0x20));
+//     file.println("'");
+//   }
+  
+//   file.println("};");
+//   file.close();
+//   Serial.println("Font successfully dumped to SD card!");
+// }
+
+// void loop() {
+//   // Nothing to do here
+// }
