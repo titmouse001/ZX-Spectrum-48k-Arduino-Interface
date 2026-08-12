@@ -29,9 +29,7 @@ constexpr uint8_t getY(int8_t line) {
 
 static const char SAVED_MSG[] PROGMEM = "SAVED";
 
-static bool enableSlowMo = false;
-static uint16_t runTime = 5;
-static uint16_t haltTime = 0; 
+static uint8_t slowMoLevel = 0;  // 0=Off, 1=Low , 2=Med , 3=High 
 
 // ----------------------------------------------------------------------------------------------
 // HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
@@ -49,40 +47,51 @@ static uint16_t haltTime = 0;
 //    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
 // ----------------------------------------------------------------------------------------------
 void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
+
   constexpr uint8_t INPUT_UP_MASK = 0b00001000;
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
 
+  uint8_t frameCounter = 0; // Tracks frames for staggering
   while (true) {
-    if (enableSlowMo) {
-      digitalWrite(Pin::Z80_BUSREQ, HIGH);  // Resume Z80 (refresh speccys RAM!)
-      delayMicroseconds(runTime);
+    if (slowMoLevel > 0) {
+      bool runFrame = true;
+      switch (slowMoLevel) {
+        case 1: runFrame = (frameCounter % 4 != 3); break; // Run 3 frames, Miss 1
+        case 2: runFrame = (frameCounter % 2 == 0); break; // Run 1 frame, Miss 1
+        case 3: runFrame = (frameCounter % 4 == 0); break; // Run 1 frame, Miss 3
+      }
+
+      if (runFrame) {
+        digitalWrite(Pin::Z80_BUSREQ, HIGH);  // Resume Z80
+        delay(20);     
+      } else {   // defer frame (20ms of frame time)
+        for (uint8_t i = 0; i < 10; i++) {
+          digitalWrite(Pin::Z80_BUSREQ, HIGH);
+          delayMicroseconds(50);   //  pulse allow Z80 RAM refresh
+          digitalWrite(Pin::Z80_BUSREQ, LOW);
+          delayMicroseconds(1950); //  rest of the 2ms now pauses cpu
+        }
+      }
+      frameCounter++;
+    } else {   // Normal speed
+      digitalWrite(Pin::Z80_BUSREQ, HIGH);
     }
 
     uint8_t buttonData = Utils::readJoystick();
-
-    // Remap 2nd fire to jump (Todo: Needs config mapping framework)
     if (buttonData & INPUT_FIRE2) {
       buttonData |= INPUT_UP_MASK;  // up  (BITS: XsfFUDLR)
     }
-
     PORTD = buttonData & INPUT_MASK;
-
-    //  static uint32_t a=10000;  // AUTO TEST PAUSING GAME NON STOP
-    //  a--;
-    //   if (a==0) {
+    
     if (buttonData & INPUT_SELECT) {
-      digitalWrite(Pin::Z80_BUSREQ, HIGH);
-      //      a=10000;
+      digitalWrite(Pin::Z80_BUSREQ, HIGH); 
       if (process(borderColour)) {
         break;  // back to game loader menu
       }
     }
-    if (enableSlowMo) {
-      digitalWrite(Pin::Z80_BUSREQ, LOW);  // Halt Z80
-      delayMicroseconds(haltTime);
-    }
   }
 }
+
 
 uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) {
 
@@ -128,8 +137,8 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
 bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
 
-  // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's
-  // combined /M1 AND /IORQ lines.
+  // Double Duty : Temporary Grab 'ShiftRegClockPin' as INPUT to monitor Z80's combined /M1 AND /IORQ lines.
+  // As when /M1 and /IORQ are low it's an interrupt acknowledge cycle.
   pinModeFast(Pin::ShiftRegClockPin, INPUT);  // A2
 
   // ASM equivalent:
@@ -190,23 +199,15 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
     Draw::text_P(PAUSE_XPOS, getY(POKE), F("Poke"));
     Draw::text_P(PAUSE_XPOS, getY(SCREENSHOT), F("Screenshot"));
     Draw::text_P(PAUSE_XPOS, getY(MEM_VIEW), F("Mem View"));
-    // Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO),F("SlowMo")  );
-    // char _c[5];
-    // Draw::text(PAUSE_XPOS+60, getY(MEM_SLOWMO), enableSlowMo ? itoa(haltTime,_c,10) : "off" );
 
-Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO),F("SlowMo")  );
-    
-    char _c[6];
-    if (enableSlowMo) {
-      itoa(haltTime*10, _c, 10);
-      uint8_t len = 0;
-      while(_c[len]) len++; // Find end of the string
-      _c[len] = '%';        // Append percentage sign
-      _c[len+1] = '\0';     // Null terminate
-    } else {
-      _c[0] = 'O'; _c[1] = 'f'; _c[2] = 'f'; _c[3] = '\0'; 
+    // Draw visually clean SlowMo words instead of numbers
+    Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO), F("SlowMo"));
+    switch(slowMoLevel) {
+      case 1:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Low")); break;
+      case 2:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Med")); break;
+      case 3:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("High")); break;
+      default: Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Off")); break;
     }
-    Draw::text(PAUSE_XPOS+52, getY(MEM_SLOWMO), _c);
 
     Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
 
@@ -231,17 +232,14 @@ Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO),F("SlowMo")  );
         Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
         break;
       case MEM_SLOWMO:
-        haltTime += 1;
-        if (haltTime > 10) {
-          haltTime = 0;
-          enableSlowMo = false;
-        } else {
-          enableSlowMo = true;
+        slowMoLevel++;
+        if (slowMoLevel > 3) {
+          slowMoLevel = 0;
         }
         break;
-        break;
       case EXIT:
-        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+        //Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
+        Utils::clearScreen(COL::BLACK_BLACK);
         BufferManager::freeToMark(z80Registers->AllocMark);
         // reseting cache - to trigger new collection
         cacheDirName[0] = '\0'; 

@@ -2,7 +2,11 @@
 
 #include <stdint.h>
 
-#define VERSION ("0.27")  // Arduino firmware
+#define VERSION ("0.27")  
+// This Arduino Firmware Requires version 2.5 of the PCB.
+// see: ZX-Spectrum-48k-Arduino-Interface\Documents\Gerbers\V2.50\
+        Gerber_ZX-Spectrum-48k-Arduino-Interface-Game-Loader-V2_5_PCB_ZX-Spectrum-Interface_2026-08-11.zip
+
 
 // Comment out '_DEBUG_POOL_SIZE_ENABLED_' for release
 //#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
