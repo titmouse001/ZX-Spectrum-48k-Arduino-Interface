@@ -99,7 +99,7 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   // 0x04AA: Z80 code jumps to '.restoreInGameState', then enters an idle loop. 
   // This allows time for the ROM to swap back to the stock ROM and begin the restore process.
   uint8_t addr0x04AA[] = { 0x04, 0xAA };  // jump to address
-  Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
+  Z80Bus::sendBytes8(addr0x04AA, sizeof(addr0x04AA));
 
   Z80Bus::sendByte(&sna->sp_hi);
   Z80Bus::sendByte(&sna->sp_lo);
@@ -322,7 +322,7 @@ void Utils::viewSpeccyMemory() {
 void Utils::stockRomBoot_Blocking() {
 
   uint8_t ResetJmpAddr[2] = {0,0};
-  Z80Bus::sendBytes(ResetJmpAddr, sizeof(ResetJmpAddr));  
+  Z80Bus::sendBytes8(ResetJmpAddr, sizeof(ResetJmpAddr));  
   delayMicroseconds(12);  // fudge wait this for now - give PC time to end up at 0x0000
   Z80Bus::setStockRom();
 
@@ -383,7 +383,6 @@ void Utils::show5VoltRailStatus() {
 void Utils::delay16(uint16_t ms) {
     const uint32_t start = millis();
     while ((uint16_t)(millis() - start) < ms) {  }
-
 }
 
 // Screen Address (16-bit): starting at 16384 (0x4000, %0100000000000000)

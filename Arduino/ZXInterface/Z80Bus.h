@@ -11,7 +11,7 @@ namespace Z80Bus {
 
 void setupPins();
 
-extern void sendBytes(uint8_t* data, uint16_t size);
+//extern void sendBytes(uint8_t* data, uint16_t size);
 extern void sendBytes8(uint8_t* data, uint8_t size);
 extern void sendByte(uint8_t* byte);
 

@@ -9,7 +9,7 @@
 
 #include "FontData.h"
 
-constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT) + sizeof(Copy32Packet);
+constexpr uint16_t RENDER_SIZE = (SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);// + sizeof(Copy32Packet);
 constexpr uint16_t PIX_INC = 0x0100;  // within same character -> +256 for next pixel line
 constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
 

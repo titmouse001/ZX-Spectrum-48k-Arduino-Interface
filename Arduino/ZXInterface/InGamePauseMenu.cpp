@@ -130,7 +130,7 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
       }
     }
     Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + ((selectedIndex + HIGHLIGHT_OFFSET) * 32), 32, COL::CYAN_BLACK);
-    Utils::delay16(1);
+    Utils::delay16(20);
   }
 }
 
@@ -166,13 +166,13 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   //------------------------------------------------------------------------
   // At this point we are running of the stock ROM
   // Allow NMI routine time to reach it's idle loop
-  Utils::delay16(10);  // (way more than needed)
+  Utils::delay16(1); 
   //------------------------------------------------------------------------
   // Swap out to use SNA ROM, it takes over with NOPs
   Z80Bus::setSnaRom();
   //------------------------------------------------------------------------
   // Wait for Z80 to hit SNA ROM's '.IngameHook'
-  Utils::delay16(10);  // (way more than needed)
+  Utils::delay16(1); 
   //------------------------------------------------------------------------
 
   // storeZ80States allocates memory, and restoreZ80States frees it.

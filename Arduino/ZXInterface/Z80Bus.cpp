@@ -50,16 +50,16 @@ void Z80Bus::setStockRom() {
   digitalWriteFast(Pin::ROM_HALF, HIGH);  // HIGH = Stock ROM
 }
 
-__attribute__((optimize("-Ofast")))
-void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
-  // cli();  // maybe save a tiny bit, guess it depends on number on interrupts during this send.
-  for (uint16_t i = 0; i < size; i++) {
-    waitHalt_syncWithZ80();
-    PORTD = data[i];  // data on lines ready for Z80s 'IN'
-    triggerZ80NMI();
-  }
-  //  sei();
-}
+// __attribute__((optimize("-Ofast")))
+// void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
+//   // cli();  // maybe save a tiny bit, guess it depends on number on interrupts during this send.
+//   for (uint16_t i = 0; i < size; i++) {
+//     waitHalt_syncWithZ80();
+//     PORTD = data[i];  // data on lines ready for Z80s 'IN'
+//     triggerZ80NMI();
+//   }
+//   //  sei();
+// }
 
 __attribute__((optimize("-Ofast")))
 void Z80Bus::sendBytes8(uint8_t* data, uint8_t size) {
