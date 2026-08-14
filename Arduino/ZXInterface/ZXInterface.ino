@@ -317,7 +317,7 @@ void handleZ80File(FatFile* pFile) {
         // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file data sent to convertSendZ80toSNA() is compressed!
         uint8_t damagedScreenBytes[3];
         RequestSendDataPacket pkt(sizeof(damagedScreenBytes), ZX_SCREEN_ADDRESS_START);
-        Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket));  // send request for N bytes of data
+        Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));  // send request for N bytes of data
         damagedScreenBytes[0] = Z80Bus::get_IO_Byte();
         damagedScreenBytes[1] = Z80Bus::get_IO_Byte();
         damagedScreenBytes[2] = Z80Bus::get_IO_Byte();

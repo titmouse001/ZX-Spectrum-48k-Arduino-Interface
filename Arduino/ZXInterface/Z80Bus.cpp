@@ -76,7 +76,6 @@ void Z80Bus::sendByte(uint8_t* byte) {
   triggerZ80NMI();
 }
 
-
 void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   SNAHeader* snaHeader = &regs->header;
 
@@ -86,7 +85,7 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
     uint16_t sp_addr = ((uint16_t)snaHeader->sp_hi << 8) | snaHeader->sp_lo;
     uint8_t data[2];
     RequestSendDataPacket reqpkt(2, sp_addr);
-    Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
+    Z80Bus::sendBytes8((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
 
     // RequestSendDataPacket = Z80 command_SendData:  
     // At this point Z80 side is past reading amount and start address.
@@ -112,18 +111,18 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   }
 
   RestoreGameAndExecute pkt;
-  sendBytes((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
+  sendBytes8((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
 
   // Execute Command expects registers to follow in sequential layout:
   // 1. I, HL', DE', BC', AF' (9 bytes contiguous from 'i')
-  sendBytes(&snaHeader->i, sizeof(snaHeader->i) + 
+  sendBytes8(&snaHeader->i, sizeof(snaHeader->i) + 
                            sizeof(snaHeader->l_prime) + sizeof(snaHeader->h_prime) + 
                            sizeof(snaHeader->e_prime) + sizeof(snaHeader->d_prime) + 
                            sizeof(snaHeader->c_prime) + sizeof(snaHeader->b_prime) + 
                            sizeof(snaHeader->f_prime) + sizeof(snaHeader->a_prime));
 
   // 2. IY, IX, IFF2, R (6 bytes contiguous from 'iyl')
-  sendBytes(&snaHeader->iyl, sizeof(snaHeader->iyl) + sizeof(snaHeader->iyh) + 
+  sendBytes8(&snaHeader->iyl, sizeof(snaHeader->iyl) + sizeof(snaHeader->iyh) + 
                              sizeof(snaHeader->ixl) + sizeof(snaHeader->ixh) + 
                              sizeof(snaHeader->iff2) + sizeof(snaHeader->r));
 
@@ -134,33 +133,31 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
     snaHeader->sp_hi = (uint8_t)(sp >> 8);
   }
   
-  sendBytes(&snaHeader->sp_lo, 2);     
-
+  sendBytes8(&snaHeader->sp_lo, 2);     
   // Send PC - extra outside SNA format for future flexibility 
-  sendBytes(&regs->pc_lo, 2);     
-
+  sendBytes8(&regs->pc_lo, 2);     
   // Send remaining header fields using direct references
-  sendBytes(&snaHeader->l, 2);        // HL (l, h)
-  sendBytes(&snaHeader->im, 1);       // IM mode
-  sendBytes(&snaHeader->borderCol, 1);// Border color
-  sendBytes(&snaHeader->e, 2);        // DE (e, d)
-  sendBytes(&snaHeader->c, 2);        // BC (c, b)
-  sendBytes(&snaHeader->f, 2);        // AF (f, a)
+  sendBytes8(&snaHeader->l, 2);        // HL (l, h)
+  sendByte(&snaHeader->im);            // IM mode
+  sendByte(&snaHeader->borderCol);     // Border color
+  sendBytes8(&snaHeader->e, 2);        // DE (e, d)
+  sendBytes8(&snaHeader->c, 2);        // BC (c, b)
+  sendBytes8(&snaHeader->f, 2);        // AF (f, a)
 }
 
 void Z80Bus::sendFillCommand(uint16_t address, uint16_t amount, uint8_t color) {
   FillPacket pkt(address, amount, color);
-  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(FillPacket));
+  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(FillPacket));
 }
 
 void Z80Bus::sendWaitVBLCommand() {
   WaitVBLPacket pkt;
-  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(WaitVBLPacket));
+  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(WaitVBLPacket));
 }
  
 void Z80Bus::setStackCommand(uint16_t addr) {
   StackPacket pkt(addr);
-  Z80Bus::sendBytes( (uint8_t*) &pkt, sizeof(StackPacket) );
+  Z80Bus::sendBytes8( (uint8_t*) &pkt, sizeof(StackPacket) );
   // The Z80-side routine finishes with a HALT. We wait for that HALT
   // to confirm things have completed and release with NMI.
   Z80Bus::waitHalt_syncWithZ80();   // Wait for the Z80 to HALT
@@ -194,13 +191,13 @@ uint8_t Z80Bus::get_IO_Byte() {
   
 uint8_t Z80Bus::getKeyboard() {
     ReceiveKeyboardPacket pkt;
-    Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
+    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
     return get_IO_Byte();
 }
   
 void Z80Bus::Z80_NOP() {
     NOP_Packet pkt;
-    Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
+    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
 }
 
 //#include "Draw.h"

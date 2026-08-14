@@ -6,43 +6,42 @@
 
 // OLD METHOD -Ofast = 169
 // NEW METHOD -O2 = 130, -Ofast = 124
-__attribute__((optimize("-Ofast"))) 
-uint8_t RenderFont::prepareTextInternal( uint8_t* finalOutput, const char* message, bool inFlash) {
+__attribute__((optimize("-Ofast")))
+uint8_t RenderFont::prepareTextInternal(uint8_t* finalOutput, const char* message, bool inFlash) {
   memset(finalOutput, 0, SmallFont::FNT_BUFFER_SIZE * SmallFont::FNT_HEIGHT);
   if (message == NULL) return 0;
-
   uint8_t charCount = 0;
-  uint16_t basePos = 0;
-
+  uint8_t basePos = 0;
   while (true) {
     const char ch = inFlash ? pgm_read_byte(&message[charCount]) : message[charCount];
-    if (!ch) break; 
-
-    const uint8_t idx = (ch - 0x20);
-    const uint8_t* fontPtr = &precalced_font5x7[idx * 7];
-    uint16_t byteOffset = basePos >> 3;
-    uint8_t bitOffset = basePos & 7;
-    uint8_t* outPtr = finalOutput + byteOffset;
-    for (uint8_t r = 0; r < SmallFont::FNT_HEIGHT; ++r) {
-      uint8_t rowData = pgm_read_byte(fontPtr++); 
-      // Because the character pitch is 6, bitOffset will ONLY ever be 6, 4, 2 or 0.
-      switch (bitOffset) {
-        case 0:
-          *outPtr |= (rowData << 2);
-          break;
-        case 6:
-          *outPtr |= (rowData >> 4);
-          *(outPtr + 1) |= (rowData << 4);
-          break;
-        case 4:
-          *outPtr |= (rowData >> 2);
-          *(outPtr + 1) |= (rowData << 6);
-          break;
-        case 2:
-          *outPtr |= rowData;
-          break;
+    if (!ch) break;
+    if (ch != ' ') {
+      constexpr uint8_t SKIP_SPACE = 1; 
+      const uint8_t idx = (ch - (0x20 + SKIP_SPACE) );
+      const uint8_t* fontPtr = &precalced_font5x7[idx * 7];
+      uint8_t bitOffset = basePos & 7;
+      uint8_t* outPtr = finalOutput + (basePos >> 3);
+      for (uint8_t r = 0; r < SmallFont::FNT_HEIGHT; ++r) {
+        uint8_t rowData = pgm_read_byte(fontPtr++);
+        // Because the character pitch is 6, bitOffset will ONLY ever be 6, 4, 2 or 0.
+        switch (bitOffset) {
+          case 0:
+            *outPtr |= (rowData << 2);
+            break;
+          case 6:
+            *outPtr |= (rowData >> 4);
+            *(outPtr + 1) |= (rowData << 4);
+            break;
+          case 4:
+            *outPtr |= (rowData >> 2);
+            *(outPtr + 1) |= (rowData << 6);
+            break;
+          case 2:
+            *outPtr |= rowData;
+            break;
+        }
+        outPtr += SmallFont::FNT_BUFFER_SIZE;  // down one row
       }
-      outPtr += SmallFont::FNT_BUFFER_SIZE;  // down one row
     }
     charCount++;
     basePos += SmallFont::FNT_CHAR_PITCH;

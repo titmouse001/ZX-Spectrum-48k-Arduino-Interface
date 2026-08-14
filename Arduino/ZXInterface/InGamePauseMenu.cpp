@@ -289,11 +289,10 @@ void InGamePauseMenu::handlePokeMenu() {
 
   if (addr != -1 && value != -1) {
     Poke_Packet pkt(addr, value);
-    Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(Poke_Packet));
+    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Poke_Packet));
   }
 }
 
- 
 int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos, const char* name, uint16_t min, uint16_t max) {
   Draw::text(xPos, yPos, name);
 

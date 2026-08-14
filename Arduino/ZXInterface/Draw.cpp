@@ -19,8 +19,7 @@ constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
  * than 42 characters (font width is 6 pixels, screen width 256 pixels -> max 42 chars)
  *
  * NOTE: ypos must be a multiple of 8 (8 pixel Y-grid aligned)
- * (This prevents the fast 8-bit scanline increment from overflowing into 
- * the "Screen Third" bits and scrambling the render across the screen sections)
+ * This avoids worrying about text going over "Screen Third" screen sections.
  */
 __attribute__((optimize("-Ofast"))) 
 void Draw::textLine(int ypos, const char *message) {
@@ -36,35 +35,13 @@ void Draw::textLine(int ypos, const char *message) {
 
     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
         pkt.dest_addr_high = addr_high++;
-        Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
-        Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
+        Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
+        Z80Bus::sendBytes8(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
         fontData += SmallFont::FNT_BUFFER_SIZE;
     }
     BufferManager::freeToMark(mark);
 }
 
-// __attribute__((optimize("-Ofast"))) 
-// void Draw::textLine(int ypos, const char *message) {
-
-//     uint16_t mark = BufferManager::getMark();
-//     uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
-    
-//     RenderFont::prepareTextGraphics(fontData, message);
-//     uint16_t destAddr = Utils::zx_spectrum_screen_address(0,ypos);
-
-//     Copy32Packet pkt;
-//     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
-//         pkt.dest_addr_high = static_cast<uint8_t>(destAddr >> 8);
-//         pkt.dest_addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
-//         Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
-//         Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
-//         fontData += SmallFont::FNT_BUFFER_SIZE;
-//         destAddr += PIX_INC;  // down 1 pixel scanline 
-//     }
-//     BufferManager::freeToMark(mark);
-// }
-
-// Unified renderer for Flash (PROGMEM) and RAM strings (using void* to support both)
 void Draw::textCore(int xpos, int ypos, const void *str, bool isFlash) {
     uint16_t mark = BufferManager::getMark();
     uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);
@@ -90,8 +67,8 @@ void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount, uint8_t *font
         const uint16_t destAddr = Utils::zx_spectrum_screen_address(xpos, ypos + y);
         pkt.dest_addr_high = static_cast<uint8_t>(destAddr >> 8);
         pkt.dest_addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
-        Z80Bus::sendBytes(reinterpret_cast<uint8_t*>(&pkt), sizeof(CopyPacket));
-        Z80Bus::sendBytes(fontData, byteWidth);
+        Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(CopyPacket));
+        Z80Bus::sendBytes8(fontData, byteWidth);
     }
 }
 

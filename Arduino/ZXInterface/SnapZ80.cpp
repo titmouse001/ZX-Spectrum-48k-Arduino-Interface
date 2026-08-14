@@ -242,8 +242,8 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 		if (commandPayloadPos > 0) {
 			uint8_t headerLen = sizeof (TransferPacket);
 			TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
-			Z80Bus::sendBytes((uint8_t*)&header, headerLen);
-			Z80Bus::sendBytes(txBuffer, commandPayloadPos);
+			Z80Bus::sendBytes8((uint8_t*)&header, headerLen);
+			Z80Bus::sendBytes8(txBuffer, commandPayloadPos);
 			currentAddress += commandPayloadPos;
 			commandPayloadPos = 0;
 		}
@@ -276,7 +276,7 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 				
 		  		// NOTE: Amount added to address because the Z80 routine fills backwards.
 				Fill8Packet header(currentAddress+runAmount, runAmount,value); 
-				Z80Bus::sendBytes((uint8_t *)&header, sizeof (Fill8Packet));
+				Z80Bus::sendBytes8((uint8_t *)&header, sizeof (Fill8Packet));
 
 				currentAddress += runAmount;
 			}
@@ -317,8 +317,8 @@ void SnapZ80::sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t curren
 
 		TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
 
-        Z80Bus::sendBytes((uint8_t*)&header, sizeof (TransferPacket));
-        Z80Bus::sendBytes(txBuffer, commandPayloadPos);
+        Z80Bus::sendBytes8((uint8_t*)&header, sizeof (TransferPacket));
+        Z80Bus::sendBytes8(txBuffer, commandPayloadPos);
         currentAddress += commandPayloadPos;
         commandPayloadPos = 0;
       }
@@ -330,8 +330,8 @@ void SnapZ80::sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t curren
   if (commandPayloadPos > 0) {
 	TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
 	uint8_t headerLen = sizeof (TransferPacket);
-    Z80Bus::sendBytes((uint8_t*)&header, headerLen);
-    Z80Bus::sendBytes(txBuffer, commandPayloadPos);
+    Z80Bus::sendBytes8((uint8_t*)&header, headerLen);
+    Z80Bus::sendBytes8(txBuffer, commandPayloadPos);
   }
 
   BufferManager::freeToMark(mark);
@@ -387,24 +387,14 @@ BlockReadResult SnapZ80::readAndWriteBlock(FatFile *pFile) {
  */
 
 // .z80 files get converted to reuse existing ".SNA" game loading functionaliy
-bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
-                                  Z80Registers* regs) {
-  //uint8_t* v1_header = headerInfo->headerV1Data;
- Z80V1Header* v1_header = &headerInfo->headerV1Data;
+bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo, Z80Registers* regs) {
+  Z80V1Header* v1_header = &headerInfo->headerV1Data;
 
   if (headerInfo->version >= 2) {
     //
     // >>> V2 or V3 format <<<
     //
-    // V2/V3 don't store the PC (it's zero)
-    // Restore PC from extended header and convert to V1 format for processing
-  //  v1_header[Z80_V1_PC_LOW] = headerInfo->pc_low;
-   // v1_header[Z80_V1_PC_HIGH] = headerInfo->pc_high;
-
-    // Clear bit 7 of R register
-    //v1_header[Z80_V1_R_7BITS] &= ~0x80;
-	v1_header->r &= ~0x80;
-
+    v1_header->r &= ~0x80;
     while (true) {
       BlockReadResult block_result = readAndWriteBlock(pFile);
       if (block_result == BLOCK_END_OF_FILE) break;
@@ -423,35 +413,17 @@ bool SnapZ80::convertSendZ80toSNA(FatFile* pFile, Z80HeaderInfo* headerInfo,
     if (headerInfo->isV1Compressed) {
       uint32_t rle_data_length = headerInfo->v1PayloadLength;
       decodeRLE_core(pFile, rle_data_length, ZX_SCREEN_ADDRESS_START);
-    } else {
-      // Uncompressed V1 data
+    } else { // Uncompressed V1 data
       sendRawBytes_core(pFile, ZX_SPECTRUM_48K_TOTAL_MEMORY,
                         ZX_SCREEN_ADDRESS_START);
     }
   }
 
   regs->pc_lo = headerInfo->pc_low;
- regs->pc_hi = headerInfo->pc_high;
-
- // Z802SNA::convertZ80HeaderToSna(v1_header, regs);
-
-  // uint16_t stackAddrForPushingPC = Z802SNA::convertZ80HeaderToSna(v1_header,
-  // regs);
-
-  //   constexpr uint8_t TRANSMIT_AMOUNT = 2;  // Fake push 'PC' onto the stack
-  //   TransferPacket header( stackAddrForPushingPC, TRANSMIT_AMOUNT);  //
-  //   commandPayloadPos will be the length uint8_t headerLen =
-  //   sizeof(TransferPacket); Z80Bus::sendBytes((uint8_t*)&header, headerLen);
-
-  // uint8_t buf[TRANSMIT_AMOUNT] = {  headerInfo->pc_low, headerInfo->pc_high};
-  // // note order [0]=low , [1]=high
-  // Z80Bus::sendBytes(buf, TRANSMIT_AMOUNT);
+  regs->pc_hi = headerInfo->pc_high;
 
   return true;
 }
-
-
-
 
 void SnapZ80::convertZ80HeaderToSna(const Z80V1Header* z80Header_v1, Z80Registers* regs) {
     SNAHeader* snaHeader = &regs->header;

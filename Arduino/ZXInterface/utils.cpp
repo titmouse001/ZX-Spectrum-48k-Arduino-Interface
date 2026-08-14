@@ -14,9 +14,7 @@ void Utils::clearScreen(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
   //Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);
   ClearScreenBitmap pktBitmap;
-  Z80Bus::sendBytes((uint8_t*)&pktBitmap, sizeof(ClearScreenBitmap));
-//  ClearScreenAttributes pktAttributes;
-//  Z80Bus::sendBytes((uint8_t*)&pktAttributes, sizeof(ClearScreenBitmap)); // only black/black
+  Z80Bus::sendBytes8((uint8_t*)&pktBitmap, sizeof(ClearScreenBitmap));
 }
 
 // Kempston Joystick Support:
@@ -103,31 +101,31 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   uint8_t addr0x04AA[] = { 0x04, 0xAA };  // jump to address
   Z80Bus::sendBytes(addr0x04AA, sizeof(addr0x04AA));
 
-  Z80Bus::sendBytes(&sna->sp_hi, 1);
-  Z80Bus::sendBytes(&sna->sp_lo, 1);
-  Z80Bus::sendBytes(&sna->b, 1);
-  Z80Bus::sendBytes(&sna->c, 1);
-  Z80Bus::sendBytes(&sna->h, 1);
-  Z80Bus::sendBytes(&sna->l, 1);
-  Z80Bus::sendBytes(&sna->i, 1);
-  Z80Bus::sendBytes(&sna->ixh, 1);
-  Z80Bus::sendBytes(&sna->ixl, 1);
-  Z80Bus::sendBytes(&sna->iyh, 1);
-  Z80Bus::sendBytes(&sna->iyl, 1);
-  Z80Bus::sendBytes(&sna->b_prime, 1);
-  Z80Bus::sendBytes(&sna->c_prime, 1);
-  Z80Bus::sendBytes(&sna->f_prime, 1);
-  Z80Bus::sendBytes(&sna->d_prime, 1);
-  Z80Bus::sendBytes(&sna->e_prime, 1);
-  Z80Bus::sendBytes(&sna->h_prime, 1);
-  Z80Bus::sendBytes(&sna->l_prime, 1);
-  Z80Bus::sendBytes(&sna->a_prime, 1);
-  Z80Bus::sendBytes(&sna->iff2, 1);
+  Z80Bus::sendByte(&sna->sp_hi);
+  Z80Bus::sendByte(&sna->sp_lo);
+  Z80Bus::sendByte(&sna->b);
+  Z80Bus::sendByte(&sna->c);
+  Z80Bus::sendByte(&sna->h);
+  Z80Bus::sendByte(&sna->l);
+  Z80Bus::sendByte(&sna->i);
+  Z80Bus::sendByte(&sna->ixh);
+  Z80Bus::sendByte(&sna->ixl);
+  Z80Bus::sendByte(&sna->iyh);
+  Z80Bus::sendByte(&sna->iyl);
+  Z80Bus::sendByte(&sna->b_prime);
+  Z80Bus::sendByte(&sna->c_prime);
+  Z80Bus::sendByte(&sna->f_prime);
+  Z80Bus::sendByte(&sna->d_prime);
+  Z80Bus::sendByte(&sna->e_prime);
+  Z80Bus::sendByte(&sna->h_prime);
+  Z80Bus::sendByte(&sna->l_prime);
+  Z80Bus::sendByte(&sna->a_prime);
+  Z80Bus::sendByte(&sna->iff2);
   //z80's .restoreInGameState: skips reg-R (hard coded as 127 in store above)
-  Z80Bus::sendBytes(&sna->f, 1);  
-  Z80Bus::sendBytes(&sna->d, 1);
-  Z80Bus::sendBytes(&sna->e, 1);
-  Z80Bus::sendBytes(&sna->a, 1);
+  Z80Bus::sendByte(&sna->f);  
+  Z80Bus::sendByte(&sna->d);
+  Z80Bus::sendByte(&sna->e);
+  Z80Bus::sendByte(&sna->a);
 
   BufferManager::freeToMark(regs->AllocMark);
 }
@@ -145,7 +143,7 @@ void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& di
   
   // Alert Z80 to send memory data packets
   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
-  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
 
   // Small delay buffer allowing hardware states to equalize
   Utils::delay16(1);  
@@ -181,7 +179,7 @@ void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
 
   // send header details first (request Z80 to send the memory data)
   RequestSendDataPacket pkt(size, address);
-  Z80Bus::sendBytes((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
 
   // Above will be doing a final NMI to unhalt Z80
   // We need to give it time to catch up before we slam the lines to input!
@@ -264,7 +262,7 @@ void Utils::viewSpeccyMemory() {
   lineBuffer[4] = ':';
   lineBuffer[MAX_CHARS_PER_LINE] = '\0';
 
-  const char hexDigits[] = "0123456789ABCDEF";
+  static const char hexDigits[] = "0123456789ABCDEF";
 
   while (true) {
     uint16_t tempBaseAddr = currentBaseAddr;
@@ -281,7 +279,7 @@ void Utils::viewSpeccyMemory() {
       // ASK FOR 8 BYTES
       RequestSendDataPacket pkt (HEX_TO_SHOW_PER_LINE, tempBaseAddr);
       // START receiving process from z80 (we will render what we get and send it back as graphics)
-      Z80Bus::sendBytes((uint8_t*) &pkt, sizeof(RequestSendDataPacket));
+      Z80Bus::sendBytes8((uint8_t*) &pkt, sizeof(RequestSendDataPacket));
 
       uint8_t hexPos = 6;   // start of hex field (after "XXXX: ")
       for (uint8_t k = 0; k < HEX_TO_SHOW_PER_LINE; ++k) {
