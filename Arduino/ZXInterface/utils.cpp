@@ -201,7 +201,7 @@ void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
   DDRD = 0xFF;                     // Set all PORTD pins as outputs
 }
 
-void Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
+bool Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
   FatFile& file = SdCardSupport::closeFile();
   FatFile& root = SdCardSupport::reopenRoot();
 
@@ -221,7 +221,10 @@ void Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
     }
     file.close();
     BufferManager::freeToMark(mark);
+    return true;
   }
+
+  return false;
 }
 
 // ---------------------
@@ -338,16 +341,20 @@ void Utils::stockRomBoot_Blocking() {
   }
 }
 
+// param:clearScreen If true, clears the display and shows an insertion prompt
 void Utils::waitForSDCard_Blocking(bool clearScreen) {
   if (!SdCardSupport::init()) { 
     if (clearScreen) {
       Utils::clearScreen(COL::BLACK_WHITE); 
     }
     Draw::text_P(80, 90, F("INSERT SD CARD"));
-    do {
+    do { 
       Utils::delay16(20);
-    } while (!SdCardSupport::init());  // keep looking
+    } while (!SdCardSupport::init()); 
     Utils::clearScreen(COL::BLACK_WHITE);
+    
+    // Grace period for card to be seated solid in the reader
+    Utils::delay16(650);  
   }
 }
 

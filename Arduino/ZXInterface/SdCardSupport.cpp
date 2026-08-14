@@ -9,15 +9,28 @@ SdFat32 SdCardSupport::sd;
 FatFile SdCardSupport::root;
 FatFile SdCardSupport::file;
 
-uint16_t SdCardSupport::menuPathHistory[FOLDER_NAV_DEPTH]; 
+uint16_t SdCardSupport::menuPathHistory[FOLDER_NAV_DEPTH];
 uint8_t  SdCardSupport::menuPathDepth = 0;
+
+namespace {
+  constexpr uint32_t SD_PRESENCE_CACHE_MS = 250;
+  bool cachedCardPresent = false;
+  bool cardPresenceValid = false;
+  uint32_t lastCardPresenceCheck = 0;
+}
 
 bool SdCardSupport::init() { //uint8_t csPin) {
   sd.end();
+  cardPresenceValid = false;
+
   // NOTE: SPI_HALF_SPEED looks best for NANO (tried 'SPI_DIV6_SPEED' gave me same read times)
   if (!sd.begin(Pin::SD_CARD_CS, SPI_HALF_SPEED)) return false;
   root.close();
-  return root.openRoot(sd.vol());
+  const bool opened = root.openRoot(sd.vol());
+  cachedCardPresent = opened;
+  cardPresenceValid = true;
+  lastCardPresenceCheck = millis();
+  return opened;
 }
 
 void SdCardSupport::syncRootToDepth() {
@@ -131,6 +144,16 @@ bool SdCardSupport::openOrCreateDirectory(FatFile& dir, const char* folderName) 
 }
 
 bool SdCardSupport::isInserted() {
-  cid_t cid; //
-  return sd.card() && sd.card()->readCID(&cid); 
+  const uint32_t now = millis();
+  
+  if (cardPresenceValid && (now - lastCardPresenceCheck < SD_PRESENCE_CACHE_MS)) {
+    return cachedCardPresent;
+  }
+
+  cid_t cid;
+  cachedCardPresent = sd.card() && sd.card()->readCID(&cid);
+  lastCardPresenceCheck = now;
+  // valid for the next 250ms, whether the card is actually present or not
+  cardPresenceValid = true; 
+  return cachedCardPresent;
 }

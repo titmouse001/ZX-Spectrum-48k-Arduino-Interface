@@ -29,7 +29,7 @@ public:
   static inline void waitForRelease() { while (Menu::getButton() != Menu::BUTTON_NONE);  }
   static inline void waitForAnyKey() { waitForRelease(); while (Menu::getButton() == Menu::BUTTON_NONE);  }
 
-  static void resetToRoot();
+  //static void resetToRoot();
   static bool inSubFolder;
 private:
   static uint32_t lastButtonPressTime;

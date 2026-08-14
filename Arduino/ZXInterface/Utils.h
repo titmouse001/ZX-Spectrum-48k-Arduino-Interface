@@ -51,7 +51,7 @@ Z80Registers* storeZ80States();
 void restoreZ80States(Z80Registers* regs);
 
 void saveMemory(const char* filename, uint16_t address, uint16_t size);
-void loadMemory(const char* filename, uint16_t address, uint16_t size);
+bool loadMemory(const char* filename, uint16_t address, uint16_t size);
 void dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir);
 
 void setupJoystick();

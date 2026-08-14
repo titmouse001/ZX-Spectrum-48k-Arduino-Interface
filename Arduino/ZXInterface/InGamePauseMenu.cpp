@@ -250,7 +250,9 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
   Menu::waitForRelease();
   
   // restore pause menu screen
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+  while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+    Utils::waitForSDCard_Blocking(true); 
+  }
 
   Utils::restoreZ80States(z80Registers);
   // Give Z80 time to reach the next idle loop so the stock ROM can take control.
@@ -373,7 +375,12 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
 
 void InGamePauseMenu::handleTakeScreenshot() {
   // Restore the Speccy's screen from the scratch file to show the user something is happening
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+//  if (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+//    return;
+//  }
+  while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+    Utils::waitForSDCard_Blocking(true); 
+  }
 
   // copyScratchTo() uses SdCardSupport's internal file (FatFile) so keep it available!
   FatFile dir;
@@ -398,7 +405,13 @@ struct __attribute__ ((packed))  GameMeta {
 
 void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName) {
   // Restore the Speccy's screen from the scratch file to show the user something is happening
-  Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+//  if (Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+//    return;
+//  }
+  while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+    Utils::waitForSDCard_Blocking(true); 
+  }
+
 
   FatFile dir, metaFile;
   GameMeta meta;
