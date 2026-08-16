@@ -46,7 +46,7 @@ static uint8_t slowMoLevel = 0;  // 0=Off, 1=Low , 2=Med , 3=High
 //    Each frame the 'PORTD' Port register is updated with fresh joystick data.
 //    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
 // ----------------------------------------------------------------------------------------------
-void InGamePauseMenu::waitForUserExit(uint8_t borderColour) {
+void InGamePauseMenu::InGameMenuLoop_Blocking(uint8_t borderColour) {
 
   constexpr uint8_t INPUT_UP_MASK = 0b00001000;
   Utils::readJoystick();  // flush junk (Z80 rd/wr port 0x1f shared)
@@ -190,6 +190,8 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
    // Save screen to scratch file
   Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
+
+  Menu::waitForRelease();  // just incase button is still held after entering pause menu
   uint8_t result;
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
@@ -271,31 +273,25 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
 void InGamePauseMenu::handlePokeMenu() {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (32*(64/8)), 32*(64/8), COL::BLACK_WHITE);
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + 0, 10, COL::BRIGHT_GREEN_BLACK );
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + 10, 12, COL::BRIGHT_CYAN_BLACK);
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + 22, 10, COL::BRIGHT_YELLOW_BLACK);
+  Draw::text_P(8,0 ,    F("Enter=APPLY"));
+  Draw::text_P(11*8, 0, F("Sym Shft=DEL"));
+  Draw::text_P(23*8, 0, F("Space=ABORT"));
   Draw::text_P(128 - ((21*6)/2), 40, F("Enter address & value"));
   Draw::text_P(0, 48, F("e.g. JetPac: Infinite Lives, Poke: 25014,0"));
-  
-  uint8_t x = 144;
-  uint8_t y = 64 + 64;
-  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (((y+0) / 8) * 32) + (x / 8), 14, COL::BRIGHT_CYAN_BLACK);
-  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (((y+8) / 8) * 32) + (x / 8), 14, COL::MAGENTA_BLACK);
-  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (((y+16)/ 8) * 32) + (x / 8), 14, COL::GREEN_BLACK);
-  
-  Draw::text_P(x, y + 0,  F("[Space] Abort"));
-  Draw::text_P(x, y + 8,  F("[Sym shft] Delete"));
-  Draw::text_P(x, y + 16, F("[Enter] Apply"));
   Draw::text_P(128, 192 / 2, F(","));
   Draw::text_P(128 + 8, 192 / 2, F("___"));
-
-  int32_t addr = readNumericInput(5, 64, 192 / 2, "Poke:", 0x4000, 0xffff);
-  int32_t value = readNumericInput(3, 128, 192 / 2, ",", 0, 255);
-
+  int16_t addr = readNumericInput_Blocking(5, 64, 192 / 2, "Poke:", 0x4000, 0xffff);
+  int16_t value = readNumericInput_Blocking(3, 128, 192 / 2, ",", 0, 255);
   if (addr != -1 && value != -1) {
     Poke_Packet pkt(addr, value);
     Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Poke_Packet));
   }
 }
 
-int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos, const char* name, uint16_t min, uint16_t max) {
+int16_t InGamePauseMenu::readNumericInput_Blocking(uint8_t maxDigits, int xPos, int yPos, const char* name, uint16_t min, uint16_t max) {
   Draw::text(xPos, yPos, name);
 
   xPos += strlen(name) * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP);
@@ -305,7 +301,7 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
   char* buf = (char*)BufferManager::allocate(maxDigits + 1);
 
   while (true) {
-    memset(buf, ' ', maxDigits);
+    memset(buf, '_', maxDigits);
     buf[maxDigits] = '\0';
 
     uint8_t len = 0;
@@ -322,11 +318,11 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
             BufferManager::freeToMark(mark);
             return -1;
           }
-          if (key == 0x0D && len > 0 && buf[0] != ' ') { // ENTER key
+          if (key == 0x0D && len > 0 && buf[0] != '_') { // ENTER key
             break; 
           }
           if (key == 0x02 && len > 0) { // DEL key
-            buf[--len] = ' ';
+            buf[--len] = '_';
             flash = 0;
           } 
           else if (key >= '0' && key <= '9' && len < maxDigits) { // Digit entry
@@ -338,21 +334,21 @@ int32_t InGamePauseMenu::readNumericInput(uint8_t maxDigits, int xPos, int yPos,
 
       uint8_t cursorIdx = (len >= maxDigits) ? (maxDigits - 1) : len;
       char origChar = buf[cursorIdx];
-      if (flash < 60) {  
+      if (flash < 10) {  
         buf[cursorIdx] = 127; // Blink pattern 
       }
 
       Draw::text(xPos, yPos, buf);
       buf[cursorIdx] = origChar; // Restore after draw
       
-      if (++flash >= 120) flash = 0;
-      Utils::delay16(1);
+      if (++flash > 20) flash = 0;
+      Utils::delay16(20);
     }
    
     Draw::text(xPos, yPos, buf); // Clear cursor
 
     // Convert text to value
-    uint16_t value = 0;   
+    uint32_t value = 0;   
     for (uint8_t i = 0; i < len; i++) {
       value = (value * 10) + (buf[i] - '0');
     }

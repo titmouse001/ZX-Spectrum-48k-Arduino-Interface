@@ -90,8 +90,6 @@ void setup() {
     Utils::stockRomBoot_Blocking();  // user pressing select again will exit
   }
 
-  //  Utils::delay16(1);
-
   // Display the version (remove sd card to view version)
   Utils::clearScreen(COL::CYAN_BLACK);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
@@ -103,6 +101,7 @@ void loop() {
   FatFile* pFile = Menu::handleMenu();
   char extension[4];
   uint8_t amount =pFile->getExtension(extension, sizeof(extension));
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, COL::BLACK_BLACK);
   if (amount==3) {
     if (strcasecmp(extension, "scr") == 0) {
       handleScrFile(pFile);
@@ -110,7 +109,7 @@ void loop() {
       handleSnaFile(pFile);
     } else if (strcasecmp(extension, "z80") == 0) {
       handleZ80File(pFile);
-    } else if (strcasecmp(extension, "txt") == 0) {
+    } else{ //} if (strcasecmp(extension, "txt") == 0) {
       handleTxtFile(pFile);
     }
   }
@@ -121,12 +120,11 @@ void loop() {
 // .SCR FILE 
 // ---------------------
 void handleScrFile(FatFile* pFile) {
-  Utils::clearScreen(0);
+//  Utils::clearScreen(0);
   if (pFile->fileSize() == ZX_SCREEN_TOTAL_SIZE) {
     Z80Bus::transferSnaData(pFile); 
-    Menu::waitForRelease();
     Menu::waitForAnyKey();
-    Utils::clearScreen(0);
+   // Utils::clearScreen(0);
   }
 }
 
@@ -138,36 +136,67 @@ void handleScrFile(FatFile* pFile) {
 // waits for the next VBL. We should be safe, hopefully still inside the 50Hz maskable interrupt routine, 
 // as game code doesn't tend to abuse the stack there.
 // -------------------------------------------------------------------------------------
-void restoreCorruptedScreenBytes(const uint8_t* damagedScreenBytes) {
+constexpr uint8_t TEMP_STACK_SIZE = 3; 
 
-  delayMicroseconds(25);
+void restoreCorruptedScreenBytes(const uint8_t* damagedScreenBytes) {
+  constexpr uint8_t DELAY_US = 25;
+
+  delayMicroseconds(DELAY_US);
   digitalWriteFast(Pin::Z80_NMI, LOW);      // NMI will loop spin for STOCK_ROM -> SNA_ROM swap
   digitalWriteFast(Pin::Z80_NMI, HIGH);
-  delayMicroseconds(25);                    // Allow NMI routine time to reach its idle loop
+  delayMicroseconds(DELAY_US);                    // Allow NMI routine time to reach its idle loop
   //
   // >>>  At this point we are now running the stock ROM  <<<
   //
   Z80Bus::setSnaRom();    // sna rom takes over loop spin with NOPs
-  delayMicroseconds(25);    // Wait for Z80 to hit SNA ROM's '.IngameHook'
+  delayMicroseconds(DELAY_US);    // Wait for Z80 to hit SNA ROM's '.IngameHook'
   Z80Registers* z80Registers = Utils::storeZ80States();
 
   // !!! Patch the 3-bytes of screen RAM we used used as working memory !!!
-  MemoryPacket patchPkt(CMD_Copy, ZX_SCREEN_ADDRESS_START, 3);
+  MemoryPacket patchPkt(CMD_Copy, ZX_SCREEN_ADDRESS_START, TEMP_STACK_SIZE);
   Z80Bus::sendBytes8((uint8_t*)&patchPkt, sizeof(patchPkt));
-  Z80Bus::sendBytes8((uint8_t*)damagedScreenBytes, 3);
+  Z80Bus::sendBytes8((uint8_t*)damagedScreenBytes, TEMP_STACK_SIZE);
 
   Utils::restoreZ80States(z80Registers);
-  delayMicroseconds(25);      // next idle loop so the stock ROM can take control
+  delayMicroseconds(DELAY_US);      // next idle loop so the stock ROM can take control
 
   // About to restore the stock ROM and continue game
   // We need to put something useful on the output pins for joystick port 0x1F.
   PORTD = Utils::readJoystick() & INPUT_MASK; 
   
   Z80Bus::setStockRom();      // again... stock rom escapes the idle loop via its NOPs
-  delayMicroseconds(25);      // Let the stock rom catch up
-//  Utils::readJoystick();    // flush junk
+  delayMicroseconds(DELAY_US);      // Let the stock rom catch up
 }
 
+void launchSnapshot(Z80Registers* regs, const uint8_t* damagedScreenBytes, uint8_t allocMark) {
+  Menu::waitForRelease();
+  
+  uint8_t borderColour = regs->header.borderCol;
+  Z80Bus::executeSnapshot(regs);
+  restoreCorruptedScreenBytes(damagedScreenBytes);
+  BufferManager::freeToMark(allocMark);
+
+  InGamePauseMenu::InGameMenuLoop_Blocking(borderColour);
+  Z80Bus::setSnaRom();
+}
+
+// showLoadError can be Used by both .sna and .z80 snapshot files (headerInfo will be null for .sna)
+void showLoadError(FatFile* pFile, const SnapZ80::Z80HeaderInfo* headerInfo) {
+  Utils::clearScreen(COL::BLACK_WHITE);
+  Utils::clearTopBar(COL::FLASH_RED_WHITE);
+  Draw::text_P(0, 0, F("Load Error:"));
+
+  uint8_t mark = BufferManager::getMark();
+  char* buf = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
+  pFile->getDisplayName7(buf, ZX_FILENAME_MAX_DISPLAY_LEN);
+  Draw::text(12*6, 0, buf);
+  BufferManager::freeToMark(mark);
+
+  if (headerInfo && SnapZ80::getMachineDetails(headerInfo->version, headerInfo->hw_mode) == MACHINE_128K) {
+    Draw::text_P(0, 20, F("128K not supported"));
+  }
+  Menu::waitForAnyKey();
+}
 
 // -----------------------------------------------------------------------------------------------
 // NOTES: Exiting the menu and restoring the snapshot (.sna/.z80). Before doing this, we must relocate the 
@@ -184,312 +213,203 @@ void restoreCorruptedScreenBytes(const uint8_t* damagedScreenBytes) {
 // .SNA FILE 
 // -----------------------------------------------------------------------------------------------
 void handleSnaFile(FatFile* pFile) {
-  uint8_t borderColour;
-   Utils::clearScreen(0);
+ // Utils::clearScreen(0);
 
   if (pFile->fileSize() == SNAPSHOT_FILE_SIZE) {
     // Set stack NOW before sending data over
-    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);
+    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + TEMP_STACK_SIZE);
+
     uint8_t mark = BufferManager::getMark();
-    {
-      Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
-      pFile->read((void*)&regs->header, sizeof(SNAHeader));
-      regs->Z80Snapshot = false;
+    Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
+    regs->Z80Snapshot = false;
 
-      //This damagedScreenBytes[] is used by restoreCorruptedScreenBytes()
-      uint8_t damagedScreenBytes[3];
-      pFile->read(damagedScreenBytes, 3);
-      // pFile->seekSet(pFile->curPosition() - 3);
+    pFile->read((void*)&regs->header, sizeof(SNAHeader));
+    // Grab the first screen bytes that will be corrupted by the temp stack
+    uint8_t damagedScreenBytes[TEMP_STACK_SIZE];
+    pFile->read(damagedScreenBytes, TEMP_STACK_SIZE);
 
-      constexpr bool ENABLE_LOADING_EFFECTS = true;
-      constexpr uint8_t SKIP_STACK_BYTES = 3;
-      Z80Bus::transferSnaData(pFile, ENABLE_LOADING_EFFECTS, SKIP_STACK_BYTES);
+    constexpr bool ENABLE_LOADING_EFFECTS = true;
+    Z80Bus::transferSnaData(pFile, ENABLE_LOADING_EFFECTS, TEMP_STACK_SIZE);
 
-
-
-      // BUG HUNT ----> get_IO_Byte !!! AHHHHHHHHHHHHHHHHHHH
-
-      // This is debugging code to test with and without get_IO_Byte
-      // works if hand rolled without get_IO_Byte
-      // this took ages to find, was not expecting get_IO_Byte to fail
-      // think it could be timing thing, not had time to look at get_IO_Byte
-      // will not use it for now for any new code!!! Need to setup at large automatated fuzzing test.
-      // Was seeing get_IO_Byte when getting the PC from the stack like it was
-      // offset ahead by three bytes (missed 3 reads).  This test code to pull down 16 bytes from 
-      // speccy grabbed 13 from rom top then the other 3 from 0x0000 - 0x0002 rom!!!
-      // Very odd bug - pain to find as get_IO_Byte has be reliable but I most have
-      // some kind of H/W, S/W edge case.
-
-  #if 0  // BEBUG
-      Utils::clearScreen(COL::CYAN_BLACK);
-
-     // PC is in the stack's game data - grab it
-     // Z80 is little-endian, the stack holds the Low Byte first, followed by
-      //the High Byte.
-      Z80Registers* z80 = (Z80Registers*)snaHeaderPacket;
-      uint16_t sp_addr = ((uint16_t)z80->sp_hi << 8) | (z80->sp_lo);
-
-      sp_addr = 0xfff0;
-
-      uint8_t data[16];
-      // RequestSendDataPacket reqpkt(16, sp_addr);
-      // Z80Bus::sendBytes((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
-
-      uint8_t cmd[6] = {cmd_addr(CMD_SendData) >> 8,
-                        cmd_addr(CMD_SendData) & 0xff,
-                        0,
-                        16,
-                        0xff,
-                        0xf0};
-      Z80Bus::sendBytes(cmd, 6);
-
-      // Small delay buffer allowing hardware states to equalize
-      Utils::delay16(1);
-
-  #if 1
-     for (uint16_t i = 0; i < 16; i++) {
-      // IC timings/temperature ??!?!?!? 
-      // To fix tried tweaking get_IO_Byte
-      // Reverted the tweaks from get_IO_Byte to prove cdoe diffrence is working - but now it's working ok with old code ?!?!?!?! WTF
-      // Left in tweaks on !!! Will need to keep an eye on this
-      // maybe...current PCB I'm testing with does not have caps
-      data[i]  = Z80Bus::get_IO_Byte();  
-     }
-  #else
-
-      DDRD = 0x00;  // Set PORTD data pins to inputs
-      digitalWriteFast(PIN_A5,
-                       LOW);  // Enable output latch for reading bus data
-      __asm__ __volatile__("nop; nop");
-
-      // Stream data out of the Z80 bus directly onto the SD file stream
-      for (uint16_t i = 0; i < 16; i++) {
-        Z80Bus::waitHalt_syncWithZ80();
-        data[i] = (uint8_t)PIND;  // Capture latched data from lines
-        Z80Bus::triggerZ80NMI();
-      }
-      digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-      DDRD = 0xFF; 
-  #endif
-
-      char _c[8];
-      ltoa(sp_addr, _c, 16);
-      Draw::text(32, 32, _c);
-
-      for (int i = 0; i < 16; i++) {
-        itoa(data[i], _c, 16);
-        Draw::text(128, (10 * i), _c);
-      }
-      delay(10000);
-#endif
-
-      Z80Bus::executeSnapshot(regs);
-      borderColour =regs->header.borderCol;  // snaHeaderPacket[SNA_BORDER_COLOUR];
-      restoreCorruptedScreenBytes(damagedScreenBytes);
-    }
-    BufferManager::freeToMark(mark);
-    InGamePauseMenu::waitForUserExit(borderColour);
-    Z80Bus::setSnaRom();
-    // Z80Bus::resetZ80();
+    launchSnapshot(regs, damagedScreenBytes, mark);
+  } else {
+    showLoadError(pFile, NULL);
   }
 }
 
 // ---------------------
-// .Z80 FILE 
+// .Z80 FILE
 // ---------------------
 void handleZ80File(FatFile* pFile) {
-  uint8_t borderColour;
-  Utils::clearScreen(0);
+ // Utils::clearScreen(0);
+
   SnapZ80::Z80HeaderInfo headerInfo;
   uint8_t ver = readZ80Header(pFile, &headerInfo);
-  
-  if (ver != Z80_VERSION_UNKNOWN) {
-    if (checkZ80FileValidity(pFile, &headerInfo)) {
-      // Set stack NOW before sending data over
-      Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + 3);  
-      uint8_t mark = BufferManager::getMark();
-      {
-        Z80Registers* regs = (Z80Registers*) BufferManager::allocate(sizeof(Z80Registers));
-        regs->Z80Snapshot = true;
-        SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, regs );
-        SnapZ80::convertZ80HeaderToSna(&headerInfo.headerV1Data, regs);
 
-        // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file data sent to convertSendZ80toSNA() is compressed!
-        uint8_t damagedScreenBytes[3];
-        RequestSendDataPacket pkt(sizeof(damagedScreenBytes), ZX_SCREEN_ADDRESS_START);
-        Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));  // send request for N bytes of data
-        damagedScreenBytes[0] = Z80Bus::get_IO_Byte();
-        damagedScreenBytes[1] = Z80Bus::get_IO_Byte();
-        damagedScreenBytes[2] = Z80Bus::get_IO_Byte();
+  if (ver != Z80_VERSION_UNKNOWN && checkZ80FileValidity(pFile, &headerInfo)) {
+    // Setup TEMP STACK before sending snapshot data over
+    Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + TEMP_STACK_SIZE);
+    uint8_t mark = BufferManager::getMark();
+    Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
+    regs->Z80Snapshot = true;
 
-        Z80Bus::executeSnapshot(regs);
-        borderColour = regs->header.borderCol; // snaHeaderPacket[SNA_BORDER_COLOUR];
-        restoreCorruptedScreenBytes(damagedScreenBytes);
-      }
-      BufferManager::freeToMark(mark);
-      InGamePauseMenu::waitForUserExit(borderColour);
-      Z80Bus::setSnaRom();
-     // Z80Bus::resetZ80();
-      return;  // load OK
-    }
+    SnapZ80::convertSendZ80toSNA(pFile, &headerInfo, regs);
+    SnapZ80::convertZ80HeaderToSna(&headerInfo.headerV1Data, regs);
+
+    // Easer to scrape first 3 bytes from screen 0x4000, as above .z80 file
+    // data sent to convertSendZ80toSNA() is compressed!
+    uint8_t damagedScreenBytes[TEMP_STACK_SIZE];
+    RequestSendDataPacket pkt(sizeof(damagedScreenBytes),ZX_SCREEN_ADDRESS_START);
+    Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(pkt));  // send request for N bytes of data
+    damagedScreenBytes[0] = Z80Bus::get_IO_Byte();
+    damagedScreenBytes[1] = Z80Bus::get_IO_Byte();
+    damagedScreenBytes[2] = Z80Bus::get_IO_Byte();
+
+    launchSnapshot(regs, damagedScreenBytes, mark);
+  } else {
+    showLoadError(pFile, &headerInfo);
   }
-
-  // drop down to report load error
-  Utils::clearScreen(COL::BLACK_WHITE);
-  Draw::text_P(0, 40, F("Can't load:"));
-
-  char* buf = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN+1);
-  uint8_t mark = BufferManager::getMark();
-  pFile->getDisplayName7(buf,ZX_FILENAME_MAX_DISPLAY_LEN );
-  Draw::text(0, 50,  buf);
-  BufferManager::freeToMark(mark);
-
-  if (SnapZ80::getMachineDetails(headerInfo.version, headerInfo.hw_mode) == MACHINE_128K) {
-    Draw::text_P(80, 90, F("128K not supported"));
-  }
-  Menu::waitForAnyKey();
 }
 
+  // ---------------------
+  // .TXT FILE
+  // ---------------------
+  void handleTxtFile(FatFile * pFile) {
+    constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+    constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
+    constexpr uint8_t maxChars =
+        ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
 
-// ---------------------
-// .TXT FILE
-// ---------------------
-void handleTxtFile(FatFile* pFile) {
-  constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-  constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
-  constexpr uint8_t maxChars = ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
+    uint16_t mark = BufferManager::getMark();
+    char* buf = (char*)BufferManager::allocate(maxChars + 1);
 
-  uint16_t mark = BufferManager::getMark();
-  char* buf = (char*)BufferManager::allocate(maxChars + 1);
-  
-  uint16_t currentPage = 0;
-  uint32_t pageStartPos = 0; 
+    uint16_t currentPage = 0;
+    uint32_t pageStartPos = 0;
 
-  while (true) {
-    Utils::clearScreen(COL::BLACK_WHITE);
-    pFile->seekSet(pageStartPos);
-    
-    uint8_t y = 0;
-    for (uint8_t i = 0; i < maxLines; i++) {
-      uint8_t len = 0;
-      if (pFile->available()) {
-        len = Utils::readLineTxt(pFile, buf, maxChars);
-        if (!len) { buf[0] = ' '; len = 1; }
-      }
-      buf[len] = 0;
-      Draw::textLine(y, buf);
-      y += charHeight; // Faster/smaller than i * charH
-    }
+    while (true) {
+      Utils::clearScreen(COL::BLACK_WHITE);
+      pFile->seekSet(pageStartPos);
 
-    uint32_t nextPos = pFile->curPosition();
-    bool canFwd = pFile->available();
-  
-    Menu::waitForRelease();
-    // Block until button press
-    Menu::Button_t btn;
-    while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);
-
-    if (btn == Menu::BUTTON_MENU) break;
-    if (btn == Menu::BUTTON_ADVANCE && canFwd) {
-      pageStartPos = nextPos;
-      currentPage++;
-    } 
-    else if (btn == Menu::BUTTON_BACK && currentPage > 0) {
-      currentPage--;
-      pageStartPos = 0; // Re-scan logic
-      for (uint16_t p = 0; p < currentPage; p++) {
-        pFile->seekSet(pageStartPos);
-        for (uint8_t l = 0; l < maxLines; l++) {
-          Utils::readLineTxt(pFile, nullptr, maxChars); 
+      uint8_t y = 0;
+      for (uint8_t i = 0; i < maxLines; i++) {
+        uint8_t len = 0;
+        if (pFile->available()) {
+          len = Utils::readLineTxt(pFile, buf, maxChars);
+          if (!len) {
+            buf[0] = ' ';
+            len = 1;
+          }
         }
-        pageStartPos = pFile->curPosition();
+        buf[len] = 0;
+        Draw::textLine(y, buf);
+        y += charHeight;  // Faster/smaller than i * charH
       }
+
+      uint32_t nextPos = pFile->curPosition();
+      bool canFwd = pFile->available();
+
+      Menu::waitForRelease();
+      // Block until button press
+      Menu::Button_t btn;
+      while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);
+
+      if (btn == Menu::BUTTON_MENU) break;
+      if (btn == Menu::BUTTON_ADVANCE && canFwd) {
+        pageStartPos = nextPos;
+        currentPage++;
+      } else if (btn == Menu::BUTTON_BACK && currentPage > 0) {
+        currentPage--;
+        pageStartPos = 0;  // Re-scan logic
+        for (uint16_t p = 0; p < currentPage; p++) {
+          pFile->seekSet(pageStartPos);
+          for (uint8_t l = 0; l < maxLines; l++) {
+            Utils::readLineTxt(pFile, nullptr, maxChars);
+          }
+          pageStartPos = pFile->curPosition();
+        }
+      }
+
+      const uint32_t wait = millis() + 350;
+      while (Menu::getButton() != Menu::BUTTON_NONE && millis() < wait);
     }
 
-    const uint32_t wait = millis() + 350;
-    while (Menu::getButton() != Menu::BUTTON_NONE && millis() < wait);
+    BufferManager::freeToMark(mark);
+    Menu::waitForRelease();
   }
 
-  BufferManager::freeToMark(mark);
-  Menu::waitForRelease();
-}
+  // -------------------------------------------------------------------------------------
+  // *** Some Useful Links ***
+  // ZX spectrum: https://mdfs.net/Docs/Comp/Spectrum/SpecIO
+  // Arduino    : https://devboards.info/boards/arduino-nano
+  //              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
+  // -------------------------------------------------------------------------------------
 
+  // Generate Map file
+  // >avr-nm -S --size-sort -t d
+  // C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf
+  // >c:\temp\2.txt
 
+  // Temp main code to transpose Adafruit5x7 font data into a 7x5 lookup table
+  //
+  // #include <SPI.h>
+  // #include "src/fatlib/SdFat.h"
+  // #include "FontData.h"
 
-// -------------------------------------------------------------------------------------
-// *** Some Useful Links ***
-// ZX spectrum: https://mdfs.net/Docs/Comp/Spectrum/SpecIO
-// Arduino    : https://devboards.info/boards/arduino-nano
-//              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
-// -------------------------------------------------------------------------------------
+  // SdFat SD;
+  // File file;
 
-// Generate Map file
-// >avr-nm -S --size-sort -t d C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf >c:\temp\2.txt
+  // void setup() {
 
+  //   file = SD.open("font_out.txt", O_WRITE | O_CREAT | O_TRUNC);
+  //   if (!file) {
+  //     return;
+  //   }
 
+  //   file.println("static const uint8_t __attribute__((progmem))
+  //   precalced_font5x7[] = {");
 
+  //   // Iterate through all 95 characters (0x20 to 0x7E)
+  //   for (int c = 0; c < 95; c++) {
+  //     // Read the 5 vertical columns for the current character[cite: 1]
+  //     uint8_t d0 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 0]);
+  //     uint8_t d1 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 1]);
+  //     uint8_t d2 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 2]);
+  //     uint8_t d3 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 3]);
+  //     uint8_t d4 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 4]);
 
+  //     file.print("\t");
 
-// Temp main code to transpose Adafruit5x7 font data into a 7x5 lookup table 
-//
-// #include <SPI.h>
-// #include "src/fatlib/SdFat.h"
-// #include "FontData.h" 
+  //     // Generate the 7 horizontal rows
+  //     for (int r = 0; r < 7; r++) {
+  //       // The original transposition logic[cite: 1]
+  //       uint8_t transposedRow =
+  //           ((d0 & 1) << 4) |
+  //           ((d1 & 1) << 3) |
+  //           ((d2 & 1) << 2) |
+  //           ((d3 & 1) << 1) |
+  //            (d4 & 1);
 
-// SdFat SD;
-// File file;
+  //       // Write out in zero-padded hex format
+  //       file.print("0x");
+  //       if (transposedRow < 0x10) file.print("0");
+  //       file.print(transposedRow, HEX);
+  //       file.print(", ");
 
-// void setup() {
-  
-//   file = SD.open("font_out.txt", O_WRITE | O_CREAT | O_TRUNC);
-//   if (!file) {
-//     return;
-//   }
+  //       // Shift down to prepare for the next row[cite: 1]
+  //       d0 >>= 1; d1 >>= 1; d2 >>= 1; d3 >>= 1; d4 >>= 1;
+  //     }
 
-//   file.println("static const uint8_t __attribute__((progmem)) precalced_font5x7[] = {");
-  
-//   // Iterate through all 95 characters (0x20 to 0x7E)
-//   for (int c = 0; c < 95; c++) {
-//     // Read the 5 vertical columns for the current character[cite: 1]
-//     uint8_t d0 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 0]);
-//     uint8_t d1 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 1]);
-//     uint8_t d2 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 2]);
-//     uint8_t d3 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 3]);
-//     uint8_t d4 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 4]);
+  //     // Append a comment identifying the character for easy code reading
+  //     file.print("// '");
+  //     file.print((char)(c + 0x20));
+  //     file.println("'");
+  //   }
 
-//     file.print("\t");
-    
-//     // Generate the 7 horizontal rows
-//     for (int r = 0; r < 7; r++) {
-//       // The original transposition logic[cite: 1]
-//       uint8_t transposedRow = 
-//           ((d0 & 1) << 4) | 
-//           ((d1 & 1) << 3) | 
-//           ((d2 & 1) << 2) | 
-//           ((d3 & 1) << 1) | 
-//            (d4 & 1);
-      
-//       // Write out in zero-padded hex format
-//       file.print("0x");
-//       if (transposedRow < 0x10) file.print("0");
-//       file.print(transposedRow, HEX);
-//       file.print(", ");
-      
-//       // Shift down to prepare for the next row[cite: 1]
-//       d0 >>= 1; d1 >>= 1; d2 >>= 1; d3 >>= 1; d4 >>= 1;
-//     }
-    
-//     // Append a comment identifying the character for easy code reading
-//     file.print("// '");
-//     file.print((char)(c + 0x20));
-//     file.println("'");
-//   }
-  
-//   file.println("};");
-//   file.close();
-//   Serial.println("Font successfully dumped to SD card!");
-// }
+  //   file.println("};");
+  //   file.close();
+  //   Serial.println("Font successfully dumped to SD card!");
+  // }
 
-// void loop() {
-//   // Nothing to do here
-// }
+  // void loop() {
+  //   // Nothing to do here
+  // }

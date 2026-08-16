@@ -458,8 +458,8 @@ void Utils::memsetZero(byte* b, uint16_t len) {
 //   loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
 // }
 
-void Utils::clearTopBar() {
-  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_WIDTH_BYTES,COL::BRIGHT_BLACK_WHITE);
+void Utils::clearTopBar(uint8_t col) {
+  Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_WIDTH_BYTES,col);
   for (uint8_t i = 0; i < 8; i++) {
     Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address(0, i), ZX_SCREEN_WIDTH_BYTES, 0);
   }

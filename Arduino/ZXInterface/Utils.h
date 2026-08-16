@@ -58,7 +58,7 @@ void setupJoystick();
 uint8_t readJoystick();
 
 void clearScreen(uint8_t col);
-void clearTopBar();
+void clearTopBar(uint8_t col = COL::BRIGHT_BLACK_WHITE);
 
 uint16_t readLineTxt(FatFile* f, char* buf, uint16_t maxChars);
 void viewSpeccyMemory();

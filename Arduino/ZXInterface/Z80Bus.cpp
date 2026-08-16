@@ -12,35 +12,16 @@
 //-------------------------------------------------
 
 void Z80Bus::setupPins() {
- 
   pinModeFast(Pin::ROM_HALF, OUTPUT);  // set ROM_HALF first
   digitalWriteFast(Pin::ROM_HALF, LOW);  //  Switch over to Sna ROM.
-  
   pinModeFast(Pin::OE_LATCH, OUTPUT);
   digitalWriteFast(Pin::OE_LATCH,HIGH);   //74HC574PW , #OE_LATCH
-
   pinModeFast(Pin::Z80_HALT, INPUT);
- 
   pinMode(Pin::Z80_BUSREQ, OUTPUT);
   digitalWriteFast(Pin::Z80_BUSREQ,HIGH); 
-
-  DDRD = 0xFF;                     // Set all PORTD pins as outputs
-  // pinModeFast(Pin::Z80_D0Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D1Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D2Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D3Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D4Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D5Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D6Pin, OUTPUT);
-  // pinModeFast(Pin::Z80_D7Pin, OUTPUT);
+  // Same as "pinModeFast(Pin::Z80_D0Pin to Z80_D7Pin, OUTPUT)"
+  DDRD = 0xFF;       // Set all PORTD pins as outputs
 }
-
-// void Z80Bus::resetZ80() {
-//   digitalWriteFast(Pin::Z80_REST, LOW);  // begin reset
-//   Utils::delay16(Z80_RESET_TIME); 
-//   digitalWriteFast(Pin::Z80_REST, HIGH);  // release RESET (Z80 restarts)
-//   Utils::delay16(1);
-// }
 
 void Z80Bus::setSnaRom() {
   digitalWriteFast(Pin::ROM_HALF, LOW);  // LOW = Snaploader Custom ROM
@@ -49,17 +30,6 @@ void Z80Bus::setSnaRom() {
 void Z80Bus::setStockRom() {
   digitalWriteFast(Pin::ROM_HALF, HIGH);  // HIGH = Stock ROM
 }
-
-// __attribute__((optimize("-Ofast")))
-// void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
-//   // cli();  // maybe save a tiny bit, guess it depends on number on interrupts during this send.
-//   for (uint16_t i = 0; i < size; i++) {
-//     waitHalt_syncWithZ80();
-//     PORTD = data[i];  // data on lines ready for Z80s 'IN'
-//     triggerZ80NMI();
-//   }
-//   //  sei();
-// }
 
 __attribute__((optimize("-Ofast")))
 void Z80Bus::sendBytes8(uint8_t* data, uint8_t size) {
@@ -80,7 +50,7 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   SNAHeader* snaHeader = &regs->header;
 
   if (!regs->Z80Snapshot) {
-    // PC is in the stack's game data - grab it
+    // PC is in the game's stack - grab it
     // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
     uint16_t sp_addr = ((uint16_t)snaHeader->sp_hi << 8) | snaHeader->sp_lo;
     uint8_t data[2];
@@ -89,9 +59,8 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
 
     // RequestSendDataPacket = Z80 command_SendData:  
     // At this point Z80 side is past reading amount and start address.
-    // It will only need to ld a,(hl), OUT ($1f), A , halt 
-    // before it's in a good place.
-    Utils::delay16(1);  // TODO: needed ? 
+    // It will only need to ld a,(hl), OUT ($1f), A , halt before it's in a good place.
+    Utils::delay16(1);
 
     DDRD = 0x00;  // Set PORTD data pins to inputs
     digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
@@ -114,14 +83,14 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   sendBytes8((uint8_t*)&pkt, sizeof(RestoreGameAndExecute));
 
   // Execute Command expects registers to follow in sequential layout:
-  // 1. I, HL', DE', BC', AF' (9 bytes contiguous from 'i')
+  // Send: I, HL', DE', BC', AF' (9 bytes contiguous from 'i')
   sendBytes8(&snaHeader->i, sizeof(snaHeader->i) + 
                            sizeof(snaHeader->l_prime) + sizeof(snaHeader->h_prime) + 
                            sizeof(snaHeader->e_prime) + sizeof(snaHeader->d_prime) + 
                            sizeof(snaHeader->c_prime) + sizeof(snaHeader->b_prime) + 
                            sizeof(snaHeader->f_prime) + sizeof(snaHeader->a_prime));
 
-  // 2. IY, IX, IFF2, R (6 bytes contiguous from 'iyl')
+  // Send: IY, IX, IFF2, R (6 bytes contiguous from 'iyl')
   sendBytes8(&snaHeader->iyl, sizeof(snaHeader->iyl) + sizeof(snaHeader->iyh) + 
                              sizeof(snaHeader->ixl) + sizeof(snaHeader->ixh) + 
                              sizeof(snaHeader->iff2) + sizeof(snaHeader->r));
@@ -132,11 +101,8 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
     snaHeader->sp_lo = (uint8_t)(sp & 0xFF);
     snaHeader->sp_hi = (uint8_t)(sp >> 8);
   }
-  
-  sendBytes8(&snaHeader->sp_lo, 2);     
-  // Send PC - extra outside SNA format for future flexibility 
-  sendBytes8(&regs->pc_lo, 2);     
-  // Send remaining header fields using direct references
+  sendBytes8(&snaHeader->sp_lo, 2);    // Send Stack Pointer 
+  sendBytes8(&regs->pc_lo, 2);         // Send PC - Not part of SNA format
   sendBytes8(&snaHeader->l, 2);        // HL (l, h)
   sendByte(&snaHeader->im);            // IM mode
   sendByte(&snaHeader->borderCol);     // Border color
@@ -164,31 +130,29 @@ void Z80Bus::setStackCommand(uint16_t addr) {
   Z80Bus::triggerZ80NMI();          // Clear the HALT by firing an NMI
 }
 
-// ASM> OUT ($1F), A    		  ; Game cart latches value (latch ic: 74HC574PW)
-// ASM> halt	
-
 uint8_t Z80Bus::get_IO_Byte() {
-  DDRD = 0x00;                    // Nano data pins to input
+  DDRD = 0x00;  // Nano data pins to input
 
-  waitHalt_syncWithZ80();         // Wait for OUT cycle
+  waitHalt_syncWithZ80();  // Wait for OUT cycle
   // 74HC574PW has it's own a supporting circuit low-to-high transition (CLK)
-  // Operation of the OE input does not affect the state of the flip-flops. 
+  // Operation of the OE input does not affect the state of the flip-flops.
   digitalWriteFast(Pin::OE_LATCH, LOW);  // Drive bus with latch data
 
   // Capture time for latch - spec says around 38ns (nanoseconds)
-  __asm__ __volatile__("nop\n\t"    // single nop is about 62ns @16MHz
-                       "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
+  __asm__ __volatile__(
+      "nop\n\t"    // single nop is about 62ns @16MHz
+      "nop\n\t");  // playing it safe with 124 ns (NANO TIMINGS!)
 
-  uint8_t byte = PIND;  
-  
-  digitalWriteFast(Pin::OE_LATCH, HIGH);   // IC to tri-state
-  DDRD = 0xFF;                      // default - rest of code expects active bus driving
+  uint8_t byte = PIND;
 
-  triggerZ80NMI();                  // Z80 handshake
+  digitalWriteFast(Pin::OE_LATCH, HIGH);  // IC to tri-state
+  DDRD = 0xFF;  // default - rest of code expects active bus driving
+
+  triggerZ80NMI();  // Z80 handshake
 
   return byte;
 }
-  
+
 uint8_t Z80Bus::getKeyboard() {
     ReceiveKeyboardPacket pkt;
     Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
@@ -200,46 +164,20 @@ void Z80Bus::Z80_NOP() {
     Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
 }
 
-//#include "Draw.h"
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect, uint8_t skipIntialBytes) {
-   //uint32_t startTime = millis();
-
   const uint8_t cmd = borderLoadingEffect ? CMD_Transfer : CMD_Copy;
   const uint16_t mark = BufferManager::getMark();
-  // transfering SNAPS gets it own buffer value, it can't use project constants
-  // due to RLE and max limit of 255
   constexpr uint8_t BUFFER_SIZE_U8 = 255;
   uint8_t* Buf = BufferManager::allocate(BUFFER_SIZE_U8);
   uint16_t currentAddress = ZX_SCREEN_ADDRESS_START + skipIntialBytes;
 
-//pFile->read(Buf, 3);
-//currentAddress += 3;
-
   // Transfer data to Spectrum RAM
   while (pFile->available()) {
     uint16_t bytesRead = pFile->read(Buf, BUFFER_SIZE_U8);
-
-    // if (!pFile->available()) {
-    //   for (int i=0; i<bytesRead; i++) {
-    //    Buf[i] = bytesRead - i;
-    //    }
-    // }
-
     rleOptimisedTransfer(bytesRead, currentAddress, Buf, cmd);
     currentAddress += bytesRead;
-
   }
   BufferManager::freeToMark(mark);
-
-  // Utils::clearScreen(COL::CYAN_BLACK);
-  // char _c[10];
-  // uint32_t endTime = millis();
-  // uint16_t duration = endTime - startTime;
-  // itoa(duration, _c, 10);
-  // Draw::text(8, 8, _c);
-  // itoa(duration / 1000, _c, 10);
-  // Draw::text(8, 8 + 16, _c);
-  // delay(2000);
 }
 
 //------------------------------------------------------------------------------------------
@@ -247,7 +185,6 @@ void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect, uint8_t s
  * Transfers data using look-ahead RLE. If beneficial, sends RLE blocks via fast Z80 fill
  * commands (PUSH fills 2 bytes/instruction); otherwise sends raw bytes.
  */
-
 __attribute__((optimize("-Ofast"))) 
 void Z80Bus::rleOptimisedTransfer(uint8_t input_len, uint16_t addr, uint8_t* input, const uint8_t cmd) {
 

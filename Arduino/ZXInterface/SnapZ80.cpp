@@ -199,9 +199,7 @@ bool SnapZ80::checkZ80FileValidity(FatFile* pFile, Z80HeaderInfo* headerInfo) {
     else if (headerInfo->isV1Compressed) {
       headerInfo->v1PayloadLength = locateV1Terminator(pFile, initial_file_pos);
       result = (headerInfo->v1PayloadLength > 0);
-    }
-    // Version 1 Uncompressed
-    else {
+    } else {   // Version 1 Uncompressed
       constexpr uint32_t RAM_48K_SIZE = 0xC000;
       result = (pFile->fileSize() >= (RAM_48K_SIZE + sizeof(SnapZ80::Z80V1Header)));
     }

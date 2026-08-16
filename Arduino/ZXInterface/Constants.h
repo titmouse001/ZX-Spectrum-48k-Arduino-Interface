@@ -83,6 +83,8 @@ namespace COL {
     constexpr uint8_t BRIGHT_MAGENTA_BLACK = Attr(MAGENTA, BLACK, true);
     constexpr uint8_t BRIGHT_YELLOW_RED = Attr(YELLOW, RED, true);
     constexpr uint8_t BRIGHT_BLACK_GREEN = Attr(BLACK, GREEN, true);
+    constexpr uint8_t BRIGHT_GREEN_BLACK = Attr(GREEN, BLACK,true);
+    constexpr uint8_t BRIGHT_YELLOW_BLACK = Attr(YELLOW, BLACK,true);
 }  // namespace COL
 
 //-----------------------------------------
