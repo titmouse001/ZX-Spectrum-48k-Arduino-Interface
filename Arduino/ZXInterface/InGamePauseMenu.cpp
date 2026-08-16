@@ -190,8 +190,10 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
    // Save screen to scratch file
   Utils::saveMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-
   Menu::waitForRelease();  // just incase button is still held after entering pause menu
+  
+  Z80Bus::SetBorderColour(0);
+
   uint8_t result;
   do {
     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);

@@ -159,9 +159,9 @@ uint8_t Z80Bus::getKeyboard() {
     return get_IO_Byte();
 }
   
-void Z80Bus::Z80_NOP() {
-    NOP_Packet pkt;
-    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(NOP_Packet));
+void Z80Bus::SetBorderColour(uint8_t col) {
+    BorderColour_Packet pkt(col);
+    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
 }
 
 void Z80Bus::transferSnaData(FatFile* pFile, bool borderLoadingEffect, uint8_t skipIntialBytes) {

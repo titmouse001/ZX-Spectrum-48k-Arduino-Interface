@@ -34,7 +34,7 @@ extern void waitHalt_syncWithZ80();
 extern void triggerZ80NMI();
 extern void hasZ80Resumed();
 
-extern void Z80_NOP();
+extern void SetBorderColour(uint8_t colour);
 
 
 }

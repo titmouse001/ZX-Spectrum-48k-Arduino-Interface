@@ -10,7 +10,7 @@ constexpr uint16_t CMD_BASE = 0x00D0;
 // 3xn, each part of the jump table is 3 bytes e.g. 00D0:C34E01	-> JP 014E
 constexpr uint16_t cmd_addr(uint8_t n) { return CMD_BASE + (3 * n); }
 
-constexpr uint16_t CMD_NOP=0;
+constexpr uint16_t CMD_SetBorderColour=0;
 constexpr uint16_t CMD_TransmitKey=1;
 constexpr uint16_t CMD_Fill=2;
 constexpr uint16_t CMD_Transfer=3;
@@ -30,14 +30,17 @@ constexpr uint16_t CMD_ClearScreenBitmap=14;
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
 
-struct __attribute__ ((packed)) NOP_Packet {
+struct __attribute__ ((packed)) BorderColour_Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
+    uint8_t value;
     
-    NOP_Packet() : cmd_high(cmd_addr(CMD_NOP) >> 8), 
-                   cmd_low(cmd_addr(CMD_NOP) & 0xff) {}
+    BorderColour_Packet(uint8_t value) : 
+                    cmd_high(cmd_addr(CMD_SetBorderColour) >> 8), 
+                    cmd_low(cmd_addr(CMD_SetBorderColour) & 0xff), 
+                    value(value)  {}
 };
-ASSERT_Z80_PACKET_SIZE(2,NOP_Packet);
+ASSERT_Z80_PACKET_SIZE(3,BorderColour_Packet);
 
 
 struct  __attribute__ ((packed))  Poke_Packet {

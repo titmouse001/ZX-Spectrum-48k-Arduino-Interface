@@ -188,7 +188,7 @@ mainloop:
 ;-------------------------------
 ; Jump Table
 ORG $00D0
-	jp command_NOP					; 1
+	jp command_SetBorder				; 1
 	jp command_TransmitKey			
 	jp command_Fill					
 	jp command_Transfer				
@@ -217,10 +217,13 @@ ORG $00D0
 ;------------------------------------------------------
 ;------------------------------------------------------
 
+
 ;-------------------------------
 ; Debugging support - NOP 
-command_NOP:
-	SET_BORDER 2
+command_SetBorder:
+	READ_ACC_WITH_HALT
+	AND %00000111	;  lower 3 bits for border
+    out ($FE), a  
 	jp mainloop
 
 ;------------------------------------------------------
@@ -454,7 +457,7 @@ command_VBL_Wait:
 	; before continuing. The goal is to prevent an interrupt from interfering while
 	; restoring the final state.  Since the Arduino gave this wait command it monitors halt and 
 	; blocks until the Z80 resumes.
-    HALT 			; enables the Z80 halt line
+    HALT 			; Arduino can watch and sync up with the Z80 halt line
     jp mainloop 	; done - back for next transfer command
 
 ;-----------------------------------------------------
@@ -572,23 +575,14 @@ RestoreEI_IFFStateComplete:
 
 	;------------------------------------------------------------------------
 	; Restore R (Refresh) register.
-    ; NOTE: The R register cannot be perfectly restored because the act of 
-    ; executing the restoration code advances the internal counter. 
-    ; While the drift could be calculated by accounting for the CPU cycles 
-    ; consumed until the game starts, this is unnecessary as most software 
-    ; is unaffected. However, be aware that some games use R as a source 
-    ; of semi-random numbers, which may result in minor behavioral variations.
+    ; Note: Execution drift prevents perfect restoration. 
+	; This is generally harmless, though games using R for randomness may see minor variations.
+
     READ_ACC_WITH_HALT      ; Read saved R value from snapshot
     ld r, a                 ; Update R register
 	;------------------------------------------------------------------------
 
 	;-----------------------------------------------
-	; Note: The 'SNA' format does not store the program counter in the header, it's put in the stack.
-	; Final Stack Usage: 
-	; Instead of using RETN to start the .SNA program, we jump directly to the starting address. 
-	; This frees up 2 bytes of stack space that would normally be used to hold the return address.
-	; NOTE: The HALT instruction requires an active stack for synchronization. The 2 freed bytes is used 
-	; as a temporary single-level stack, just enough for the final "resource-critical" restore stages.
 	;
 	; *******************************
 	; Restore Program's Stack Pointer
@@ -596,19 +590,9 @@ RestoreEI_IFFStateComplete:
 	READ_PAIR_WITH_HALT l, h      ; stack pointer
 	ld sp, hl   				  
 
-; CAN'T DO THIS FOR .z80 files!!!!	
-;	pop hl                        ; SP+=2, move past RET location (now we can use this area as a tiny stack!)
-	
-	;ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl  ; Patch JP xxxx with games startup address
-	
-; NOT YET NEED TO WORK OUT WHY SP IS NOT CORRECT - SEEING PC: 0xFFFC !!!
-; OK found it ...Arduino side was trapping on /rd to find good spot to fire nmi
-; Was trying out using /rd /m1 and /iorq (all-in-one) - cut /rd away for now it, need it's own line !!!! Can trust /m1 (will need to fall back to using /rd in code if /m1 is not found)
-
 	; Going for a more general purpose way - now passing in PC rather than 
-	; using the SNA format and get the PC from the stack.  This will
-	; allow the .Z80 snapshot to work without hacking it into the sna mechanism.
-	; this is a first step - later will do the above stack pop at the Arduino end.
+	; using the SNA format and get the PC from the stack.  
+	; This will also allow the other .Z80 snapshot to work from here.
 	READ_PAIR_WITH_HALT l, h  ; PC
 	ld (SCREEN_START + (JumpInstruction - relocate) + 1), hl
 
@@ -1070,19 +1054,8 @@ L04B0:
 
 	push de  ; DE holds SP - Restore as we borrowed 1 off the stack
 
-	; We've already been forced to used the GAMES STACK above
-	; using the luxury of a call/return here will not matter now!
-	;;;NOOOOOOOOOO use jps
-	;call command_MuteAY; // Prevent audio looping (machines with AY chip)
-
-    jp mainloop         
-
-;------------------------------------------------------------------------
-
-;--------------------------------------------------------
-; Mute the AY-3-8912 sound chip (128K Spectrum)
-command_MuteAY:
-;--------------------------------------------------------
+	;--------------------------------------------------------
+	; Mute the AY-3-8912 sound chip (128K Spectrum)
 	; register select - port $FFFD 
     LD   BC, $FFFD         
     LD   A, 7             ; Register 7 = mixer/enable
@@ -1091,8 +1064,11 @@ command_MuteAY:
     LD   B, $BF           
     LD   A, $FF           ; disable tone + noise on A/B/C
     OUT  (C), A            
-    RET		; return OK as using MuteAY inside game menu's stack
-;--------------------------------------------------------
+	;--------------------------------------------------------
+
+    jp mainloop         
+
+;------------------------------------------------------------------------
 
 
 ;-----------------------------------------------------------------------
