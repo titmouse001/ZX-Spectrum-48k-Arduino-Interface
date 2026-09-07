@@ -1,12 +1,10 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
-Arduino-based ZX Spectrum 48K game loader interface.
-
-Loads the following from a micro SD card (FAT16/32) with long file name support:
+This is an Arduino-based ZX Spectrum 48K game loader interface. It loads the following from a microSD card (FAT or FAT32) with long file name support:
 - **SNA** *- Load & Save 48K Snapshots*
 - **Z80** *- load ver1/2/3 48K snapshots*
 - **SCR** *- View & Take screenshots*
-- **TXT** *- Reads ASCII text files*
+- **TXT** *- Read ASCII text files*
 
 The interface displays an on-screen menu that can be navigated via Spectrum keyboard or joystick.
 Supports both Kempston joystick and Mega Drive controller, the controller allows a 2nd fire button to be used as jump.
@@ -22,7 +20,7 @@ PCB Gerbers (latest V2.60): [Download Gerber Files](/Documents/Gerbers/)
 
 ### In-game pause menu #### 
 Pressing the PCB button while playing a game takes you the in-game pause menu screen.
-Currently it supports:-
+Currently it supports:
 - **Resume** *- back to playing the game*
 - **Save** *- save game state to snapshot file*
 - **SloMo** - slowdown gameplay
@@ -33,7 +31,7 @@ Currently it supports:-
 
 <img src="/Documents/Pictures0.22/IngamePausedMenu.png" width="35%" alt="In-Game Pause Menu">
 
-#### Version 0.21 - with 90° cartridge design
+#### Ver 0.21 - with 90° cartridge design
 <div style="float:left;margin:0 10px 10px 0" markdown="1">
 <img src="/Documents/Pictures0.21/20250823_105518.jpg" width="24%" >
 <img src="/Documents/Pictures0.21/20250823_103559.jpg" width="24%" >
@@ -56,9 +54,8 @@ The browser can also open **.scr** Spectrum screen files and **.txt** text files
 ### PCB Design (Ver 2.40)
 <img src="Documents/Schematic/Schematic-v2.40_ZX-Spectrum-48k-Arduino-Interface-Game-Loader_2026-06-20.png" alt="Circuit Diagram" >
 
-    A 74HC574 latch has been added for the Z80 to pass data to the Arduino, replacing the previous 
-    1-bit pulse halt protocol.  While ok for reading keyboard input, it was too slow for reading 
-    large blocks of data (like taking screenshots).
+    The 74HC574 latch replaces the previous 1‑bit pulse‑halt protocol, which was ok for keyboard input but too slow for large 
+    data transfers such as screenshots.
     
 ### Hardware Design (Ver 0.21 - prototype)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
@@ -72,10 +69,11 @@ I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyED
 
 The hardware design uses a minimal chip count. It includes a 27C256 EPROM, which holds the Z80 machine code for accepting data and restoring the snapshot state. The Arduino manages data transfer to the ZX Spectrum, coordinating the interface. The interface primarily utilizes the data bus, with glue logic enabling the external ROM’s function.
 
-<i>To address issues caused by returning to the original internal ROM after loading and starting a game, the setup uses a duplicated Spectrum ROM. The first half of the external EPROM contains the browser and game loading code. Once a game is loaded, the second half of the EPROM with the stock ROM takes over.</i>
+<i>To address issues caused by returning to the original internal ROM after loading and starting a game, the setup uses a duplicated Spectrum ROM. The external EPROM is split into two halves: the first contains the browser and game‑loading code; once a game is loaded, the second half provides the stock Spectrum ROM.</i>
 
 - 74HC165D – The Arduino Nano has limited I/O pins, so a shift register is used to handle joystick inputs.
-  - Both Fire A and Fire B are supported. The PCB menu select button is also mapped into the same shift register, leaving one bit free for future use.
+  - Two fire buttons are supported if using a Mega Drive controller (fire2 mapped to Up).
+  - The PCB menu select button is also mapped into the same shift register, leaving one bit free for future use.
   - The Arduino masks out the menu button from the joystick data during gameplay.
 - 74HC245D – Used as a transceiver (IC is unidirectional, but I've tied DIR to +5 V)
   - Enables high-impedance (Z) state (detaches Arduino from the data bus)
@@ -118,11 +116,11 @@ You can skip the ROM assembly; pre-compiled bins are here: [Ver0.24-27C256.bin](
 <img src="/Documents/Stripboard Prototype in two sections.jpg" width="48%" height="48%">
 <div>
 
-#### Ver0.01 First PCB - Mistakes Were Made!
+### Ver 0.01 First PCB - Mistakes Were Made!
 <img src="/Documents/First PCB - mistakes were made - Back View.jpg" width="48%" height="48%">
 <img src="/Documents/First PCB - mistakes were made - Front View.jpg" width="48%" height="48%">
 
-##### Ver0.14 - Older Flat PCB
+### Ver 0.14 - Older Flat PCB
 
 This version had extra navigation buttons on the PCB, until I worked out a way to read the Spectrum keyboard using a cunning HALT-pulse fudging protocol I came up with!
 
