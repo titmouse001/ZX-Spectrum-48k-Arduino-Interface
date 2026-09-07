@@ -48,7 +48,7 @@ Currently it supports:-
 The interface loads games from a microSD card in about a second, using a slot at the back.
 Games can be in **.sna** or **.z80** format and stored either in folders or in the root directory of a FAT or FAT32 formatted SD card.
 
-The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a Kempston joystick. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).  Pressing the menu button during a game returns you to the game browser.
+The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter or with a Kempston joystick. If you enter multiple nested folders, the top menu option [/] will take you back to the root from any directory depth (note: there is no back to parent-folder option due to memory limits or the Arduino Nano).  Pressing the menu button during a game returns you to the game browser.
 
 The browser can also open **.scr** Spectrum screen files and **.txt** text files. These can be exited with the Enter key. 
 
