@@ -1,17 +1,15 @@
 # ZX Spectrum 48k Game Cartridge Interface using an Arduino
 
-Arduino-based ZX Spectrum 48K game loader.
+Arduino-based ZX Spectrum 48K game loader interface.
+
 Loads the following from a micro SD card (FAT16/32) with long file name support:
-- **SNA** *- Loading 48K Snapshots*
-- **Z80** *- Supports loading v1/2/3 48K snapshots*
-- **SCR** *- Take Spectrum screenshots*
+- **SNA** *- Load & Save 48K Snapshots*
+- **Z80** *- load ver1/2/3 48K snapshots*
+- **SCR** *- View & Take screenshots*
 - **TXT** *- Reads ASCII text files*
 
-It boots to an on-screen menu that can be navigated via Spectrum keyboard or Kempston joystick.
-Loads in just over a second.
-
-*Bonus: You can jump using the Fire 2 button, or still use 'Up' to jump!*
-
+The interface displays an on-screen menu that can be navigated via Spectrum keyboard or joystick.
+Supports both Kempston joystick and Mega Drive controller, the controller allows a 2nd fire button to be used as jump.
 For compatibility, the interface can also start up in the standard Spectrum ROM by holding down the menu or fire2 button during power-up.
 
 ### 2026 Update
@@ -20,13 +18,14 @@ For compatibility, the interface can also start up in the standard Spectrum ROM 
 <img align="right" src="/Documents/Pictures0.22/Cartv2.2.png" width="55%">
 <div>
 
-PCB Gerbers (latest V2.40):[Download Gerber Files](/Documents/Gerbers/)
+PCB Gerbers (latest V2.60): [Download Gerber Files](/Documents/Gerbers/)
 
-#### In-game pause menu #### 
-Pressing the PCB button while in-game takes you to a new pause menu screen.
+### In-game pause menu #### 
+Pressing the PCB button while playing a game takes you the in-game pause menu screen.
 Currently it supports:-
 - **Resume** *- back to playing the game*
-- **Save** *- create a snapshot file*
+- **Save** *- save game state to snapshot file*
+- **SloMo** - slowdown gameplay
 - **Poke** *- enter game cheats*
 - **Screenshot** *- saves to the "/Shots" folder*
 - **Memory Viewer** *- inspect memory contents*
@@ -61,7 +60,7 @@ The browser can also open **.scr** Spectrum screen files and **.txt** text files
     1-bit pulse halt protocol.  While ok for reading keyboard input, it was too slow for reading 
     large blocks of data (like taking screenshots).
     
-### Hardware Design (Ver 0.21)
+### Hardware Design (Ver 0.21 - prototype)
 I've been using JLCPCB with EasyEDA for my PCB design and fabrication, as EasyEDA is a free and simple-to-use circuit designer
 
 <img src="/Documents/Pictures0.21/PCB_Unpopulated_v0.21.png" alt="Front" width="23%">
