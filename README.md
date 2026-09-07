@@ -46,7 +46,7 @@ Currently it supports:-
 <img align="right" src="/Documents/Pictures0.14/Robocop_fileSelector.jpg" width="32%" >
 
 The interface loads games from a microSD card in about a second, using a slot at the back.
-Games can be in **.sna** or **.z80** format and stored either in folders or in the root directory of a FAT16-formatted SD card.
+Games can be in **.sna** or **.z80** format and stored either in folders or in the root directory of a FAT or FAT32 formatted SD card.
 
 The built-in browser displays 24 titles per page on the ZX Spectrum screen. Navigation is done with Q/A and Enter, or alternatively with a Kempston joystick. If you enter multiple nested folders, the [/] option will take you back to the root (note: there is no parent-folder option).  Pressing the menu button during a game returns you to the game browser.
 
