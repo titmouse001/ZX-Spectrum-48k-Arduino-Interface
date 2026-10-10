@@ -61,33 +61,54 @@
 void setup() {
   // *************************************************************************************
   // NOTE: To free up a pin, I removed the Arduino line used to reset the Z80 (/RESET). 
-  // Because of this, things can now go out of sync between the Z80 and Arduino at start-up.
-  // To get around this, the A3 (ROM Half) pin has now been tied to GND via a 10K pull-down resistor, 
+  // Because of this, the Z80 and the Arduino can now go out of sync at start-up.
+  // To get around this, the A3 (ROM Half) pin has now been tied to GND via a 10K pull-down resistor,
   // so at power-up it defaults to LOW (SNA-ROM).
   // *************************************************************************************
 
-  Z80Bus::setupPins();
+  Z80Bus::setupPins();  // include setting ROM half to SNA ROM
   Utils::setupJoystick();
 
   // ----------------------------------------------------------------------
-  // Attempt to sync with Speccy - Spectrum side has extra HALT at startup
+  // Attempting to sync with the Speccy: the Spectrum side has an extra HALT at start-up.
   Z80Bus::waitHalt_syncWithZ80();
-  // At this point HALT has been spotted by the Arduino and we carry on!
+  // At this point, HALT has been spotted by the Arduino, and we know it's OK to carry on.
   // ----------------------------------------------------------------------
   //
-  // WARNING: Pin defaults to LOW on power-up. Changing the pin to OUTPUT
+  // WARNING: Arduino pins default to LOW on power-up. Changing the pin to OUTPUT
   // generates a falling edge that triggers the Z80's edge-sensitive /NMI.
+  // We have to be careful to do it here after the waitHalt_syncWithZ80 above,
+  // since we no longer have the option to just reset the Z80, as we needed to free up a pin.
   pinModeFast(Pin::Z80_NMI, OUTPUT);
   //
   // Now we can go LOW/HIGH in a controlled pulse at start-up.
   digitalWriteFast(Pin::Z80_NMI, LOW);
   __asm__ __volatile__("nop\n\t nop\n\t");
   digitalWriteFast(Pin::Z80_NMI, HIGH);
+  // After the above NMI pulse, the Z80 is now released from HALT.
+  // We have now completed the setup on all our Arduino pins and kept the Arduino in sync.
   // ----------------------------------------------------------------------------------------
 
-  // Use stock ROM when select button or fire held at power up
+  // Use stock ROM or 0x2000 activation when select button or fire held at power up
   if (Utils::readJoystick() & (INPUT_FIRE2 | INPUT_SELECT)) {
-    Utils::stockRomBoot_Blocking();  // user pressing select again will exit
+    uint32_t startTime = millis();
+    bool testRam = false;
+    while (Utils::readJoystick() & (INPUT_FIRE2 | INPUT_SELECT)) {
+      if (millis() - startTime >= 4000) {
+        testRam = true;
+        break;
+      }
+    }
+
+    if (testRam) {
+      uint8_t ResetJmpAddr[2] = {0x20, 0x0};  
+      Z80Bus::sendBytes8(ResetJmpAddr, sizeof(ResetJmpAddr));  
+      delayMicroseconds(12);  // fudge wait this for now - give PC time to end up at 0x2000
+      while (true) { }
+    } else {
+      // Stock ROM boot - under 4 seconds
+      Utils::stockRomBoot_Blocking();  // user pressing select again will exit
+    }
   }
 
   // Display the version (remove sd card to view version)
