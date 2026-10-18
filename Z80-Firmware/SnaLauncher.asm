@@ -18,6 +18,9 @@
 ; I've stayed away from anything used in Spectrum games. e.g. The 0xFF padding for 
 ; IM 2 vectors remains untouched, as most 48k games rely on it.
 ;
+; Note: Diagnostic ROM (Origin 0x2000)
+;       Jumped to at startup via a hardware switch on ROM address line A13
+;       (+5V for TEST MODE mapping to 0x2000, or normal pass-through for 0x0000)
 ;
 ; Tested on both 48K and 128K machines (using '_ROMCS' & 'ROM1_OE').
 ; - 48K: _ROMCS (edge 25B) is NOT USED on +2a/b or +3 boards.
@@ -85,6 +88,9 @@ ENDM
 ;*** CODE START ***
 ;******************
 ORG $0000
+
+; JP  0x2000   ; DEBUG LINE - RAM TEST (for quick sanity check via emulator)
+
 L0000:  
 	DI           
 	; This stack is only for menu use (this does not include the in-game menu)
@@ -244,12 +250,6 @@ command_SetBorder:
 command_SendData:	
 	READ_PAIR_WITH_HALT d,e  ; DE = amount 
  	READ_PAIR_WITH_HALT h,l  ; HL = start address 
-	;ld hl,0xfff0
-
-;	READ_ACC_WITH_HALT
-;	ld h,a
-;	READ_ACC_WITH_HALT
-;	ld l,a
 
 .transmitLoop:
 	ld a,(hl)
@@ -301,39 +301,6 @@ FillLoopOptimized:
 RestoreSP:
 	LD SP,IX               
     jp mainloop             
-
-; ;------------------------------------------------------
-; ; Small Memory Fill (Zero-Only Speed)
-; ; Input: Buffer end address, total fill count (byte)
-; ;------------------------------------------------------
-; command_reverse_fill8:  
-
-;     READ_PAIR_WITH_HALT h,l ; HL = buffer end address (fill backwards) 
-;     halt                    ; Synchronization 
-;     in b,(c)                ; B = total fill amount
-
-;     LD IX, 0					
-;     ADD IX, SP               
-;     XOR A      
-
-; CheckParity:
-;     SRL B                   
-;     JR NC, StartEvenFill  
-; HandleOddByte:
-;     DEC HL         	
-;     LD (HL), A      
-;     JR Z, RestoreSP      ; NOTE: flag state from SRL B still good
-; StartEvenFill:
-;     LD SP, HL       
-;     LD H, A   
-;     LD L, A   
-; FillLoopOptimized:
-;     PUSH HL     
-;     DJNZ FillLoopOptimized  
-; RestoreSP:
-;     LD SP, IX   
-;     jp mainloop
-
 
 ;------------------------------------------------------
 ; Read Keyboard / Transmit key (0 none)
@@ -801,16 +768,8 @@ L04B0:
 	halt 
     in a, ($1f) 
 	ld l,a			
-;;;;;;;	ld sp,hl		;sp
 
 	pop de
-
-	; halt 
-	; in a, ($1f) 
-	; ld d,a			; D
-	; halt 
-    ; in a, ($1f) 
-	; ld e,a			; E
 
 	halt 
     in a, ($1f) 
@@ -887,13 +846,8 @@ L04B0:
 	; Enable Maskable Interrupts Path
 	halt
     in a, ($1f)   ; F
-;	push af                  ; get F onto stack!
-;	inc sp                   ; Align SP to F
-;	pop af                   ; F now good (ignoring A holding junk)
-;	dec sp                   ; re-align SP 
 	push af
 	pop af 
-
 
 	push de
 
@@ -915,10 +869,6 @@ L04B0:
 	; Disable Maskable Interrupts Path
 	halt 
     in a, ($1f)   ; F
-	;push af                  ; get F onto stack!
-	;inc sp                   ; Align SP to F
-	;pop af                   ; F now good (ignoring A holding junk)
-	;dec sp                   ; re-align SP 
 	push af
 	pop af 
 
@@ -1136,6 +1086,7 @@ ClearScreenAttributes_ForStartup_StackAbused:
 	ld SP,0xFFFF  ; nothings using it yet
 
     jp return_ClearScreenAttributes_ForStartup_StackAbused
+
 ;-----------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------
@@ -1159,8 +1110,6 @@ clr_bitmap_loop:
  	ld sp, ix     
     jp mainloop 
 ;-----------------------------------------------------------------------
-
-
 
 
 	
@@ -1213,120 +1162,6 @@ cleanup:
 
     RET  ; return OK as using Detect128K inside game menu's stack
 
-; ;-----------------------------------------------------------------------
-; ; SaveZ80State – Save FULL Z80 state (entered via NMI)
-; ; The original NMI return address stays on the game's stack 
-; ;-----------------------------------------------------------------------
-; .SaveZ80State:
-
-;     out  ($1F),a	; A
-;     halt
-
-;     ld   a,i		; I
-;     out  ($1F),a
-;     halt
-
-;     ld   a,b		; B
-;     out  ($1F),a
-;     halt
-;     ld   a,c		; C
-;     out  ($1F),a
-;     halt
-
-;     push af
-;     pop  bc
-;     ld   a,c        ; F
-;     out  ($1F),a
-;     halt
-
-;     ld   a,d
-;     out  ($1F),a  	; D
-;     halt
-;     ld   a,e
-;     out  ($1F),a	; E
-;     halt
-;     ld   a,h
-;     out  ($1F),a	; H
-;     halt
-;     ld   a,l
-;     out  ($1F),a	; L
-;     halt
-;     ;---- Save SP ----
-;     ld   hl,0
-;     add  hl,sp
-;     ld   a,l
-;     out  ($1F),a
-;     halt
-;     ld   a,h
-;     out  ($1F),a
-;     halt
-;     ;---- Save IX ----
-;     ld   a,ixh
-;     out  ($1F),a
-;     halt
-;     ld   a,ixl
-;     out  ($1F),a
-;     halt
-;     ;---- Save IY ----
-;     ld   a,iyh
-;     out  ($1F),a
-;     halt
-;     ld   a,iyl
-;     out  ($1F),a
-;     halt
-
-;     ;---- Save alternate registers ----
-;     ex   af,af'
-;     exx
-;     out  ($1F),a	; A'
-;     halt
-;     push af
-;     pop  bc
-;     ld   a,c      	; F'
-;     out  ($1F),a
-;     halt
-;     ld   a,b
-;     out  ($1F),a  	; B'
-;     halt
-;     ld   a,c
-;     out  ($1F),a	; C'
-;     halt
-;     ld   a,d
-;     out  ($1F),a	; D'
-;     halt
-;     ld   a,e
-;     out  ($1F),a	; E'
-;     halt
-;     ld   a,h
-;     out  ($1F),a	; H'
-;     halt
-;     ld   a,l
-;     out  ($1F),a	; L'
-;     halt
-
-;     exx
-;     ex   af,af'
-
-;     ;---- Save I + IFF2 (bit 7 encodes IFF2) ----
-;     ld   a,i
-;     jp   po,.iffOff
-; .iffOn:
-;     or   %10000000
-;     out  ($1F),a
-;     halt
-;     jr   .saveR
-; .iffOff:
-;     and  %01111111
-;     out  ($1F),a
-;     halt
-
-; .saveR:
-;     ld   a,r		; R
-;     out  ($1F),a
-;     halt
-
-;     jp   mainloop
-
 
 ; -------------------------------------------------------------------------
 	IF $ > $16D4
@@ -1367,91 +1202,144 @@ L16D4:
 	nop
 	nop  ; mirror rom does a "JP $3fff" here
 	nop
-;-------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------
 
-;-------------------------------------------------------------------------
+
+; =====================================================================
+;
+; LOCATION : 0x2000
+;
+; ZX SPECTRUM 48K IN-DEPTH STACKLESS MEMORY DIAGNOSTIC + AUDIO ALERTS
+; Target: Diagnostic ROM (Origin 0x2000)
+; Constraints: STRICTLY ZERO MEMORY / STACK USAGE (REGISTERS ONLY)
+;
+; Note: Jumped to at startup via a hardware switch on ROM address line A13
+;       (+5V for TEST MODE mapping to 0x2000, or normal pass-through for 0x0000)
+;
+; =====================================================================
 
 ; ==============================================================================
 ; ZX SPECTRUM 48K IN-DEPTH STACKLESS MEMORY DIAGNOSTIC + AUDIO ALERTS!
 ; Target: Diagnostic ROM (Origin 0x2000)
+;
+; DIAGNOSTIC BORDER OUTPUT READOUT:
+; ------------------------------------------------------------------------------
+;
+; >>> DATA BITS / CHIP ISOLATION (8 Border Bars, Top-to-Bottom, MSB D7 -> D0):
+;     - RED BAR   = Faulty Bit
+;     - GREEN BAR = Good Bit
+;
+; >>> BOTTOM-OF-SCREEN FLASH (Region + Phase ID):
+;     The strip flashes N times = failed test phase number.
+;     Flash colour shows which region/component failed:
+;         - YELLOW  = Lower RAM data failure ($4000–$7FFF)
+;         - WHITE   = Upper RAM data failure ($8000–$FFFF)
+;         - BLUE    = Lower address mux/decoder fault (IC3/4 or IC23-26)
+;         - MAGENTA = Upper address mux/decoder fault
+;
+;     Phase-to-flash-count lookup table: (All tests cover 48K RAM range $4000–$FFFF)
+;     +-------+---------------------------------------------+--------------------+
+;     | Flash | Test Phase                                  | RAM Region Checked |
+;     +-------+---------------------------------------------+--------------------+
+;     |   1   | Write 0x00               (Ascending)        | Full 48K           |
+;     |   2   | Verify 0x00, Write 0xFF  (Ascending)        | Full 48K           |
+;     |   3   | Verify 0xFF, Write 0x55  (Descending)       | Full 48K           |
+;     |   4   | Verify 0x55, Write 0xAA  (Ascending)        | Full 48K           |
+;     |   5   | Verify 0xAA, Write Low Addr Byte (L) (Desc) | Full 48K           |
+;     |   6   | Verify L,    Write High Addr Byte (H)(Asc)  | Full 48K           |
+;     |   7   | Verify H                 (Descending)       | Full 48K           |
+;     |   8   | Checkerboard      (Even=55, Odd=AA, Asc)    | Full 48K           |
+;     |   9   | Inverse Checkboard(Even=AA, Odd=55, Asc)    | Full 48K           |
+;     |  10   | Walking 1s Data Bus      (Ascending)        | Full 48K           |
+;     |  11   | Walking 0s Data Bus      (Ascending)        | Full 48K           |
+;     |  12   | DRAM Refresh Retention Decay                | Full 48K           |
+;     |  13   | Address Walking A0–A7    (MUX IC3/4)        | Full 48K           |
+;     |  14   | Address Walking A8–A15   (High Decoders)    | Full 48K           |
+;     |  15   | 16K Block / Boundary Test (IC23–IC26)       | Boundary Check     |
+;     +-------+---------------------------------------------+--------------------+
+;;
+; HARDWARE DATA BIT TO IC CHIP MATRIX:
+; ------------------------------------------------------------------------------
+; Data Bit | Lower RAM (16K Contended) | Upper RAM (32K Uncontended)
+; ---------+---------------------------+----------------------------
+;    D7    |            IC13           |            IC22
+;    D6    |            IC12           |            IC21
+;    D5    |            IC11           |            IC20
+;    D4    |            IC10           |            IC19
+;    D3    |            IC9            |            IC18
+;    D2    |            IC8            |            IC17
+;    D1    |            IC7            |            IC16
+;    D0    |            IC6            |            IC15
+; ==============================================================================
 
-; CALL THIS WITH RAM TESTER WITH: "JP INIT_IM"
+; Example: Test 3 failed with bad Upper RAM (shows 3 white flashes),
+;          Bars show two bits D7 and D0 faulty in RED (so upper D7=IC22 & D0=IC15 )
+; +------------------------------------------------------------------+
+; |                        TOP BORDER  (BLACK)                       |
+; +----------------+--------------------------------+----------------+
+; |                |                                |                |
+; |   D7  [RED]    |                                |   D7  [RED]    |
+; |   D6  [GREEN]  |                                |   D6  [GREEN]  |
+; |   D5  [GREEN]  |                                |   D5  [GREEN]  |
+; |   D4  [GREEN]  |         SCREEN                 |   D4  [GREEN]  |
+; |   D3  [GREEN]  |                                |   D3  [GREEN]  |
+; |   D2  [GREEN]  |                                |   D2  [GREEN]  |
+; |   D1  [GREEN]  |                                |   D1  [GREEN]  |
+; |   D0  [RED]    |                                |   D0  [RED]    |
+; |                |                                |                |
+; +----------------+--------------------------------+----------------+
+; |               BOTTOM BORDER  [WHITE]  (UPPER RAM)                |
+; |               >>>  FLASHES  3  TIMES  <<<                        |
+; +------------------------------------------------------------------+
 
 
+; *********************************************************************
 ORG 0x2000
+; *********************************************************************
+
 INIT_IM:    
-    ; 1. Setup IM 2 to point to our ROM table
+    ; Setup IM 2 to point to ROM table (0x2100)
     LD A, 0x21          ; High byte of our vector table (0x2100)
     LD I, A
     IM 2
-    ;EI
     DI
-JP MAIN_INIT
+    JP MAIN_INIT
 
-    ; 2. The Vector Table (Placed exactly at 0x2100 in ROM)
-    ; The Table: Placed at a page boundary
-ORG 0x2100
-DEFS 257, 0x22      ; 257 bytes of 0x22. 
-                        ; No matter what the bus reads, vector is 0x2222.
+; *********************************************************************
 
-    ; 3. The Handler (Placed exactly at 0x2222 in ROM)
-ORG 0x2222
+ORG 0x2100          ; The Vector Table at 0x2100
+DEFS 257, 0x22      ; 257 bytes of 0x22.  (When IM 2 fires we jump to 0x2222)
+
+; *********************************************************************
+
+; Interupt handler - 0x2222
+ORG 0x2222      
 INT_HANDLER:
-    LD SP, 0x3FFF       ; Safely point SP to ROM padding
     JP DRAW_BARS_WAKEUP
+
+; *********************************************************************
 
 
 MAIN_INIT:
-
-;  ---- DEBUG
-;    LD C, 1             ; Phase ID = 1
-;    LD D, 0x00          ; Expected value
-;    LD A, 0x81          ; Actual (faulty) value read
-;    LD H, 0xB0          ; Lower RAM address high byte
-;    JP TEST_FAILED
-;
-;    LD C, 1             ; Phase ID = 1
-;    LD D, 0x00
-;    LD A, 0x81          ; Faulty D7 & D0 -> IC22 & IC15 (upper RAM)
-;    LD H, 0x80
-;    JP TEST_FAILED
-;
-;    LD C, 3
-;    LD D, 0x00
-;    LD A, 0xFF          ; All bits faulty
-;    LD H, 0xC0
-;    JP TEST_FAILED
-;
-;    LD C, 6
-;    LD D, 0x00
-;    LD A, 0xAA          ; D7, D5, D3, D1 faulty
-;    LD H, 0x80
-;    JP TEST_FAILED
-;
-;    LD C, 12
-;    LD D, 0x00
-;    LD A, 0x08          ; Bit D3 faulty -> IC18
-;    LD H, 0xFF
-;    JP TEST_FAILED
-;  ---------------------------------------------------------------------------
-
     ; --------------------------------------------------------------------------
     ; PHASE 1: Write 0x00
     ; --------------------------------------------------------------------------
     LD C, 1
     LD D, 0x00
-    LD A, 6             ; Yellow
-    OUT (0xFE), A
     LD HL, 0x4000
 P1_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD (HL), D
     INC HL
     LD A, H
     OR L
     JR NZ, P1_LOOP
 
+P1_TONE:
     LD B, 40
     LD DE, 100
     LD C, 6
@@ -1464,10 +1352,12 @@ P2_START:
     ; --------------------------------------------------------------------------
     LD C, 2
     LD D, 0x00
-    LD A, 5             ; Cyan
-    OUT (0xFE), A
     LD HL, 0x4000
 P2_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD A, (HL)
     CP D
     JP NZ, TEST_FAILED
@@ -1477,6 +1367,7 @@ P2_LOOP:
     OR L
     JR NZ, P2_LOOP
 
+P2_TONE:
     LD B, 40
     LD DE, 100
     LD C, 5
@@ -1489,10 +1380,12 @@ P3_START:
     ; --------------------------------------------------------------------------
     LD C, 3
     LD D, 0xFF
-    LD A, 3             ; Magenta
-    OUT (0xFE), A
     LD HL, 0xFFFF
 P3_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, (HL)
     CP D
     JP NZ, TEST_FAILED
@@ -1502,6 +1395,7 @@ P3_LOOP:
     CP 0x3F
     JR NZ, P3_LOOP
 
+P3_TONE:
     LD B, 40
     LD DE, 100
     LD C, 3
@@ -1514,10 +1408,12 @@ P4_START:
     ; --------------------------------------------------------------------------
     LD C, 4
     LD D, 0x55
-    LD A, 6             ; Yellow
-    OUT (0xFE), A
     LD HL, 0x4000
 P4_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD A, (HL)
     CP D
     JP NZ, TEST_FAILED
@@ -1527,6 +1423,7 @@ P4_LOOP:
     OR L
     JR NZ, P4_LOOP
 
+P4_TONE:
     LD B, 40
     LD DE, 100
     LD C, 6
@@ -1539,10 +1436,12 @@ P5_START:
     ; --------------------------------------------------------------------------
     LD C, 5
     LD D, 0xAA
-    LD A, 5             ; Cyan
-    OUT (0xFE), A
     LD HL, 0xFFFF
 P5_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, (HL)
     CP D
     JP NZ, TEST_FAILED
@@ -1552,6 +1451,7 @@ P5_LOOP:
     CP 0x3F
     JR NZ, P5_LOOP
 
+P5_TONE:
     LD B, 40
     LD DE, 100
     LD C, 5
@@ -1563,13 +1463,14 @@ P6_START:
     ; PHASE 6: Verify L, Write High Address Byte (H)
     ; --------------------------------------------------------------------------
     LD C, 6
-    LD A, 3             ; Magenta
-    OUT (0xFE), A
     LD HL, 0x4000
 P6_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD D, L
     LD A, (HL)
-
     CP D
     JP NZ, TEST_FAILED
     LD (HL), H
@@ -1578,6 +1479,7 @@ P6_LOOP:
     OR L
     JR NZ, P6_LOOP
 
+P6_TONE:
     LD B, 40
     LD DE, 100
     LD C, 3
@@ -1589,10 +1491,12 @@ P7_START:
     ; PHASE 7: Verify H
     ; --------------------------------------------------------------------------
     LD C, 7
-    LD A, 7             ; White
-    OUT (0xFE), A
     LD HL, 0xFFFF
 P7_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD D, H
     LD A, (HL)
     CP D
@@ -1601,6 +1505,8 @@ P7_LOOP:
     LD A, H
     CP 0x3F
     JR NZ, P7_LOOP
+
+P7_TONE:
     LD B, 40
     LD DE, 100
     LD C, 7
@@ -1612,11 +1518,12 @@ P8_START:
     ; PHASE 8: Checkerboard (Even=55, Odd=AA)
     ; --------------------------------------------------------------------------
     LD C, 8
-    LD A, 6             ; Yellow
-    OUT (0xFE), A
-
     LD HL, 0x4000
 P8_WR_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     BIT 0, L
     JR NZ, P8_WR_ODD
     LD (HL), 0x55
@@ -1631,6 +1538,10 @@ P8_WR_NEXT:
 
     LD HL, 0x4000
 P8_RD_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     BIT 0, L
     JR NZ, P8_RD_ODD
     LD D, 0x55
@@ -1646,6 +1557,7 @@ P8_RD_CHK:
     OR L
     JR NZ, P8_RD_LOOP
 
+P8_TONE:
     LD B, 40
     LD DE, 100
     LD C, 6
@@ -1657,11 +1569,12 @@ P9_START:
     ; PHASE 9: Inverse Checkerboard (Even=AA, Odd=55)
     ; --------------------------------------------------------------------------
     LD C, 9
-    LD A, 5             ; Cyan
-    OUT (0xFE), A
-
     LD HL, 0x4000
 P9_WR_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     BIT 0, L
     JR NZ, P9_WR_ODD
     LD (HL), 0xAA
@@ -1676,6 +1589,10 @@ P9_WR_NEXT:
 
     LD HL, 0x4000
 P9_RD_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     BIT 0, L
     JR NZ, P9_RD_ODD
     LD D, 0xAA
@@ -1691,6 +1608,7 @@ P9_RD_CHK:
     OR L
     JR NZ, P9_RD_LOOP
 
+P9_TONE:
     LD B, 40
     LD DE, 100
     LD C, 5
@@ -1702,13 +1620,15 @@ P10_START:
     ; PHASE 10: Walking 1s Data Bus Test
     ; --------------------------------------------------------------------------
     LD C, 10
-    LD A, 3             ; Magenta
-    OUT (0xFE), A
     LD HL, 0x4000
 P10_ADDR_LOOP:
     LD B, 8
     LD D, 0x01
 P10_BIT_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD (HL), D
     LD A, (HL)
     CP D
@@ -1720,6 +1640,7 @@ P10_BIT_LOOP:
     OR L
     JR NZ, P10_ADDR_LOOP
 
+P10_TONE:
     LD B, 40
     LD DE, 100
     LD C, 3
@@ -1731,13 +1652,15 @@ P11_START:
     ; PHASE 11: Walking 0s Data Bus Test
     ; --------------------------------------------------------------------------
     LD C, 11
-    LD A, 6             ; Yellow
-    OUT (0xFE), A
     LD HL, 0x4000
 P11_ADDR_LOOP:
     LD B, 8
     LD D, 0xFE
 P11_BIT_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD (HL), D
     LD A, (HL)
     CP D
@@ -1749,6 +1672,7 @@ P11_BIT_LOOP:
     OR L
     JR NZ, P11_ADDR_LOOP
 
+P11_TONE:
     LD B, 40
     LD DE, 100
     LD C, 6
@@ -1760,11 +1684,12 @@ P12_START:
     ; PHASE 12: DRAM Refresh Retention Decay Test
     ; --------------------------------------------------------------------------
     LD C, 12
-    LD A, 7             ; White
-    OUT (0xFE), A
-
     LD HL, 0x4000
 P12_WR_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, H
     XOR L
     LD (HL), A
@@ -1773,22 +1698,14 @@ P12_WR_LOOP:
     OR L
     JR NZ, P12_WR_LOOP
 
-    ; --- REFRESH DELAY (Flash Blue/Black) ---
+    ; --- REFRESH DELAY ---
     LD B, 10
 P12_DELAY_OUTER:
-    LD A, 1
-    OUT (0xFE), A
-    LD IX, 0xFFFF
-P12_DEL1:
-    DEC IX
-    LD A, IXH
-    OR IXL
-    JR NZ, P12_DEL1
-
-    LD A, 0
-    OUT (0xFE), A
     LD IX, 0xFFFF
 P12_DEL2:
+    ld a,IXl
+    AND %00000100
+    OUT (0xFE), a
     DEC IX
     LD A, IXH
     OR IXL
@@ -1796,41 +1713,37 @@ P12_DEL2:
     DJNZ P12_DELAY_OUTER
 
     ; Verify pattern
-    LD A, 7
-    OUT (0xFE), A
     LD HL, 0x4000
 P12_RD_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, H
     XOR L
-    LD D, A
-    LD A, (HL)
+    LD D, A          ; Expected value in D
+    LD A, (HL)       ; Actual value read in A
     CP D
-    JP NZ, TEST_FAILED
+    JP NZ, TEST_FAILED ; Triggers TEST_FAILED with correct Actual in A, Expected in D
     INC HL
     LD A, H
     OR L
     JR NZ, P12_RD_LOOP
 
+P12_TONE:
     LD B, 40
     LD DE, 100
     LD C, 7
     LD IX, P13_START
     JP PLAY_TONE
 
-
-
-
 ; ==========================================================================
-; PHASE 13: Address-line walking, A0-A7  (tests IC3/IC4 mux paths)
+; PHASE 13: Address-line walking, A0-A7 (tests IC3/IC4 mux paths)
 ; ==========================================================================
 P13_START:
     LD C, 13
-    LD A, 6                 ; Yellow border
-    OUT (0xFE), A
-
-    LD E, 0                 ; bit index 0..7
+    LD E, 0                  ; bit index 0..7
 P13_NEXT_BIT:
-    ; D = 1 << E
     LD D, 1
     LD A, E
     OR A
@@ -1841,9 +1754,12 @@ P13_SHIFT:
     JR NZ, P13_SHIFT
 P13_MASK_OK:
 
-    ; Write pattern based on L bit E
     LD HL, 0x4000
 P13_WR_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD A, L
     AND D
     JR Z, P13_WR_55
@@ -1858,9 +1774,12 @@ P13_WR_STORE:
     OR L
     JR NZ, P13_WR_LOOP
 
-    ; Verify pattern
     LD HL, 0x4000
 P13_RD_LOOP:
+    ld a,l
+    AND %00000001
+    OUT (0xFE), a
+
     LD A, L
     AND D
     JR Z, P13_RD_55
@@ -1890,7 +1809,7 @@ P13_RD_CHK:
     JP PLAY_TONE
 
 P13_FAIL:
-    LD B, D                 ; B = failed address bit mask
+    LD B, D                  ; B = failed address bit mask
     LD C, 13
     JP ADDR_FAILED
 
@@ -1900,12 +1819,8 @@ P13_FAIL:
 ; ==========================================================================
 P14_START:
     LD C, 14
-    LD A, 5                 ; Cyan border
-    OUT (0xFE), A
-
-    LD E, 0                 ; bit index 0..7 => A8..A15
+    LD E, 0                  ; bit index 0..7 => A8..A15
 P14_NEXT_BIT:
-    ; D = 1 << E
     LD D, 1
     LD A, E
     OR A
@@ -1916,9 +1831,12 @@ P14_SHIFT:
     JR NZ, P14_SHIFT
 P14_MASK_OK:
 
-    ; Write pattern based on H bit E
     LD HL, 0x4000
 P14_WR_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, H
     AND D
     JR Z, P14_WR_55
@@ -1933,9 +1851,12 @@ P14_WR_STORE:
     OR L
     JR NZ, P14_WR_LOOP
 
-    ; Verify pattern
     LD HL, 0x4000
 P14_RD_LOOP:
+    ld a,l
+    AND %00000100
+    OUT (0xFE), a
+
     LD A, H
     AND D
     JR Z, P14_RD_55
@@ -1965,7 +1886,7 @@ P14_RD_CHK:
     JP PLAY_TONE
 
 P14_FAIL:
-    LD B, D                 ; B = failed high-address bit mask
+    LD B, D                  ; B = failed high-address bit mask
     LD C, 14
     JP ADDR_FAILED
 
@@ -1975,10 +1896,9 @@ P14_FAIL:
 ; ==========================================================================
 P15_START:
     LD C, 15
-    LD A, 7                 ; White border
-    OUT (0xFE), A
+    LD A, 0 
+    OUT (0xFE), a
 
-    ; Distinct values in each 16K region
     LD HL, 0x4000
     LD (HL), 0x55
     LD HL, 0x8000
@@ -1999,7 +1919,6 @@ P15_START:
     CP 0x33
     JR NZ, P15_FAIL
 
-    ; Boundary 0x7FFF / 0x8000
     LD HL, 0x7FFF
     LD (HL), 0x11
     LD HL, 0x8000
@@ -2021,18 +1940,15 @@ P15_START:
     JP PLAY_TONE
 
 P15_FAIL:
-    LD B, 0xFF              ; generic decoder / block fault
+    LD B, 0xFF               ; generic decoder / block fault
     LD C, 15
     JP ADDR_FAILED
 
 
-
-
-    ; ==========================================================================
-    ; TEST PASSED: ALL RAM OK!
-    ; ==========================================================================
+; ==========================================================================
+; TEST PASSED: ALL RAM OK!
+; ==========================================================================
 TEST_PASS:
-    ; 1. Clear Screen Bitmap (6144 bytes) to 0x00
     LD HL, 0x4000
     LD DE, 0x1800
 CLR_PIX:
@@ -2043,7 +1959,6 @@ CLR_PIX:
     OR E
     JR NZ, CLR_PIX
 
-    ; 2. Clear Screen Attributes (768 bytes) to 0x00
     LD DE, 0x0300
 CLR_ATTR:
     LD (HL), 0x00
@@ -2053,8 +1968,7 @@ CLR_ATTR:
     OR E
     JR NZ, CLR_ATTR
 
-    ; 3. Play Jolly Tune (Rising Arpeggio)
-    LD C, 4             ; Green border
+    LD C, 4 
     LD B, 100
     LD DE, 150
     LD IX, JT2
@@ -2076,7 +1990,6 @@ JT4:
     JP PLAY_TONE
 
 PASS_LOCK:
-    ; Flash Border Green / Black forever
     LD A, 4
     OUT (0xFE), A
     LD IX, 0xB000
@@ -2088,7 +2001,7 @@ PL_DEL1:
 
     LD A, 0
     OUT (0xFE), A
-    LD IX, 0x9000
+    LD IX, 0x6000
 PL_DEL2:
     DEC IX
     LD A, IXH
@@ -2097,49 +2010,48 @@ PL_DEL2:
     JR PASS_LOCK
 
 
-    ; ==========================================================================
-    ; FAILURE HANDLER
-    ; ==========================================================================
-    ; Register allocation during failure loop:
-    ;   B    = Error Mask (bit=1 means faulty)
-    ;   D    = Phase ID (0..12)
-    ;   IXH  = Region flash colour (6=yellow, 7=white)
-    ;   E    = Flash state (0=ON, 1=short OFF, 2=long pause)
-    ;   IYH  = Frame timer for current flash state
-    ;   IYL  = Number of flashes completed so far
-    ; ==========================================================================
+; ==========================================================================
+; FAILURE HANDLER (STACKLESS / REGISTER ONLY)
+; ==========================================================================
 TEST_FAILED:
-    LD A, C
+    ; A = Actual read value
+    ; D = Expected value
+    ; C = Phase ID (1..12)
+    
+    LD E, A                  ; E = Save Actual value temporarily in E
+    LD A, C                  ; A = Phase ID
     CP 13
-    JR NC, ADDR_FAILED      ; phases 13+ are address/decoder failures
+    JR NC, ADDR_FAILED
 
-    XOR D                   ; A = Actual XOR Expected
-    LD B, A                 ; B = Error Mask
-    LD D, C                 ; D = Phase ID
+    ; Compute bit error mask purely in registers (Actual XOR Expected)
+    LD A, E                  ; A = Actual
+    XOR D                    ; A = Actual XOR Expected
+    LD B, A                  ; B = Error Mask (identifying specific RAM chip D0-D7)
+    LD D, C                  ; D = Phase ID (for the flash counter)
 
     LD A, H
     CP 0x80
-    LD A, 6                 ; yellow = lower RAM
+    LD A, 6                  ; Yellow = lower RAM
     JR C, SAVE_COLOR
-    LD A, 7                 ; white = upper RAM
+    LD A, 7                  ; White = upper RAM
 SAVE_COLOR:
     LD IXH, A
     JR PLAY_BAD_TUNE
 
 ADDR_FAILED:
-    LD D, C                 ; D = Phase ID
+    LD D, C                  ; D = Phase ID
     LD A, H
     CP 0x80
-    LD A, 1     ; 1 = Blue (Lower IC/decoder fault)
+    LD A, 1                  ; Blue = Lower IC/decoder fault
     JR C, SAVE_COLOR_ADDR
-    LD A, 3     ; 3 = Magenta (Upper IC/decoder fault)
+    LD A, 3                  ; Magenta = Upper IC/decoder fault
 SAVE_COLOR_ADDR:
     LD IXH, A
     ; fall through to PLAY_BAD_TUNE
 
 PLAY_BAD_TUNE:
     EXX
-    LD C, 2                 ; Red border
+    LD C, 2                  ; Red border
     LD H, 40
     LD L, 30
 BAD_TUNE_OUTER:
@@ -2168,32 +2080,28 @@ BTI_D2:
     INC H
     DEC L
     JR NZ, BAD_TUNE_OUTER
-    EXX                 ; Restore B (mask) and D (phase)
+    EXX 
 
-    ; ---- Initialise flash state ----
-    LD E, 0             ; State = ON
-    LD IYH, 25          ; Frames ON
-    LD IYL, 0           ; Flashes completed
+    ; Initialise flash state
+    LD E, 0                  ; State = ON
+    LD IYH, 25               ; Frames ON
+    LD IYL, 0                ; Flashes completed
 
-    ; Enter the persistent failure display loop
-  ;;;;  LD SP, 0x0002
+    ; Enable maskable interrupt - we need to wait/sync code with screen.
+    ; NMI 2 will release this halt, and it looks like we drop through to DRAW_BARS_WAKEUP,
+    ; but really the NMI routine is hard-coded to JP DRAW_BARS_WAKEUP!
     EI
-    HALT                ; INT will jump to DRAW_BARS_WAKEUP
-    ; (unreachable below; loop is closed by the INT handler)
+    HALT   
 
-
-    ; ==========================================================================
-    ; PERSISTENT FAILURE DISPLAY (bars always on + bottom-strip phase flash)
-    ;   Entry via INT_HANDLER -> here, once per VSYNC frame.
-    ; ==========================================================================
+; ==================================================================
+; FAILURE DISPLAY (chip isolation bars + bottom-strip phase flash)
+; ==================================================================
 DRAW_BARS_WAKEUP:
     DI
 
-    ; -- Top part: black (before bar drawing starts) --
     XOR A
     OUT (0xFE), A
 
-    ; Sync delay so bars begin at a consistent raster line
     LD HL, 700
 BAR_SYNC_DELAY:
     DEC HL
@@ -2201,26 +2109,25 @@ BAR_SYNC_DELAY:
     OR L
     JR NZ, BAR_SYNC_DELAY
 
-    ; -- Draw the 8 data-bit bars (D7 down to D0) --
-    LD C, 8             ; 8 bits = 8 horizontal bars
-    LD A, B             ; A = Error Mask
+    ; Draw the 8 data-bit bars (D7 down to D0)
+    LD C, 8                  ; 8 bits = 8 horizontal bars
+    LD A, B                  ; A = Error Mask
 
 BARS_BIT_LOOP:
-    RLCA                ; Shift MSB (D7 first down to D0) into Carry
-    LD IXL, A           ; Save rotated mask state in IXL (IXH is safe)
+    RLCA                     ; Shift MSB into Carry
+    LD IXL, A                ; Save rotated mask state in IXL
 
     JR C, BAR_FAULTY
 
 BAR_GOOD:
-    LD A, 4             ; GREEN  (Good Bit = 0)
+    LD A, 4                  ; GREEN (Good Bit = 0)
     JR BAR_COLOR_SET
 BAR_FAULTY:
-    LD A, 2             ; RED (Faulty Bit = 1)
+    LD A, 2                  ; RED (Faulty Bit = 1)
 
 BAR_COLOR_SET:
-    OUT (0xFE), A       ; Set border colour for current bit bar
+    OUT (0xFE), A            ; Set border colour for current bit bar
 
-    ; --- BAR ON DELAY ---
     LD HL, 241/2
 BAR_ON_DELAY:
     DEC HL
@@ -2228,9 +2135,8 @@ BAR_ON_DELAY:
     OR L
     JR NZ, BAR_ON_DELAY
 
-    ; --- BLACK GAP DELAY ---
     XOR A
-    OUT (0xFE), A       ; Black separator between bars
+    OUT (0xFE), A 
     LD HL, 94/2
 BAR_OFF_DELAY:
     DEC HL
@@ -2238,25 +2144,22 @@ BAR_OFF_DELAY:
     OR L
     JR NZ, BAR_OFF_DELAY
 
-    LD A, IXL           ; Restore rotated mask state
+    LD A, IXL 
     DEC C
     JR NZ, BARS_BIT_LOOP
 
-    ; ---------------------------------------------------------------------
-    ; -- Bottom strip: phase-ID flash (fills remainder of the frame) --
-    ; ---------------------------------------------------------------------
+    ; Bottom strip: phase-ID flash
     LD A, E
     OR A
     JR Z, FLASH_ON
     CP 1
     JR Z, FLASH_OFF
-    ; State 2 = long pause (black)
     XOR A
     OUT (0xFE), A
     JR FLASH_STATE_DONE
 
 FLASH_ON:
-    LD A, IXH           ; Region colour (Red / Cyan)
+    LD A, IXH 
     OUT (0xFE), A
     JR FLASH_STATE_DONE
 
@@ -2265,7 +2168,6 @@ FLASH_OFF:
     OUT (0xFE), A
 
 FLASH_STATE_DONE:
-    ; -- Advance flash state machine when frame timer expires --
     DEC IYH
     JR NZ, FRAME_DONE
 
@@ -2275,52 +2177,44 @@ FLASH_STATE_DONE:
     CP 1
     JR Z, WAS_OFF
 
-    ; Was in long pause -> restart count from zero
     LD E, 0
     LD IYH, 25
     LD IYL, 0
     JR FRAME_DONE
 
 WAS_ON:
-    ; ON phase just finished
     INC IYL
     LD A, IYL
     CP D
     JR Z, ALL_FLASHES_DONE
 
-    ; More flashes to go -> short black pause
     LD E, 1
     LD IYH, 15
     JR FRAME_DONE
 
 ALL_FLASHES_DONE:
-    ; All D flashes shown -> long pause before restarting
     LD E, 2
     LD IYH, 60
     JR FRAME_DONE
 
 WAS_OFF:
-    ; Short pause done -> back to ON
     LD E, 0
     LD IYH, 25
 
 FRAME_DONE:
-    ; Sync to next VSYNC. INT fires, jumps to INT_HANDLER,
-    ; which returns control back to DRAW_BARS_WAKEUP.
-
-   ;;;;;;;;; LD SP, 0x0002
     EI
-    HALT
-    JP DRAW_BARS_WAKEUP ; Fallback (normally the INT handler handles this)
+    HALT  
+    ; NMI routine (0x2222) is hard-coded to JP DRAW_BARS_WAKEUP
+    JP DRAW_BARS_WAKEUP  ; NOT NEEDED
 
 
-    ; ==========================================================================
-    ; STACKLESS AUDIO SUBROUTINE
-    ; ==========================================================================
+; ==========================================================================
+; STACKLESS AUDIO SUBROUTINE
+; ==========================================================================
 PLAY_TONE:
 PT_LOOP:
     LD A, C
-    OR 0x10             ; Set Beeper bit 4 high
+    OR 0x10                  ; Set Beeper bit 4 high
     OUT (0xFE), A
     LD A, B
 PT_DEL1:
@@ -2328,7 +2222,7 @@ PT_DEL1:
     JR NZ, PT_DEL1
 
     LD A, C
-    AND 0xEF            ; Set Beeper bit 4 low
+    AND 0xEF                 ; Set Beeper bit 4 low
     OUT (0xFE), A
     LD A, B
 PT_DEL2:
@@ -2340,22 +2234,11 @@ PT_DEL2:
     OR E
     JR NZ, PT_LOOP
 
-    JP (IX)             ; Stackless Return
-
-
-
-
-
-
-
-
+    JP (IX)                  ; Stackless Return
 
 ;-------------------------------------------------------------------------
-
+; END OF RAM TEST SECTION
 ;-------------------------------------------------------------------------
-
-;-------------------------------------------------------------------------
-
 
 	IF $ > $3d00
 	.ERROR "CODE OVERLAPS"
