@@ -25,7 +25,7 @@
 ; Tested on both 48K and 128K machines (using '_ROMCS' & 'ROM1_OE').
 ; - 48K: _ROMCS (edge 25B) is NOT USED on +2a/b or +3 boards.
 ; - PCB now includes jumper labeled "BOOT128" which allows 128K machines to access 
-;   the sna ROM on 48K machines. Infact it could just be solder blob/bridge and 
+;   the sna ROM on 48K machines. In fact it could just be solder blob/bridge and 
 ;   has no effect on 48k machines.
 ;   128k needs longer pause for a80 reset - see Arduino code 'Z80Bus::resetZ80()'
 ;
@@ -40,7 +40,7 @@ SCREEN_ATTRIBUTES_START     EQU $5800
 SCREEN_ATTRIBUTES_END       EQU $5AFF
 SCREEN_ATTRIBUTES_SIZE      EQU SCREEN_ATTRIBUTES_END - SCREEN_ATTRIBUTES_START + 1 ; 768 bytes
 
-LOADING_COLOUR_MASK			EQU %00000001 ; flashing boarder while loading data
+LOADING_COLOUR_MASK			EQU %00000001 ; flashing border while loading data
 
 ;******************************************************************************
 ;   MACRO SECTION
@@ -94,7 +94,7 @@ ORG $0000
 L0000:  
 	DI           
 	; This stack is only for menu use (this does not include the in-game menu)
-	; Note: At game loading time, SP is reasigned with 'command_SetStack' from the Arduino.
+	; Note: At game loading time, SP is reassigned with 'command_SetStack' from the Arduino.
 	;       We use screen memory for the temp stack (our stack usage is only 1 deep!) while restoring the game.
 	ld SP,0xFFFF
 
@@ -119,7 +119,7 @@ return_ClearScreenAttributes_ForStartup_StackAbused:
     LD BC, $7FFD      
     OUT (C), A        ; Lock and select Bank 0/Screen 5
 	;------------------------------------------
-	HALT  ; Syncronise with Arduino 
+	HALT  ; Synchronize with Arduino 
 	; SET_BORDER 6   ; DEBUG
 	jp mainloop
 
@@ -136,16 +136,6 @@ ORG $0038
 L0038:   
 	RET 	; 10 t-states
 
-
-
-;  FUTURE THING !!!!!!!!!!!!!!!!!!!!! 
-
-
-
-; The setup code for this could place the stack in ROM (say, LD SP, 0x3FFF),
-; and since we always need to go back to the main loop, we could change the
-; "RET" above to a "JP mainloop". This way, even less RAM gets walked over
-; during game start-up.
 
 ;----------------------------------------------------------------------------------
 
@@ -343,8 +333,8 @@ command_Fill:
     ld l, a                    
     
     ; Divide count by 2 for word-based fill
-    srl d                      ; A = high byte of count/2
-    rr e                       ; E = low byte of count/2
+    srl d                      ; high byte of count/2
+    rr e                       ; low byte of count/2
     
     ; Process 256-word blocks (if A > 0)
     ld a, d                    ; A = high byte
@@ -395,7 +385,7 @@ readDataLoop:
 ; Receive Data Transfer from Arduino
 command_Copy: 
 ;------------------------------------------------------
-	; Same as TRANSFER DATA but without the flashing boarder.
+	; Same as TRANSFER DATA but without the flashing border.
 	halt							; Synchronizes with Arduino (NMI to continue)
 	in b,(c)  				; The transfer size: 1 byte
 	READ_PAIR_WITH_HALT h,l	; HL = Destination address
@@ -761,15 +751,18 @@ L04B0:
 ;------------------------------------------------------------------------
 .restoreInGameState: 
 ;------------------------------------------------------------------------
-
+ 
 	halt 
-    in a, ($1f) 	
+    in a, ($1f) 	    ;   sp_hi
 	ld h,a			
 	halt 
-    in a, ($1f) 
+    in a, ($1f)         ;   sp_lo
 	ld l,a			
+    ; NOTE ABOUT ABOVE SP READ: Future-proofing things in case I need a full stack during the pause menu (this SP part currently does nothing; HL is overwritten shortly after).
+    ; But for now, this works as I can safely borrow 2 bytes from the stack in any register without needing to park stack space elsewhere.
+    ; (IngameHook_SaveState plays nice and keeps the stack safe while entering the pause menu)
 
-	pop de
+	pop de   ; Borrow 2 bytes from the stack - keeping them safe in DE
 
 	halt 
     in a, ($1f) 
@@ -803,6 +796,8 @@ L04B0:
     in a, ($1f) 
 	ld iyl,a			; IYL
 
+    ; -----------------------------
+    ; SWAPPING TO RESTORE SPARE REGS
     ex   af,af'
     exx
 
@@ -837,6 +832,7 @@ L04B0:
 
     exx
     ex   af,af'
+    ; -----------------------------
 
 	halt
     in a, ($1f)   	 ; IFF2
@@ -849,7 +845,7 @@ L04B0:
 	push af
 	pop af 
 
-	push de
+	push de  ;  give the borrowed 2 bytes back
 
 	halt 
 	in a, ($1f) 
@@ -872,7 +868,7 @@ L04B0:
 	push af
 	pop af 
 
-	push de		; give stack back
+	push de		;  give the borrowed 2 bytes back
 
 	halt 
 	in a, ($1f) 
@@ -924,7 +920,7 @@ L04B0:
 	out  (0x1F), a
 	halt
 
-	; SP Capture
+	; SP Capture - not needed (future proofing)
 	ld hl, 0   
 	add hl, sp 
 	ld   a,h				; SP-hi
@@ -956,12 +952,12 @@ L04B0:
 .SendRegs:
 
 	; --------------------------------------------------
-	pop de	; make room on stack - DE will restore
+	pop de	 ; Borrow 2 bytes from the stack (It's the RET address as the NMI hardware pushed it )
 	; --------------------------------------------------
-	push af 				; use stack to get flag
+	push af  ; Stack trick to get the flag reg!
     pop bc  
 	; --------------------------------------------------
-	ld   a,c                ; F (from C)
+	ld   a,c                ; flag reg (from C)
     out  (0x1F), a
     halt
 
@@ -979,6 +975,8 @@ L04B0:
 	out  (0x1F), a
 	halt
 
+    ; -----------------------------
+    ; SWAPPING TO RESTORE SPARE REGS
     ex   af,af'
     exx
 	out  (0x1F), a			; a'
@@ -1013,8 +1011,9 @@ L04B0:
 
     exx
     ex   af,af'
+    ; -----------------------------
 
-	push de  ; DE holds SP - Restore as we borrowed 1 off the stack
+	push de  ; DE holds SP - Restore as we borrowed 2 bytes off the stack
 
 	;--------------------------------------------------------
 	; Mute the AY-3-8912 sound chip (128K Spectrum)
@@ -1026,6 +1025,9 @@ L04B0:
     LD   B, $BF           
     LD   A, $FF           ; disable tone + noise on A/B/C
     OUT  (C), A            
+
+    ; NOTE :  SEE HOW THIS GOES MAY NEED TO PUT THINGS BACK FOR AY-3 (SOME MUSIC MAY NOTE LIKE IT)
+
 	;--------------------------------------------------------
 
     jp mainloop         
@@ -1194,7 +1196,7 @@ cleanup:
 ORG $16D4       ; Must match stock ROM's 7 bytes here (this code will be swapped out)
 L16D4:  
 	; --------------------------------------------------------------------
-	; **** idel loop - mirrow rom will break us out of this with nops ****
+	; **** idel loop - mirror rom will break us out of this with nops ****
 	dec a  								; cancel out the mirrored ROM’s INC A
 	.idleGameStart: jr .idleGameStart   ; Idle loop
 	; -------------------------------------------------------------------- 
@@ -1250,7 +1252,7 @@ L16D4:
 ;     |   6   | Verify L,    Write High Addr Byte (H)(Asc)  | Full 48K           |
 ;     |   7   | Verify H                 (Descending)       | Full 48K           |
 ;     |   8   | Checkerboard      (Even=55, Odd=AA, Asc)    | Full 48K           |
-;     |   9   | Inverse Checkboard(Even=AA, Odd=55, Asc)    | Full 48K           |
+;     |   9   | Inverse Checkerboard (Even=AA, Odd=55, Asc) | Full 48K           |
 ;     |  10   | Walking 1s Data Bus      (Ascending)        | Full 48K           |
 ;     |  11   | Walking 0s Data Bus      (Ascending)        | Full 48K           |
 ;     |  12   | DRAM Refresh Retention Decay                | Full 48K           |
@@ -1313,7 +1315,7 @@ DEFS 257, 0x22      ; 257 bytes of 0x22.  (When IM 2 fires we jump to 0x2222)
 
 ; *********************************************************************
 
-; Interupt handler - 0x2222
+; Interrupt handler - 0x2222
 ORG 0x2222      
 INT_HANDLER:
     JP DRAW_BARS_WAKEUP
@@ -2277,18 +2279,18 @@ DS  16384 - last	; leave rest of rom blank
 
 ;******************************************************
 ; todo 
-; 1/ Shorten commands i.e. 'GO' to 'G' [DONE] 
-; 2/ Add SCR loading/viewing "SC" [DONE]
-; 3/ Add PSG Files - AY Player  "PS" 
-; 4/ Add GIF Files - Gif Viewer/Player "GI"
+; 1/ Shorten commands i.e. 'GO' to 'G' [DONE] removed now jmp table 
+; 2/ Add SCR loading/viewing  [DONE]
+; 3/ Add PSG Files - AY Player  
+; 4/ Add GIF Files - Gif Viewer/Player
 ; 5/ reorder incoming snapshot header [DONE]
-; 6/ Options to change loading boarder (off, colour choice)
+; 6/ Options to change loading border (off, colour choice)
 ; 7/ Options to slow down loading, mimic tapes
-; 8/ load binary TAP files (add command "T")
+; 8/ load binary TAP files
 ; 9/ load TZX files
 ; 10/ Load Z80 Files  [DONE]
 ; 11/ Load PNG file
-; 12/ Support poke cheats
+; 12/ Support poke cheats [DONE]
 ; 13/ Analyse games at load time, add lives + cheats
 ; 14/ Analyse music players extract, enable for AY on 48k.
 ; 15/ Compress data/unpack - with the aim of faster load times [DONE]
@@ -2296,9 +2298,13 @@ DS  16384 - last	; leave rest of rom blank
 ; 17/ View game screens/scroll and pick one by picutre view (load just sna screen part)
 ; 18/ Move stack for menu stuff (currently it's using screen mem) [DONE]
 ; 19/ Relocate stack anywhere in memory [DONE]
-; 20/ Launcher code can be relocated depending on game [MAYBE, HOWEVER IT'S NOW JUST 3BYTES]
-; 21/ Command to upload code and execute 
-; 22/ Joystick remapping including 2nd button support
+; 20/ Launcher code can be relocated depending on game [NOT NEEDED NOW] ... JUST 3BYTES which is now restored
+; 21/ Command to upload code and execute [NOT NEEDED]
+; 22/ Joystick remapping including 2nd button support [1/2 DONE.. needs config]
+; 23/ "O" , "P" keys to scroll a whole menu page
+; 24/ Menu navigation sounds
+; 25/ SlowMo [DONE]
+; 26/ RAM Tester [DONE]
 ;*****************************
 
 

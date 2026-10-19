@@ -72,6 +72,8 @@ void memsetZero(byte* b, uint16_t len);
 void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
 void delay16(uint16_t ms);
 
+void searchAndDisplayGraphics();
+
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
 byte reverseBits(byte data);

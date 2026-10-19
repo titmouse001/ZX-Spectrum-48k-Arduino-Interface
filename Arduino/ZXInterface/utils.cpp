@@ -465,111 +465,209 @@ void Utils::clearTopBar(uint8_t col) {
   }
 }
 
-// ======================
-// ARCHIVED CODE SECTION:
-// ======================
+void Utils::searchAndDisplayGraphics() {
 
-// The 1-bit HALT-pulse protocol has been replaced as I've added additional supporting hardware
-// to the curcuit design allowing the OUT instruction to be used instead.
-//
-// The HALT-pulse method is actually quite impressive - it's surprising how well it works.
-// It’s probably a bulletproof poor mans out method, since the pulse timing
-// makes it far less likely to be affected by interference - as HALT stays active
-// long enough to ride through most real-world noise.
+  // WORKING ON IT!
 
-// // get16bitPulseValue: Used to get the command functions (addresses) from the speccy.
-// // The speccy broadcasts all the functions at power up.
-// // uint16_t Utils::get16bitPulseValue() {
-// //   constexpr uint16_t BIT_TIMEOUT_US  = 70; //120+20;
-// //   uint16_t value = 0;
-// //   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
-// //     uint8_t pulseCount = 0;
-// //     uint32_t lastPulseTime = 0;
-// //     while (1) {
-// //       // Service current HALT if active
-// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH
-// //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-// //         // digitalWriteFast(Pin::Z80_NMI, LOW);
-// //         // digitalWriteFast(Pin::Z80_NMI, HIGH);
-// //         Z80Bus::triggerZ80NMI();
-// //         pulseCount++;
-// //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-// //       }
-// //       // Detect end marker delay at end of each single bit
-// //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
-// //         break;
-// //       }
-// //     }
-// //     if (pulseCount == 2) {  // collect set bit
-// //       value += 1 << (15 - i);
-// //     }
-// //   }
-// //   return value;
-// // }
 
-// // uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
-// //   constexpr uint16_t BIT_TIMEOUT_US  = 25; // 70; //120+20;
-// //   uint8_t value = 0;
-// //   for (uint8_t i = 0; i < 8; i++) { // 8 bits
-// //     uint8_t pulseCount = 0;
-// //     uint32_t lastPulseTime = 0;
-// //     while (1) {
-// //       // Service current HALT if active
-// //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT line to go HIGH
-// //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
-// // //        digitalWriteFast(Pin::Z80_NMI, LOW);
-// // //        digitalWriteFast(Pin::Z80_NMI, HIGH);
-// //         Z80Bus::triggerZ80NMI();
-// //         pulseCount++;
-// //         lastPulseTime = micros();  // reset timer, allow another pulse to be sampled
-// //       }
-// //       // Detect end marker delay at end of each single bit
-// //       if ((pulseCount > 0) && ((micros() - lastPulseTime) > BIT_TIMEOUT_US )) {
-// //         break;
-// //       }
-// //     }
-// //     if (pulseCount == 2) {  // collect set bit
-// //       value += 1 << (7 - i);
-// //     }
-// //   }
-// //   return value;
-// // }
+  // // =========================================================================
+  // // CONFIGURATION
+  // // =========================================================================
+  // constexpr uint8_t  SPRITE_WIDTH_BYTES  = 3;    // Sprite width in bytes (e.g., 2 = 16 pixels)
+  // constexpr uint8_t  SPRITE_HEIGHT_LINES = 8;   // Sprite height in pixel lines
+  // constexpr uint16_t BYTE_OFFSET        = 0;    // Start byte alignment shift
+  // constexpr uint32_t PAUSE_MS           = 2000; // Pause per full screen page
 
-// ========================
+  // constexpr uint16_t FETCH_CHUNK_SIZE   = 128;
+  // uint8_t chunkBuffer[FETCH_CHUNK_SIZE];
 
-// Not used ...
-//
-// __attribute__((optimize("-Ofast")))
-// void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition) {
-//   uint16_t byteIndex = bitPosition >> 3;   // /8
-//   uint8_t  bitIndex  = bitPosition & 7;    // %8
-//   // Using a WORD to allow for a boundary crossing
-//   uint16_t aligned = (uint16_t)input << (8 - bitWidth);
-//   output[byteIndex] |= aligned >> bitIndex;
-//   if (bitIndex + bitWidth > 8) {  // spans across two bytes
-//     output[byteIndex + 1] |= aligned << (8 - bitIndex);
-//   }
-// }
-//
-// __attribute__((optimize("-Ofast")))
-// byte reverseBits(byte data) {
-//   data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
-//   data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
-//   data = (data & 0xAA) >> 1 | (data & 0x55) << 1;
-//   return data;
-// }
-//
-// __attribute__((optimize("-Ofast")))
-// void swap(byte &a, byte &b) {
-//   byte temp = a;
-//   a = b;
-//   b = temp;
-// }
-//=============================
+  // uint32_t currentAddr = 0x5B00 + BYTE_OFFSET;
 
-//
-// NOTES:
-// 1,000,000 microseconds to a second
-// T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
-// 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
-// 20 T-States / 0.285714 = 70 t-states
+  // // Grid coordinates in pixels: X (0..255 in 8px / 1-byte steps), Y (0..191 pixel lines)
+  // uint16_t gridX = 0;
+  // uint16_t gridY = 0;
+
+  // constexpr uint16_t spriteTotalBytes = SPRITE_WIDTH_BYTES * SPRITE_HEIGHT_LINES;
+  // constexpr uint16_t spriteWidthPixels = SPRITE_WIDTH_BYTES * 8; // 8 pixels per byte
+  // uint16_t spriteByteIdx = 0;
+
+  // while (currentAddr <= (0xFFFF - FETCH_CHUNK_SIZE)) {
+  //   // -----------------------------------------------------------------
+  //   // PHASE 1: Fetch chunk into local RAM buffer
+  //   // -----------------------------------------------------------------
+  //   RequestSendDataPacket pkt(FETCH_CHUNK_SIZE, currentAddr);
+  //   Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+
+  //   for (uint16_t i = 0; i < FETCH_CHUNK_SIZE; ++i) {
+  //     chunkBuffer[i] = Z80Bus::get_IO_Byte();
+  //   }
+
+  //   // -----------------------------------------------------------------
+  //   // PHASE 2: Render buffer to screen
+  //   // -----------------------------------------------------------------
+  //   for (uint16_t i = 0; i < FETCH_CHUNK_SIZE; ++i) {
+  //     uint8_t b = chunkBuffer[i];
+
+  //     // Relative byte offset inside the sprite (+8 pixels per X byte)
+  //     uint16_t relX = (spriteByteIdx % SPRITE_WIDTH_BYTES) * 8;
+  //     uint16_t relY = (spriteByteIdx / SPRITE_WIDTH_BYTES);
+
+  //     uint16_t drawX = gridX + relX; // 0..255 pixels
+  //     uint16_t drawY = gridY + relY; // 0..191 lines
+
+  //     if (drawX < 256 && drawY < 192) {
+  //       // Pass byte column (drawX / 8) or pixel X depending on your function signature
+  //       uint16_t screenAddress = zx_spectrum_screen_address(drawX, drawY);
+  //       CopyPacket drawPkt(screenAddress, 1);
+  //       Z80Bus::sendBytes8((uint8_t*)&drawPkt, sizeof(CopyPacket));
+  //       Z80Bus::sendBytes8(&b, 1);
+  //     }
+
+  //     spriteByteIdx++;
+
+  //     // Full sprite completed? Advance grid position
+  //     if (spriteByteIdx >= spriteTotalBytes) {
+  //       spriteByteIdx = 0;
+  //       gridX += spriteWidthPixels; // Advance X by sprite width (in 8px byte steps)
+
+  //       // Hit right edge of screen? (256 pixels / 32 byte columns)
+  //       if (gridX + spriteWidthPixels > 256) {
+  //         gridX = 0;
+  //         gridY += SPRITE_HEIGHT_LINES;
+
+  //         // Hit bottom edge of screen? (192 pixel lines)
+  //         if (gridY + SPRITE_HEIGHT_LINES > 192) {
+  //           delay(PAUSE_MS); // PAUSE FOR 2 SECONDS PER FULL PAGE
+  //           gridX = 0;
+  //           gridY = 0;
+  //         }
+  //       }
+  //     }
+  //   }
+
+  //   currentAddr += FETCH_CHUNK_SIZE;
+  // }
+
+  // delay(5000);
+}
+
+
+
+
+  // ======================
+  // ARCHIVED CODE SECTION:
+  // ======================
+
+  // The 1-bit HALT-pulse protocol has been replaced as I've added additional
+  // supporting hardware to the curcuit design allowing the OUT instruction to
+  // be used instead.
+  //
+  // The HALT-pulse method is actually quite impressive - it's surprising how
+  // well it works. It’s probably a bulletproof poor mans out method, since the
+  // pulse timing makes it far less likely to be affected by interference - as
+  // HALT stays active long enough to ride through most real-world noise.
+
+  // // get16bitPulseValue: Used to get the command functions (addresses) from
+  // the speccy.
+  // // The speccy broadcasts all the functions at power up.
+  // // uint16_t Utils::get16bitPulseValue() {
+  // //   constexpr uint16_t BIT_TIMEOUT_US  = 70; //120+20;
+  // //   uint16_t value = 0;
+  // //   for (uint8_t i = 0; i < 16; i++) { // 16 bits, 2 bytes
+  // //     uint8_t pulseCount = 0;
+  // //     uint32_t lastPulseTime = 0;
+  // //     while (1) {
+  // //       // Service current HALT if active
+  // //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT
+  // line to go HIGH
+  // //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+  // //         // digitalWriteFast(Pin::Z80_NMI, LOW);
+  // //         // digitalWriteFast(Pin::Z80_NMI, HIGH);
+  // //         Z80Bus::triggerZ80NMI();
+  // //         pulseCount++;
+  // //         lastPulseTime = micros();  // reset timer, allow another pulse
+  // to be sampled
+  // //       }
+  // //       // Detect end marker delay at end of each single bit
+  // //       if ((pulseCount > 0) && ((micros() - lastPulseTime) >
+  // BIT_TIMEOUT_US )) {
+  // //         break;
+  // //       }
+  // //     }
+  // //     if (pulseCount == 2) {  // collect set bit
+  // //       value += 1 << (15 - i);
+  // //     }
+  // //   }
+  // //   return value;
+  // // }
+
+  // // uint8_t Utils::get8bitPulseValue_NO_LONGER_USED() {
+  // //   constexpr uint16_t BIT_TIMEOUT_US  = 25; // 70; //120+20;
+  // //   uint8_t value = 0;
+  // //   for (uint8_t i = 0; i < 8; i++) { // 8 bits
+  // //     uint8_t pulseCount = 0;
+  // //     uint32_t lastPulseTime = 0;
+  // //     while (1) {
+  // //       // Service current HALT if active
+  // //       if (digitalReadFast(Pin::Z80_HALT) == 0) {  // Waits for Z80 HALT
+  // line to go HIGH
+  // //         // Pulse the Z80's /NMI line: LOW -> HIGH to un-halt the CPU.
+  // // //        digitalWriteFast(Pin::Z80_NMI, LOW);
+  // // //        digitalWriteFast(Pin::Z80_NMI, HIGH);
+  // //         Z80Bus::triggerZ80NMI();
+  // //         pulseCount++;
+  // //         lastPulseTime = micros();  // reset timer, allow another pulse
+  // to be sampled
+  // //       }
+  // //       // Detect end marker delay at end of each single bit
+  // //       if ((pulseCount > 0) && ((micros() - lastPulseTime) >
+  // BIT_TIMEOUT_US )) {
+  // //         break;
+  // //       }
+  // //     }
+  // //     if (pulseCount == 2) {  // collect set bit
+  // //       value += 1 << (7 - i);
+  // //     }
+  // //   }
+  // //   return value;
+  // // }
+
+  // ========================
+
+  // Not used ...
+  //
+  // __attribute__((optimize("-Ofast")))
+  // void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t
+  // bitPosition) {
+  //   uint16_t byteIndex = bitPosition >> 3;   // /8
+  //   uint8_t  bitIndex  = bitPosition & 7;    // %8
+  //   // Using a WORD to allow for a boundary crossing
+  //   uint16_t aligned = (uint16_t)input << (8 - bitWidth);
+  //   output[byteIndex] |= aligned >> bitIndex;
+  //   if (bitIndex + bitWidth > 8) {  // spans across two bytes
+  //     output[byteIndex + 1] |= aligned << (8 - bitIndex);
+  //   }
+  // }
+  //
+  // __attribute__((optimize("-Ofast")))
+  // byte reverseBits(byte data) {
+  //   data = (data & 0xF0) >> 4 | (data & 0x0F) << 4;
+  //   data = (data & 0xCC) >> 2 | (data & 0x33) << 2;
+  //   data = (data & 0xAA) >> 1 | (data & 0x55) << 1;
+  //   return data;
+  // }
+  //
+  // __attribute__((optimize("-Ofast")))
+  // void swap(byte &a, byte &b) {
+  //   byte temp = a;
+  //   a = b;
+  //   b = temp;
+  // }
+  //=============================
+
+  //
+  // NOTES:
+  // 1,000,000 microseconds to a second
+  // T-States: 4 + 4 + 12 = 20 ish (NOP,dec,jr)
+  // 1 T-state on a ZX Spectrum 48K is approximately 0.2857 microseconds.
+  // 20 T-States / 0.285714 = 70 t-states

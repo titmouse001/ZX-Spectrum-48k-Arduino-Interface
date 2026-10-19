@@ -225,6 +225,7 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
         break;
       case POKE:
         handlePokeMenu();
+        //Utils::searchAndDisplayGraphics();
         break;
       case MEM_VIEW:
         Utils::viewSpeccyMemory();
