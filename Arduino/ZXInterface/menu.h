@@ -9,11 +9,13 @@ class FatFile;
 
 class Menu {
 public:
-  enum Button_t {
+enum Button_t {
     BUTTON_NONE,
     BUTTON_BACK,
     BUTTON_MENU,
-    BUTTON_ADVANCE
+    BUTTON_ADVANCE,
+    BUTTON_PAGE_UP,
+    BUTTON_PAGE_DOWN
   };
   enum MenuAction_t {
     ACTION_NONE,

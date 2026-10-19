@@ -234,7 +234,34 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
         }
         action = ACTION_REFRESH_LIST;
       }
+    } else if (button == BUTTON_PAGE_DOWN) {
+      // Jump forward a full page (Key 'P')
+      const uint16_t rowOffset = currentFileIndex - startFileIndex;
+      if (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) {
+        startFileIndex += SCREEN_TEXT_ROWS;
+      } else {
+        startFileIndex = 0; // wrap to start
+      }
+      currentFileIndex = startFileIndex + rowOffset;
+      if (currentFileIndex >= virtualTotalFiles) {
+        currentFileIndex = virtualTotalFiles - 1;
+      }
+      action = ACTION_REFRESH_LIST;
+    } else if (button == BUTTON_PAGE_UP) {
+      // Jump back a full page (Key 'O')
+      const uint16_t rowOffset = currentFileIndex - startFileIndex;
+      if (startFileIndex >= SCREEN_TEXT_ROWS) {
+        startFileIndex -= SCREEN_TEXT_ROWS;
+      } else {
+        startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS; // wrap to last page
+      }
+      currentFileIndex = startFileIndex + rowOffset;
+      if (currentFileIndex >= virtualTotalFiles) {
+        currentFileIndex = virtualTotalFiles - 1;
+      }
+      action = ACTION_REFRESH_LIST;
     }
+
     if (action != ACTION_NONE) {
       buttonHeld = true;
       lastButtonPressTime = now ;
@@ -276,6 +303,8 @@ Menu::Button_t Menu::getButton() {
   switch (Z80Bus::getKeyboard()) {
     case 'Q': return BUTTON_BACK;
     case 'A': return BUTTON_ADVANCE;
+    case 'O': return BUTTON_PAGE_UP;
+    case 'P': return BUTTON_PAGE_DOWN;
     case 0x0D: return BUTTON_MENU;   // 0x0D=enter
     default: return BUTTON_NONE;
   } 
