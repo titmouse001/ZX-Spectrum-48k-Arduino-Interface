@@ -41,12 +41,14 @@ private:
   static uint16_t startFileIndex;
   static bool buttonHeld;
 
-  static void drawFileList(bool updateText);
+  static void drawFileList(); //bool updateText);
 
   static uint16_t scanFolder(bool reset = false);
   static MenuAction_t getMenuAction(uint16_t totalFiles);
 
   static void drawHighlightBar();
+  static void  goPage(bool forward, uint8_t row, uint16_t total);
+
 };
 
 #endif

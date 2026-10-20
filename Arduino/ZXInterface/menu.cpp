@@ -31,7 +31,7 @@ FatFile* Menu::handleMenu() {
     startFileIndex = (currentFileIndex / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
   }
 
-  drawFileList(true);
+  drawFileList(); //(true);
   drawHighlightBar();
 
   while (true) {
@@ -92,13 +92,13 @@ FatFile* Menu::handleMenu() {
       }
       Menu::waitForRelease();
       Utils::clearScreen(MENU_TEXT_COLOUR); // clear old page
-      drawFileList(true);  // full redraw
+      drawFileList();//(true);  // full redraw
       drawHighlightBar();
       continue;
     }
 
     if (action == ACTION_REFRESH_LIST) {
-      drawFileList(true);
+      drawFileList();//(true);
       drawHighlightBar();
     } else if (action == ACTION_MOVE_DOWN || action == ACTION_MOVE_UP) {
       // Selection moved within the current page. Do not rescan the SD card.
@@ -116,14 +116,14 @@ FatFile* Menu::handleMenu() {
   }
 }
 
-void Menu::drawFileList(bool updateText) {
-  if (!updateText) {
-    // Restore colours
-    for (uint8_t row = 0; row < SCREEN_TEXT_ROWS; ++row) {
-      Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (row << 5), 32, menuRowBaseColour[row]);
-    }
-    return;
-  }
+void Menu::drawFileList() { //bool updateText) {
+  // if (!updateText) {
+  //   // Restore colours
+  //   for (uint8_t row = 0; row < SCREEN_TEXT_ROWS; ++row) {
+  //     Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (row << 5), 32, menuRowBaseColour[row]);
+  //   }
+  //   return;
+  // }
 
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
@@ -185,6 +185,25 @@ void Menu::drawFileList(bool updateText) {
   BufferManager::freeToMark(mark);
 }
 
+
+void Menu::goPage(bool forward, uint8_t row, uint16_t total) {
+  if (total == 0) { startFileIndex = 0; currentFileIndex = 0; return; }
+  if (row >= SCREEN_TEXT_ROWS) row = SCREEN_TEXT_ROWS - 1;   // defensive
+
+  const uint16_t lastPage = ((total - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
+
+  if (forward) {
+    startFileIndex = (startFileIndex < lastPage)
+                     ? startFileIndex + SCREEN_TEXT_ROWS : 0;
+  } else {
+    startFileIndex = (startFileIndex >= SCREEN_TEXT_ROWS)
+                     ? startFileIndex - SCREEN_TEXT_ROWS : lastPage;
+  }
+
+  currentFileIndex = startFileIndex + row;
+  if (currentFileIndex >= total) currentFileIndex = total - 1;
+}
+
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
   // +1 to account for when [/] is added to top of list for navigating back to root
@@ -209,14 +228,17 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
   if (!buttonHeld || (now - lastButtonPressTime >= buttonDelay)) {   // not held or delay elapsed
     MenuAction_t action = ACTION_NONE;
+
+
     if (button == BUTTON_ADVANCE) {
        // Move down or wrap to next page
       if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < virtualTotalFiles - 1) {
         currentFileIndex++;
         action = ACTION_MOVE_DOWN;
       } else {
-        startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
-        currentFileIndex = startFileIndex;
+        //startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
+       // currentFileIndex = startFileIndex;
+        goPage(true, 0, virtualTotalFiles);         // wrap to top of next page
         action = ACTION_REFRESH_LIST;
       }
     } else if (button == BUTTON_BACK) {
@@ -229,36 +251,39 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
           startFileIndex -= SCREEN_TEXT_ROWS;
           currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
         } else {  // 1st page wraps to last page
-          startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
-          currentFileIndex = virtualTotalFiles - 1;
+          goPage(false, SCREEN_TEXT_ROWS - 1, virtualTotalFiles); // wrap to bottom of prev page
+         // startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
+         // currentFileIndex = virtualTotalFiles - 1;
         }
         action = ACTION_REFRESH_LIST;
       }
     } else if (button == BUTTON_PAGE_DOWN) {
       // Jump forward a full page (Key 'P')
-      const uint16_t rowOffset = currentFileIndex - startFileIndex;
-      if (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) {
-        startFileIndex += SCREEN_TEXT_ROWS;
-      } else {
-        startFileIndex = 0; // wrap to start
-      }
-      currentFileIndex = startFileIndex + rowOffset;
-      if (currentFileIndex >= virtualTotalFiles) {
-        currentFileIndex = virtualTotalFiles - 1;
-      }
+        goPage(true,  currentFileIndex - startFileIndex, virtualTotalFiles); // row captured pre-call
+//      const uint16_t rowOffset = currentFileIndex - startFileIndex;
+//      if (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) {
+//        startFileIndex += SCREEN_TEXT_ROWS;
+ //     } else {
+  //      startFileIndex = 0; // wrap to start
+  //    }
+  //    currentFileIndex = startFileIndex + rowOffset;
+  //    if (currentFileIndex >= virtualTotalFiles) {
+   //     currentFileIndex = virtualTotalFiles - 1;
+   //   }
       action = ACTION_REFRESH_LIST;
     } else if (button == BUTTON_PAGE_UP) {
       // Jump back a full page (Key 'O')
-      const uint16_t rowOffset = currentFileIndex - startFileIndex;
-      if (startFileIndex >= SCREEN_TEXT_ROWS) {
-        startFileIndex -= SCREEN_TEXT_ROWS;
-      } else {
-        startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS; // wrap to last page
-      }
-      currentFileIndex = startFileIndex + rowOffset;
-      if (currentFileIndex >= virtualTotalFiles) {
-        currentFileIndex = virtualTotalFiles - 1;
-      }
+   //   const uint16_t rowOffset = currentFileIndex - startFileIndex;
+  //    if (startFileIndex >= SCREEN_TEXT_ROWS) {
+ //       startFileIndex -= SCREEN_TEXT_ROWS;
+  //    } else {
+   //     startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS; // wrap to last page
+  //    }
+ //     currentFileIndex = startFileIndex + rowOffset;
+   //   if (currentFileIndex >= virtualTotalFiles) {
+ //       currentFileIndex = virtualTotalFiles - 1;
+//      }
+        goPage(false, currentFileIndex - startFileIndex, virtualTotalFiles);
       action = ACTION_REFRESH_LIST;
     }
 
@@ -286,11 +311,12 @@ uint16_t Menu::scanFolder(bool reset) {
       Utils::waitForSDCard_Blocking();
     }
     Utils::delay16(20);
-    clr = true;
-  }
-  if (clr) {
     Utils::clearScreen(MENU_TEXT_COLOUR);
+  //  clr = true;
   }
+//  if (clr) {
+//    Utils::clearScreen(MENU_TEXT_COLOUR);
+//  }
   return totalFiles;
 }
 

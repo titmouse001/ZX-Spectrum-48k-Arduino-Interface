@@ -6,18 +6,15 @@
 
 namespace Draw {
 
-    void textCore(int xpos, int ypos, const void *str, bool isFlash);
-    
-    inline void text_P(int xpos, int ypos, const __FlashStringHelper *flashStr) {
+    void textCore(uint8_t xpos, uint8_t ypos, const void *str, bool isFlash);
+        inline void text_P(uint8_t xpos, uint8_t ypos, const __FlashStringHelper *flashStr) {
         textCore(xpos, ypos, flashStr, true);
     }
-    
-    inline void text(int xpos, int ypos, const char *message) {
+    inline void text(uint8_t xpos, uint8_t ypos, const char *message) {
         textCore(xpos, ypos, message, false);
     }
-    
-    void textLine(int ypos, const char *message);
-    void drawTextInternal(int xpos, int ypos, uint8_t charCount, uint8_t *outputLine);
+    void textLine(uint8_t ypos, const char *message);
+    void drawTextInternal(uint8_t xpos, uint8_t ypos, uint8_t charCount, uint8_t *outputLine);
 }
 
 

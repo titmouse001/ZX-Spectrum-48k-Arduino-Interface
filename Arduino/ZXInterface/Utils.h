@@ -68,8 +68,8 @@ void show5VoltRailStatus();
 
 uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
 
-void memsetZero(byte* b, uint16_t len);
-void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
+//void memsetZero(byte* b, uint16_t len);
+// void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
 void delay16(uint16_t ms);
 
 void searchAndDisplayGraphics();

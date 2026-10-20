@@ -22,7 +22,7 @@ constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
  * This avoids worrying about text going over "Screen Third" screen sections.
  */
 __attribute__((optimize("-Ofast"))) 
-void Draw::textLine(int ypos, const char *message) {
+void Draw::textLine(uint8_t ypos, const char *message) {
     uint16_t mark = BufferManager::getMark();
     uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
     RenderFont::prepareTextGraphics(fontData, message);
@@ -42,7 +42,7 @@ void Draw::textLine(int ypos, const char *message) {
     BufferManager::freeToMark(mark);
 }
 
-void Draw::textCore(int xpos, int ypos, const void *str, bool isFlash) {
+void Draw::textCore(uint8_t xpos, uint8_t ypos, const void *str, bool isFlash) {
     uint16_t mark = BufferManager::getMark();
     uint8_t *buffer = BufferManager::allocate(RENDER_SIZE);
     uint8_t charCount;
@@ -57,7 +57,7 @@ void Draw::textCore(int xpos, int ypos, const void *str, bool isFlash) {
     BufferManager::freeToMark(mark);
 }
 
-void Draw::drawTextInternal(int xpos, int ypos, uint8_t charCount, uint8_t *fontData) {
+void Draw::drawTextInternal(uint8_t xpos, uint8_t ypos, uint8_t charCount, uint8_t *fontData) {
 
     CopyPacket pkt;
     const uint8_t byteWidth = ((charCount * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP)) + 7) / 8;

@@ -62,19 +62,19 @@ void InGamePauseMenu::InGameMenuLoop_Blocking(uint8_t borderColour) {
       }
 
       if (runFrame) {
-        digitalWrite(Pin::Z80_BUSREQ, HIGH);  // Resume Z80
-        delay(20);     
+        digitalWriteFast(Pin::Z80_BUSREQ, HIGH);  // Resume Z80
+        Utils::delay16(20);   
       } else {   // defer frame (20ms of frame time)
         for (uint8_t i = 0; i < 10; i++) {
-          digitalWrite(Pin::Z80_BUSREQ, HIGH);
+          digitalWriteFast(Pin::Z80_BUSREQ, HIGH);
           delayMicroseconds(50);   //  pulse allow Z80 RAM refresh
-          digitalWrite(Pin::Z80_BUSREQ, LOW);
+          digitalWriteFast(Pin::Z80_BUSREQ, LOW);
           delayMicroseconds(1950); //  rest of the 2ms now pauses cpu
         }
       }
       frameCounter++;
     } else {   // Normal speed
-      digitalWrite(Pin::Z80_BUSREQ, HIGH);
+      digitalWriteFast(Pin::Z80_BUSREQ, HIGH);
     }
 
     uint8_t buttonData = Utils::readJoystick();
@@ -84,7 +84,7 @@ void InGamePauseMenu::InGameMenuLoop_Blocking(uint8_t borderColour) {
     PORTD = buttonData & INPUT_MASK;
     
     if (buttonData & INPUT_SELECT) {
-      digitalWrite(Pin::Z80_BUSREQ, HIGH); 
+      digitalWriteFast(Pin::Z80_BUSREQ, HIGH); 
       if (process(borderColour)) {
         break;  // back to game loader menu
       }
@@ -133,6 +133,9 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
     Utils::delay16(20);
   }
 }
+
+static const char slowMoText[] PROGMEM = "Low\0Med\0High\0Off";
+static const uint8_t slowMoIdx[4] = {0, 4, 8, 13}; 
 
 bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;
@@ -206,13 +209,18 @@ bool InGamePauseMenu::process(uint8_t borderColour) {
 
     // Draw visually clean SlowMo words instead of numbers
     Draw::text_P(PAUSE_XPOS, getY(MEM_SLOWMO), F("SlowMo"));
-    switch(slowMoLevel) {
-      case 1:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Low")); break;
-      case 2:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Med")); break;
-      case 3:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("High")); break;
-      default: Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Off")); break;
-    }
 
+    // Sketch uses 28560 bytes (92%) 
+//    switch(slowMoLevel) {
+//      case 1:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Low")); break;
+//      case 2:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Med")); break;
+//      case 3:  Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("High")); break;
+//      default: Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), F("Off")); break;
+//    }
+
+   // Sketch uses 28500 bytes (92%) of program storage space. 
+  //  const char* p = (const char*)pgm_read_ptr(&slowMoText[slowMoIdx[slowMoLevel]]);
+    Draw::text_P(PAUSE_XPOS+52, getY(MEM_SLOWMO), FPSTR(&slowMoText[slowMoIdx[slowMoLevel]]) );
     Draw::text_P(PAUSE_XPOS, getY(EXIT), F("Exit"));
 
     result = getSelectedMenuOption_Blocking(selectedIndex);
@@ -294,13 +302,14 @@ void InGamePauseMenu::handlePokeMenu() {
   }
 }
 
+// ! valid addr of 65535 as -1
 int16_t InGamePauseMenu::readNumericInput_Blocking(uint8_t maxDigits, int xPos, int yPos, const char* name, uint16_t min, uint16_t max) {
   Draw::text(xPos, yPos, name);
 
   xPos += strlen(name) * (SmallFont::FNT_WIDTH + SmallFont::FNT_GAP);
   xPos = (xPos + 7) & ~7; // Size Optimization: Replaces ((xPos + 7) / 8) * 8
 
-  uint8_t mark = BufferManager::getMark();
+  uint16_t  mark = BufferManager::getMark();
   char* buf = (char*)BufferManager::allocate(maxDigits + 1);
 
   while (true) {

@@ -293,45 +293,24 @@ void SnapZ80::decodeRLE_core(FatFile *pFile, uint16_t sourceLengthLimit, uint16_
 	BufferManager::freeToMark(mark); // release all mallocs in this method
 }
 
-__attribute__((optimize("-Ofast")))
+
+// Sketch uses 28162 bytes (91%) / old sendRawBytes_core Sketch used 28256 bytes (91%)
+static_assert(FILE_READ_BUFFER_SIZE <= 255, "size must fit in uint8_t");
+//__attribute__((optimize("-Ofast")))  // fast off = Sketch uses 27564 bytes (89%), 
 void SnapZ80::sendRawBytes_core(FatFile* pFile, uint16_t length, uint16_t currentAddress) {
-  const uint16_t PAYLOAD_SIZE = 255;
   uint16_t mark = BufferManager::getMark();
-  uint8_t* fileReadBufferPtr = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
-  uint8_t* txBuffer = BufferManager::allocate(PAYLOAD_SIZE);
-
-  uint8_t commandPayloadPos = 0;
-  uint16_t bytesReadFromSource = 0;
-
-  while (bytesReadFromSource < length) {
-    uint16_t remaining = length - bytesReadFromSource;
-    uint16_t bytesToRead = min((uint16_t)FILE_READ_BUFFER_SIZE, remaining);
-    int16_t bytesRead = pFile->read(fileReadBufferPtr, bytesToRead);
-    if (bytesRead <= 0) break;
-
-    for (int16_t i = 0; i < bytesRead; i++) {
-      txBuffer[commandPayloadPos++] = fileReadBufferPtr[i];
-      if (commandPayloadPos >= PAYLOAD_SIZE) {
-
-		TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
-
-        Z80Bus::sendBytes8((uint8_t*)&header, sizeof (TransferPacket));
-        Z80Bus::sendBytes8(txBuffer, commandPayloadPos);
-        currentAddress += commandPayloadPos;
-        commandPayloadPos = 0;
-      }
-    }
-    bytesReadFromSource += bytesRead;
+  uint8_t* buf  = BufferManager::allocate(FILE_READ_BUFFER_SIZE);
+  while (length) {
+    uint8_t n = (length > FILE_READ_BUFFER_SIZE) ? (uint8_t)FILE_READ_BUFFER_SIZE : (uint8_t)length;
+    int16_t r = pFile->read(buf, n);
+    if (r <= 0) break;
+    n = (uint8_t)r;
+    TransferPacket header(currentAddress, n);
+    Z80Bus::sendBytes8((uint8_t*)&header, sizeof(TransferPacket));
+    Z80Bus::sendBytes8(buf, n);
+    currentAddress+=n;
+    length-=n;
   }
-
-  // Flush any leftover bytes
-  if (commandPayloadPos > 0) {
-	TransferPacket header(currentAddress, commandPayloadPos); // commandPayloadPos will be the length
-	uint8_t headerLen = sizeof (TransferPacket);
-    Z80Bus::sendBytes8((uint8_t*)&header, headerLen);
-    Z80Bus::sendBytes8(txBuffer, commandPayloadPos);
-  }
-
   BufferManager::freeToMark(mark);
 }
 

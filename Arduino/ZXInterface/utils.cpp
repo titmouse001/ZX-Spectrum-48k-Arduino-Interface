@@ -253,10 +253,16 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
   return i;
 }
 
+// Sketch uses 28636 bytes (93%) 
+// static const char hexDigits[] = "0123456789ABCDEF";  
+
+// Sketch uses 28560 bytes (92%) 
+static char getHex(uint8_t n) { n &= 15; return n + (n < 10 ? '0' : 'A' - 10); }
+
 void Utils::viewSpeccyMemory() {
   constexpr uint8_t MAX_CHARS_PER_LINE = 38; // max 42 chars;  // (256pixels/6)
   constexpr uint8_t HEX_TO_SHOW_PER_LINE = 8;
-  int32_t currentBaseAddr = 0x5B00;  // start of program mem
+  uint16_t currentBaseAddr = 0x5B00;  // start of program mem
   uint16_t mark = BufferManager::getMark();
   char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1); // 0 to 38
 
@@ -265,18 +271,16 @@ void Utils::viewSpeccyMemory() {
   lineBuffer[4] = ':';
   lineBuffer[MAX_CHARS_PER_LINE] = '\0';
 
-  static const char hexDigits[] = "0123456789ABCDEF";
-
   while (true) {
     uint16_t tempBaseAddr = currentBaseAddr;
     for (uint16_t i = 0; i < ZX_SCREEN_HEIGHT_BYTES; i++) {
 
       uint8_t pos = 0;
       // Use 6 chars for formatting address i.e. "AEFF: "
-      lineBuffer[0] = hexDigits[(tempBaseAddr >> 12) & 0x0F ];
-      lineBuffer[1] = hexDigits[(tempBaseAddr >> 8)  & 0x0F];
-      lineBuffer[2] = hexDigits[(tempBaseAddr >> 4)  & 0x0F];
-      lineBuffer[3] = hexDigits[(tempBaseAddr & 0x0F) ];
+      lineBuffer[0] = getHex((tempBaseAddr >> 12) & 0x0F );
+      lineBuffer[1] = getHex((tempBaseAddr >> 8)  & 0x0F );
+      lineBuffer[2] = getHex((tempBaseAddr >> 4)  & 0x0F );
+      lineBuffer[3] = getHex((tempBaseAddr & 0x0F) );
       pos+=2;  // skip pre filled
 
       // ASK FOR 8 BYTES
@@ -288,8 +292,8 @@ void Utils::viewSpeccyMemory() {
       for (uint8_t k = 0; k < HEX_TO_SHOW_PER_LINE; ++k) {
         uint8_t b = Z80Bus::get_IO_Byte();
         // hex pair + space e.g. ("1B ")
-        lineBuffer[hexPos]     = hexDigits[(b >> 4) & 0x0f];
-        lineBuffer[hexPos + 1] = hexDigits[(b & 0x0F) ];
+        lineBuffer[hexPos]     = getHex ((b >> 4) & 0x0f );
+        lineBuffer[hexPos + 1] = getHex ((b & 0x0F) );
         hexPos += 3;
 
         // ASCII on the far right, "." for unknown
@@ -298,7 +302,7 @@ void Utils::viewSpeccyMemory() {
       Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels
       tempBaseAddr += HEX_TO_SHOW_PER_LINE;
     }
-
+ 
     while (true) {
       Menu::Button_t btn = Menu::getButton();
       if (btn == Menu::BUTTON_ADVANCE) {
@@ -371,8 +375,14 @@ void Utils::show5VoltRailStatus() {
   ADCSRA |= _BV(ADSC);
   while (bit_is_set(ADCSRA, ADSC));
 
-  uint32_t raw_adc = ADCW;
-  uint32_t raw_vcc = 1105920 / raw_adc;
+  //Sketch uses 28340 bytes (92%)
+  //uint32_t raw_adc = ADCW;
+  //uint32_t raw_vcc = 1105920 / raw_adc;
+  
+  // Sketch uses 28312 bytes (92%) of
+  const uint16_t raw = ADCW;
+  const uint16_t raw_vcc = ((34560u / raw) << 5) + (((34560u % raw) << 5) / raw);  // = 1105920/raw
+  
   filtered_vcc = filtered_vcc - (filtered_vcc >> 6) + raw_vcc;
   uint16_t display_vcc = filtered_vcc >> 6;
   char voltageStr[] = { //'V','o','l','t','a','g','e',':',
@@ -411,52 +421,6 @@ uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
     return (static_cast<uint16_t>(addr_high) << 8) | addr_low;
 
 }
-
-void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
-  uint16_t byteIndex = bitPosition >> 3;
-  uint8_t bitIndex = bitPosition & 7;
-  uint8_t maskedInput = input & 0x3F;
-
-  switch (bitIndex) {
-    case 0: 
-      output[byteIndex] |= (maskedInput << 2); 
-      break;
-    case 1: 
-      output[byteIndex] |= (maskedInput << 1); 
-      break;
-    case 2: 
-      output[byteIndex] |= maskedInput;        
-      break;
-    case 3: 
-      output[byteIndex]     |= (maskedInput >> 1); 
-      output[byteIndex + 1] |= (maskedInput << 7); 
-      break;
-    case 4: 
-      output[byteIndex]     |= (maskedInput >> 2); 
-      output[byteIndex + 1] |= (maskedInput << 6); 
-      break;
-    case 5: 
-      output[byteIndex]     |= (maskedInput >> 3); 
-      output[byteIndex + 1] |= (maskedInput << 5); 
-      break;
-    case 6: 
-      output[byteIndex]     |= (maskedInput >> 4); 
-      output[byteIndex + 1] |= (maskedInput << 4); 
-      break;
-    case 7: 
-      output[byteIndex]     |= (maskedInput >> 5); 
-      output[byteIndex + 1] |= (maskedInput << 3); 
-      break;
-  }
-}
-
-void Utils::memsetZero(byte* b, uint16_t len) {
-  for (; len != 0; len--) { *b++ = 0; }
-}
-
-// void Utils::restorePauseMenuScreen() {
-//   loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE);
-// }
 
 void Utils::clearTopBar(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_WIDTH_BYTES,col);
@@ -663,6 +627,46 @@ void Utils::searchAndDisplayGraphics() {
   //   a = b;
   //   b = temp;
   // }
+
+  
+// void Utils::join6Bits(byte* output, uint8_t input, uint16_t bitPosition) {
+//   uint16_t byteIndex = bitPosition >> 3;
+//   uint8_t bitIndex = bitPosition & 7;
+//   uint8_t maskedInput = input & 0x3F;
+
+//   switch (bitIndex) {
+//     case 0: 
+//       output[byteIndex] |= (maskedInput << 2); 
+//       break;
+//     case 1: 
+//       output[byteIndex] |= (maskedInput << 1); 
+//       break;
+//     case 2: 
+//       output[byteIndex] |= maskedInput;        
+//       break;
+//     case 3: 
+//       output[byteIndex]     |= (maskedInput >> 1); 
+//       output[byteIndex + 1] |= (maskedInput << 7); 
+//       break;
+//     case 4: 
+//       output[byteIndex]     |= (maskedInput >> 2); 
+//       output[byteIndex + 1] |= (maskedInput << 6); 
+//       break;
+//     case 5: 
+//       output[byteIndex]     |= (maskedInput >> 3); 
+//       output[byteIndex + 1] |= (maskedInput << 5); 
+//       break;
+//     case 6: 
+//       output[byteIndex]     |= (maskedInput >> 4); 
+//       output[byteIndex + 1] |= (maskedInput << 4); 
+//       break;
+//     case 7: 
+//       output[byteIndex]     |= (maskedInput >> 5); 
+//       output[byteIndex + 1] |= (maskedInput << 3); 
+//       break;
+//   }
+// }
+
   //=============================
 
   //

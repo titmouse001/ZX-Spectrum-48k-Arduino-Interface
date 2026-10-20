@@ -17,7 +17,7 @@ void Z80Bus::setupPins() {
   pinModeFast(Pin::OE_LATCH, OUTPUT);
   digitalWriteFast(Pin::OE_LATCH,HIGH);   //74HC574PW , #OE_LATCH
   pinModeFast(Pin::Z80_HALT, INPUT);
-  pinMode(Pin::Z80_BUSREQ, OUTPUT);
+  pinModeFast(Pin::Z80_BUSREQ, OUTPUT);
   digitalWriteFast(Pin::Z80_BUSREQ,HIGH); 
   // Same as "pinModeFast(Pin::Z80_D0Pin to Z80_D7Pin, OUTPUT)"
   DDRD = 0xFF;       // Set all PORTD pins as outputs

@@ -207,7 +207,7 @@ void showLoadError(FatFile* pFile, const SnapZ80::Z80HeaderInfo* headerInfo) {
   Utils::clearTopBar(COL::FLASH_RED_WHITE);
   Draw::text_P(0, 0, F("Load Error:"));
 
-  uint8_t mark = BufferManager::getMark();
+  uint16_t  mark = BufferManager::getMark();
   char* buf = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
   pFile->getDisplayName7(buf, ZX_FILENAME_MAX_DISPLAY_LEN);
   Draw::text(12*6, 0, buf);
@@ -240,7 +240,7 @@ void handleSnaFile(FatFile* pFile) {
     // Set stack NOW before sending data over
     Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + TEMP_STACK_SIZE);
 
-    uint8_t mark = BufferManager::getMark();
+    uint16_t  mark = BufferManager::getMark();
     Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
     regs->Z80Snapshot = false;
 
@@ -270,7 +270,7 @@ void handleZ80File(FatFile* pFile) {
   if (ver != Z80_VERSION_UNKNOWN && checkZ80FileValidity(pFile, &headerInfo)) {
     // Setup TEMP STACK before sending snapshot data over
     Z80Bus::setStackCommand(ZX_SCREEN_ADDRESS_START + TEMP_STACK_SIZE);
-    uint8_t mark = BufferManager::getMark();
+    uint16_t  mark = BufferManager::getMark();
     Z80Registers* regs = (Z80Registers*)BufferManager::allocate(sizeof(Z80Registers));
     regs->Z80Snapshot = true;
 
