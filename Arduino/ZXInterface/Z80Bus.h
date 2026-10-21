@@ -36,6 +36,9 @@ extern void hasZ80Resumed();
 
 extern void SetBorderColour(uint8_t colour);
 
+extern void beginBulkRead(uint16_t addr, uint16_t amount);
+extern uint8_t bulkReadByte();
+extern void endBulkRead();
 
 }
 

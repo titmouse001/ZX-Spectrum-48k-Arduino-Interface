@@ -139,66 +139,71 @@ void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& di
   
   file.write((const uint8_t*)regs, sizeof(SNAHeader));  
 
-  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
+  streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START, ZX_SPECTRUM_48K_TOTAL_MEMORY );
+
+//  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
+ 
+//   // Alert Z80 to send memory data packets
+//   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
+//   Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+
+//   // Small delay buffer allowing hardware states to equalize
+//   Utils::delay16(1);  
+
+//   DDRD = 0x00;                    // Set PORTD data pins to inputs
+//   digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
+//   __asm__ __volatile__("nop; nop");
+
+//   // Stream data out of the Z80 bus directly onto the SD file stream
+//   for (uint16_t i = 0; i < size; i++) {
+//     Z80Bus::waitHalt_syncWithZ80();
+//     uint8_t byte = PIND;          // Capture latched data from lines
+//     Z80Bus::triggerZ80NMI();
+//     file.write(byte);
+//   }
   
-  // Alert Z80 to send memory data packets
-  RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
-  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+//   file.close();
 
-  // Small delay buffer allowing hardware states to equalize
-  Utils::delay16(1);  
-
-  DDRD = 0x00;                    // Set PORTD data pins to inputs
-  digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
-  __asm__ __volatile__("nop; nop");
-
-  // Stream data out of the Z80 bus directly onto the SD file stream
-  for (uint16_t i = 0; i < size; i++) {
-    Z80Bus::waitHalt_syncWithZ80();
-    uint8_t byte = PIND;          // Capture latched data from lines
-    Z80Bus::triggerZ80NMI();
-    file.write(byte);
-  }
-  
-  file.close();
-
-  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-  DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
+//   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+//   DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
 }
 
 void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
-  FatFile& file = SdCardSupport::closeFile();
-  FatFile& root = SdCardSupport::reopenRoot();
 
-  while (!file.open(filename, O_CREAT | O_WRONLY)) {
-    // Can't warn user here - need are in the middle of storing memory!!!
+  FatFile& file = SdCardSupport::closeFile();
+  FatFile& root = SdCardSupport::reopenRoot();  
+
+  while (!file.open(filename, O_CREAT | O_WRONLY | O_TRUNC)) {
+    // Can't warn user here - we are in the middle of storing memory!!!
     while (!SdCardSupport::init()) {
       Utils::delay16(20);
     }  // worst case - sd card removed, full reset needed.
   }
 
-  // send header details first (request Z80 to send the memory data)
-  RequestSendDataPacket pkt(size, address);
-  Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+  streamZ80ToFile(file, address, size );
 
-  // Above will be doing a final NMI to unhalt Z80
-  // We need to give it time to catch up before we slam the lines to input!
-  Utils::delay16(1);  // todo - will do for now, but this is way too much time!
+  // // send header details first (request Z80 to send the memory data)
+  // RequestSendDataPacket pkt(size, address);
+  // Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
 
-  DDRD = 0x00;                    // make them inputs
-  digitalWriteFast(PIN_A5, LOW);  // Enable Latch for reading
-  __asm__ __volatile__("nop; nop");
+  // // Above will be doing a final NMI to unhalt Z80
+  // // We need to give it time to catch up before we slam the lines to input!
+  // Utils::delay16(1);  // todo - will do for now, but this is way too much time!
 
-  for (uint16_t i = 0; i < size; i++) {
-    Z80Bus::waitHalt_syncWithZ80();
-    uint8_t byte = PIND;  // Capture latched data
-    Z80Bus::triggerZ80NMI();
-    file.write(byte);
-  }
-  file.close();
+  // DDRD = 0x00;                    // make them inputs
+  // digitalWriteFast(PIN_A5, LOW);  // Enable Latch for reading
+  // __asm__ __volatile__("nop; nop");
 
-  digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
-  DDRD = 0xFF;                     // Set all PORTD pins as outputs
+  // for (uint16_t i = 0; i < size; i++) {
+  //   Z80Bus::waitHalt_syncWithZ80();
+  //   uint8_t byte = PIND;  // Capture latched data
+  //   Z80Bus::triggerZ80NMI();
+  //   file.write(byte);
+  // }
+  // file.close();
+
+  // digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
+  // DDRD = 0xFF;                     // Set all PORTD pins as outputs
 }
 
 bool Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
@@ -428,6 +433,15 @@ void Utils::clearTopBar(uint8_t col) {
     Z80Bus::sendFillCommand(Utils::zx_spectrum_screen_address(0, i), ZX_SCREEN_WIDTH_BYTES, 0);
   }
 }
+
+
+void Utils::streamZ80ToFile(FatFile& f, uint16_t addr, uint16_t size) {
+  Z80Bus::beginBulkRead(addr, size);
+  while (size--) f.write(Z80Bus::bulkReadByte());
+  Z80Bus::endBulkRead();
+  f.close();
+}
+
 
 void Utils::searchAndDisplayGraphics() {
 

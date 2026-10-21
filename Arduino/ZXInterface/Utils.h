@@ -74,6 +74,9 @@ void delay16(uint16_t ms);
 
 void searchAndDisplayGraphics();
 
+void streamZ80ToFile(FatFile& f, uint16_t addr, uint16_t size);
+
+
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
 byte reverseBits(byte data);

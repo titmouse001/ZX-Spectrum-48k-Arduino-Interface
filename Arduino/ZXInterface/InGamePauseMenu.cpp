@@ -447,7 +447,7 @@ void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char*
     }
 
     // Write new metadata inside new folder
-    if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {
+    if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {   // O_TRUNC
       //     meta.head_id = HEAD_ID;
       meta.version = 1;
       strncpy(meta.gameName, dirName, sizeof(meta.gameName));
