@@ -49,11 +49,25 @@ FatFile* Menu::handleMenu() {
     uint16_t lastIndex = currentFileIndex;
     MenuAction_t action = getMenuAction(totalFiles);
 
+    // if (!SdCardSupport::isInserted()) {
+    //   static constexpr uint8_t clrScreenFlag(true);
+    //   Utils::waitForSDCard_Blocking(clrScreenFlag);  // shows message "INSERT SD CARD"
+    //   action = ACTION_REFRESH_LIST;
+    // }
+
     if (!SdCardSupport::isInserted()) {
-      static constexpr uint8_t clrScreenFlag(true);
-      Utils::waitForSDCard_Blocking(clrScreenFlag);  // shows message "INSERT SD CARD"
-      action = ACTION_REFRESH_LIST;
+      Utils::waitForSDCard_Blocking(true);
+      SdCardSupport::resetNavigation();        // depth + history + inSubFolder
+   //   currentFileIndex = 0;
+   //   startFileIndex   = 0;
+      buttonHeld       = false;
+      buttonDelay      = MAX_REPEAT_KEY_DELAY;
+      SdCardSupport::syncRootToDepth();        // re-anchor root on the new card
+      Utils::clearScreen(MENU_TEXT_COLOUR);
+      totalFiles = scanFolder(true);           // re-count
+      action     = ACTION_REFRESH_LIST;
     }
+
 
     if (action == ACTION_SELECT_FILE) {
       bool backOneLevel = (inSubFolder && currentFileIndex == 0);  // Inside folder - first item shows "[/]"
@@ -303,28 +317,30 @@ uint16_t Menu::scanFolder(bool reset) {
     startFileIndex = 0;
   }
   uint16_t totalFiles;
-  bool clr = false;
+  boolean clear=true;
   while ((totalFiles = SdCardSupport::countSnapshotFiles()) == 0) {
     if (SdCardSupport::isInserted()) {
+      if (clear) {
+        Utils::clearScreen(MENU_TEXT_COLOUR);
+        clear = false;
+      }
       Draw::text_P(80, 90, F("NO FILES FOUND"));
+      Utils::delay16(20);
     } else {
       Utils::waitForSDCard_Blocking();
     }
-    Utils::delay16(20);
-    Utils::clearScreen(MENU_TEXT_COLOUR);
-  //  clr = true;
   }
-//  if (clr) {
-//    Utils::clearScreen(MENU_TEXT_COLOUR);
-//  }
   return totalFiles;
 }
 
 Menu::Button_t Menu::getButton() {
   const uint8_t joy = Utils::readJoystick();
+  // bits "XsfFUDLR"
   if (joy & (0x10 | 0x40)) return BUTTON_MENU;
-  if (joy & 0x04) return BUTTON_ADVANCE;
-  if (joy & 0x08) return BUTTON_BACK;
+  if (joy & 0x01) return BUTTON_PAGE_UP;     // Joy left
+  if (joy & 0x02) return BUTTON_PAGE_DOWN;   // Joy Right
+  if (joy & 0x04) return BUTTON_ADVANCE;     // Joy Down
+  if (joy & 0x08) return BUTTON_BACK;        // Joy UP
 
   switch (Z80Bus::getKeyboard()) {
     case 'Q': return BUTTON_BACK;

@@ -18,7 +18,7 @@ void Utils::clearScreen(uint8_t col) {
 }
 
 // Kempston Joystick Support:
-// 1. The Arduino polls the joystick at 50 FPS via a 74HC165 shift register.
+// 1. The Arduino polls the joystick via a 74HC165 shift register.
 // 2. When the Spectrum performs an IN (C) instruction (e.g. LD C,$1F; IN D,(C)), the Arduino drives the Z80 data bus.
 //    A 74HC32 combines the /IORQ, /RD, and /A7 signals to detect when the joystick port is being accessed.
 //    A 74HC245D transceiver connects the Arduino to the Z80 to send joystick data, and it is tri-stated when not in use.
@@ -350,18 +350,22 @@ void Utils::stockRomBoot_Blocking() {
   }
 }
 
-// param:clearScreen If true, clears the display and shows an insertion prompt
 void Utils::waitForSDCard_Blocking(bool clearScreen) {
-  if (!SdCardSupport::init()) { 
-    if (clearScreen) {
+
+  if (clearScreen) {
       Utils::clearScreen(COL::BLACK_WHITE); 
-    }
-    Draw::text_P(80, 90, F("INSERT SD CARD"));
+  }
+  Draw::text_P(80, 90, F("INSERT SD CARD"));
+
+  if (!SdCardSupport::init()) { 
+//    if (clearScreen) {
+//      Utils::clearScreen(COL::BLACK_WHITE); 
+//    }
+//    Draw::text_P(80, 90, F("INSERT SD CARD"));
     do { 
       Utils::delay16(20);
     } while (!SdCardSupport::init()); 
     Utils::clearScreen(COL::BLACK_WHITE);
-    
     // Grace period for card to be seated solid in the reader
     Utils::delay16(650);  
   }

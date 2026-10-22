@@ -157,3 +157,12 @@ bool SdCardSupport::isInserted() {
   cardPresenceValid = true; 
   return cachedCardPresent;
 }
+
+
+void SdCardSupport::resetNavigation() {
+  menuPathDepth = 0;
+  for (uint8_t i = 0; i < FOLDER_NAV_DEPTH; ++i) {
+    menuPathHistory[i] = 0;
+  }
+  Menu::inSubFolder = false;
+}

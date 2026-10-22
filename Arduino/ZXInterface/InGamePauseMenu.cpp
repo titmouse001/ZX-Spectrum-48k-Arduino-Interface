@@ -31,21 +31,6 @@ static const char SAVED_MSG[] PROGMEM = "SAVED";
 
 static uint8_t slowMoLevel = 0;  // 0=Off, 1=Low , 2=Med , 3=High 
 
-// ----------------------------------------------------------------------------------------------
-// HARDWARE SYNC: /NMI TRIGGER LOGIC TO AVOID CORRUPTION
-// ----------------------------------------------------------------------------------------------
-// PCB UPDATE:   (double duty for ShiftRegClockPin)
-// Nano A2 monitors /M1 and /IORQ via a passive resistor logic gate (4.7K per
-// line). This acts as a hardware AND gate for active-low signals: A2 only hits
-// a Logic LOW when both Z80 lines are active, pinpointing the I/O Read cycle.
-// WHY: Most games poll input (IN) when the stack is stable, so using NMI
-// directly after seeing a I/O read means the stack is unlikely to be hijacked.
-//
-// ----------------------------------------------------------------------------------------------
-// waitForUserExit: Processes joystick / PCB button
-//    Each frame the 'PORTD' Port register is updated with fresh joystick data.
-//    (Kempston joy data hits data bus on: IORQ,RD,A7; all LOW)
-// ----------------------------------------------------------------------------------------------
 void InGamePauseMenu::InGameMenuLoop_Blocking(uint8_t borderColour) {
 
   constexpr uint8_t INPUT_UP_MASK = 0b00001000;
@@ -81,6 +66,9 @@ void InGamePauseMenu::InGameMenuLoop_Blocking(uint8_t borderColour) {
     if (buttonData & INPUT_FIRE2) {
       buttonData |= INPUT_UP_MASK;  // up  (BITS: XsfFUDLR)
     }
+
+    // Joystick support: 'PORTD' register is updated with direction data.
+    // (PCB INFO: Kempston joystick outputs to the data bus only when IORQ,RD and A7 are all LOW)
     PORTD = buttonData & INPUT_MASK;
     
     if (buttonData & INPUT_SELECT) {
@@ -136,6 +124,20 @@ uint8_t InGamePauseMenu::getSelectedMenuOption_Blocking(uint8_t& selectedIndex) 
 
 static const char slowMoText[] PROGMEM = "Low\0Med\0High\0Off";
 static const uint8_t slowMoIdx[4] = {0, 4, 8, 13}; 
+
+// ----------------------------------------------------------------------------------------------
+// HARDWARE SYNC: WATCHES /IORQ FOR A SAFE MOMENT TO BREAK IN USING NMI
+// ----------------------------------------------------------------------------------------------
+// PCB UPDATE: Nano pin A2 does double duty alongside ShiftRegClockPin.
+//   A2 monitors /IORQ through a 1k resistor. The Nano switches A2 to input to
+//   read /IORQ, then switches it back to output to drive ShiftRegClockPin.
+//
+// This is the NMI entry point for breaking into a running game.
+//
+// WHY: The safety monitor looks for a safe place to fire the NMI. Once it sees
+// /IORQ asserted, there is a good chance the CPU is at a safe point: most games
+// poll input (IN) when the stack is stable. Firing the NMI then will probably
+// not kill the running game.
 
 bool InGamePauseMenu::process(uint8_t borderColour) {
   uint8_t selectedIndex = 0;

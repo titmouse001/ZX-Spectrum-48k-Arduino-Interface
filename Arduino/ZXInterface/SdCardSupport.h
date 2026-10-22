@@ -38,6 +38,8 @@ static uint16_t countSnapshotFiles();
 static FatFile* openFileByIndex(uint16_t searchIndex);
 static bool openOrCreateDirectory(FatFile& dir, const char* folderName);
 
+static void resetNavigation();  
+
 };
 
 #endif
