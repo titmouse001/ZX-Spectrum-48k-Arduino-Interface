@@ -10,6 +10,12 @@
 #include "pin.h"
 #include "constants.h"
 
+
+void Utils::playClick() {
+  PlayClick playClick;
+  Z80Bus::sendBytes8((uint8_t*)&playClick, sizeof(ClearScreenBitmap));
+}
+
 void Utils::clearScreen(uint8_t col) {
   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, ZX_SCREEN_ATTR_SIZE, col);
   //Z80Bus::sendFillCommand(ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE, 0);

@@ -219,19 +219,28 @@ void Menu::goPage(bool forward, uint8_t row, uint16_t total) {
 }
 
 Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
+  static Button_t lastButton = BUTTON_NONE;
 
   // +1 to account for when [/] is added to top of list for navigating back to root
   uint16_t virtualTotalFiles = totalFiles + (inSubFolder ? 1 : 0);  
   const Button_t button = getButton();
 
-  if (button == BUTTON_MENU) { 
-    return ACTION_SELECT_FILE;
-  }
-
   if (button == BUTTON_NONE) {
+    lastButton = BUTTON_NONE;   // release -> next press of any key clicks again
     buttonHeld = false;
     buttonDelay = MAX_REPEAT_KEY_DELAY;
     return ACTION_NONE;
+  }
+
+  bool clicked = false;
+  if (button != lastButton) {
+    Utils::playClick();
+    clicked = true;
+  }
+  lastButton = button;
+
+  if (button == BUTTON_MENU) { 
+    return ACTION_SELECT_FILE;
   }
 
   const uint32_t now  = millis();
@@ -242,16 +251,12 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
 
   if (!buttonHeld || (now - lastButtonPressTime >= buttonDelay)) {   // not held or delay elapsed
     MenuAction_t action = ACTION_NONE;
-
-
     if (button == BUTTON_ADVANCE) {
        // Move down or wrap to next page
       if (currentFileIndex < startFileIndex + SCREEN_TEXT_ROWS - 1 && currentFileIndex < virtualTotalFiles - 1) {
         currentFileIndex++;
         action = ACTION_MOVE_DOWN;
       } else {
-        //startFileIndex = (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) ? startFileIndex + SCREEN_TEXT_ROWS : 0;
-       // currentFileIndex = startFileIndex;
         goPage(true, 0, virtualTotalFiles);         // wrap to top of next page
         action = ACTION_REFRESH_LIST;
       }
@@ -266,42 +271,23 @@ Menu::MenuAction_t Menu::getMenuAction(uint16_t totalFiles) {
           currentFileIndex = startFileIndex + SCREEN_TEXT_ROWS - 1;
         } else {  // 1st page wraps to last page
           goPage(false, SCREEN_TEXT_ROWS - 1, virtualTotalFiles); // wrap to bottom of prev page
-         // startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS;
-         // currentFileIndex = virtualTotalFiles - 1;
         }
         action = ACTION_REFRESH_LIST;
       }
     } else if (button == BUTTON_PAGE_DOWN) {
       // Jump forward a full page (Key 'P')
-        goPage(true,  currentFileIndex - startFileIndex, virtualTotalFiles); // row captured pre-call
-//      const uint16_t rowOffset = currentFileIndex - startFileIndex;
-//      if (startFileIndex + SCREEN_TEXT_ROWS < virtualTotalFiles) {
-//        startFileIndex += SCREEN_TEXT_ROWS;
- //     } else {
-  //      startFileIndex = 0; // wrap to start
-  //    }
-  //    currentFileIndex = startFileIndex + rowOffset;
-  //    if (currentFileIndex >= virtualTotalFiles) {
-   //     currentFileIndex = virtualTotalFiles - 1;
-   //   }
+      goPage(true,  currentFileIndex - startFileIndex, virtualTotalFiles); // row captured pre-call
       action = ACTION_REFRESH_LIST;
     } else if (button == BUTTON_PAGE_UP) {
       // Jump back a full page (Key 'O')
-   //   const uint16_t rowOffset = currentFileIndex - startFileIndex;
-  //    if (startFileIndex >= SCREEN_TEXT_ROWS) {
- //       startFileIndex -= SCREEN_TEXT_ROWS;
-  //    } else {
-   //     startFileIndex = ((virtualTotalFiles - 1) / SCREEN_TEXT_ROWS) * SCREEN_TEXT_ROWS; // wrap to last page
-  //    }
- //     currentFileIndex = startFileIndex + rowOffset;
-   //   if (currentFileIndex >= virtualTotalFiles) {
- //       currentFileIndex = virtualTotalFiles - 1;
-//      }
-        goPage(false, currentFileIndex - startFileIndex, virtualTotalFiles);
+      goPage(false, currentFileIndex - startFileIndex, virtualTotalFiles);
       action = ACTION_REFRESH_LIST;
     }
 
     if (action != ACTION_NONE) {
+      if (!clicked) {
+        Utils::playClick();
+      }
       buttonHeld = true;
       lastButtonPressTime = now ;
       lastButtonHoldTime = now ;

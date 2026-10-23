@@ -211,6 +211,7 @@ ORG $00D0
 	jp Command_ClearAllRam				; 13
 	jp Command_ClearScreenAttributes	; 14
 	jp Command_ClearBitmapScreen		; 15
+    jp Command_PlayClick	            ; 16
 
 ;------------------------------------------------------
 ;	IF $ > $00D0+(15*3)
@@ -1111,7 +1112,23 @@ clr_bitmap_loop:
 
  	ld sp, ix     
     jp mainloop 
+
 ;-----------------------------------------------------------------------
+; PLAY CLICK SOUND
+Command_PlayClick:
+        ld      a,$10          ; set speaker bit (border black)
+        ld      b,6            ; no# of toggles
+.clickloop:
+        xor     $10            ; toggle speaker (moving in/out)
+        out     ($FE),a         
+
+        ld      e,20           ; delay
+.clickdelay:
+        dec     e
+        jr      nz,.clickdelay
+
+        djnz    .clickloop      ; next speaker toggle
+        jp mainloop 
 
 
 	

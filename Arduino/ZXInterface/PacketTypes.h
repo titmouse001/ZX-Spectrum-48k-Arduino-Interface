@@ -26,6 +26,8 @@ constexpr uint16_t CMD_ClearAllRam=12;
 constexpr uint16_t CMD_ClearScreenAttributes=13;
 constexpr uint16_t CMD_ClearScreenBitmap=14;
 
+constexpr uint16_t CMD_PlayClick=15;
+
 
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
@@ -271,6 +273,16 @@ struct __attribute__ ((packed))  ClearScreenAttributes {
                               cmd_low(cmd_addr(CMD_ClearScreenAttributes) & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(2,ClearScreenAttributes);
+
+
+struct __attribute__ ((packed))  PlayClick {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    PlayClick() : cmd_high(cmd_addr(CMD_PlayClick) >> 8), 
+                      cmd_low(cmd_addr(CMD_PlayClick) & 0xff) {}
+};
+ASSERT_Z80_PACKET_SIZE(2,PlayClick);
+
 
 
 #endif

@@ -76,6 +76,7 @@ void searchAndDisplayGraphics();
 
 void streamZ80ToFile(FatFile& f, uint16_t addr, uint16_t size);
 
+void playClick();
 
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);
