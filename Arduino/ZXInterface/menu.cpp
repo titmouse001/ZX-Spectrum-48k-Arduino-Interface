@@ -15,6 +15,7 @@ bool     Menu::buttonHeld = false;
 bool     Menu::inSubFolder = false;
 
 constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_WHITE;
+constexpr uint8_t MENU_DIR_COLOUR = COL::BRIGHT_BLACK_CYAN;
 
 // Cache highlight movement - avoids using the SD card navigating same page
 static uint8_t menuRowBaseColour[SCREEN_TEXT_ROWS];
@@ -37,12 +38,12 @@ FatFile* Menu::handleMenu() {
   while (true) {
 
 #ifdef _DEBUG_POOL_SIZE_ENABLED_
+    Utils::clearScreen(MENU_TEXT_COLOUR);
     char _c[8];
     itoa(BufferManager::poolOffsetLastMax, _c, 10);
-    Draw::text(256 - 64, 32, _c);
-
+    Draw::text(0, 0, _c);
     itoa(BufferManager::poolOffset, _c, 10);
-    Draw::text(256 - 64, 32+16, _c);
+    Draw::text(0, 16, _c);
 #endif
 
     //const uint32_t start = millis();
@@ -131,14 +132,6 @@ FatFile* Menu::handleMenu() {
 }
 
 void Menu::drawFileList() { //bool updateText) {
-  // if (!updateText) {
-  //   // Restore colours
-  //   for (uint8_t row = 0; row < SCREEN_TEXT_ROWS; ++row) {
-  //     Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (row << 5), 32, menuRowBaseColour[row]);
-  //   }
-  //   return;
-  // }
-
   FatFile& root = SdCardSupport::getRoot();
   root.rewind();
 
@@ -168,7 +161,7 @@ void Menu::drawFileList() { //bool updateText) {
       } else {
         const bool isDirectory = file.isDir();
         const uint8_t row = linesDrawn;
-        const uint8_t colour = isDirectory ? COL::BRIGHT_BLACK_GREEN : MENU_TEXT_COLOUR;
+        const uint8_t colour = isDirectory ? MENU_DIR_COLOUR : MENU_TEXT_COLOUR;
         menuRowBaseColour[row] = colour;
         uint8_t len = file.getDisplayName7( nameBuffer, ZX_FILENAME_MAX_DISPLAY_LEN + 1);
         if (isDirectory && len < ZX_FILENAME_MAX_DISPLAY_LEN) {

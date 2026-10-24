@@ -52,7 +52,7 @@ void restoreZ80States(Z80Registers* regs);
 
 void saveMemory(const char* filename, uint16_t address, uint16_t size);
 bool loadMemory(const char* filename, uint16_t address, uint16_t size);
-void dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir);
+//void dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir);
 
 void setupJoystick();
 uint8_t readJoystick();
@@ -71,12 +71,10 @@ uint16_t zx_spectrum_screen_address(uint8_t x, uint8_t y);
 //void memsetZero(byte* b, uint16_t len);
 // void join6Bits(byte* output, uint8_t input, uint16_t bitPosition);
 void delay16(uint16_t ms);
-
 void searchAndDisplayGraphics();
-
 void streamZ80ToFile(FatFile& f, uint16_t addr, uint16_t size);
-
 void playClick();
+bool loadBmpToScreen(const char* filename);   // 256x192 1-bit BMP only
 
 /* unused so far...
 void joinBits(byte* output, uint8_t input, uint16_t bitWidth, uint16_t bitPosition);

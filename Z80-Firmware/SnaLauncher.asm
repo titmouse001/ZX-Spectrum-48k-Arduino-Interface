@@ -2318,8 +2318,8 @@ DS  16384 - last	; leave rest of rom blank
 ; 20/ Launcher code can be relocated depending on game [NOT NEEDED NOW] ... JUST 3BYTES which is now restored
 ; 21/ Command to upload code and execute [NOT NEEDED]
 ; 22/ Joystick remapping including 2nd button support [1/2 DONE.. needs config]
-; 23/ "O" , "P" keys to scroll a whole menu page
-; 24/ Menu navigation sounds
+; 23/ "O" , "P" keys to scroll a whole menu page or Joy L/R [DONE]
+; 24/ Menu navigation sounds [DONE]
 ; 25/ SlowMo [DONE]
 ; 26/ RAM Tester [DONE]
 ;*****************************

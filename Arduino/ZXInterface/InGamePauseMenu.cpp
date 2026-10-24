@@ -28,6 +28,7 @@ constexpr uint8_t getY(int8_t line) {
 #endif
 
 static const char SAVED_MSG[] PROGMEM = "SAVED";
+static const char SAVING_MSG[] PROGMEM = "SAVING";
 
 static uint8_t slowMoLevel = 0;  // 0=Off, 1=Low , 2=Med , 3=High 
 
@@ -413,67 +414,158 @@ struct __attribute__ ((packed))  GameMeta {
   char      gameName[ZX_FILENAME_MAX_DISPLAY_LEN+1];
 };
 
-void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName) {
-  // Restore the Speccy's screen from the scratch file to show the user something is happening
-//  if (Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
-//    return;
-//  }
-  while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
-    Utils::waitForSDCard_Blocking(true); 
+// handleSaveSnapshot saves the running game state to an SNA file inside a
+// per-game folder.
+//  A GAMEINFO.DAT file in the save folder records the real game name. So saves
+//  route back to the SD game instead of creating a generic SD\SnapNNNN file.
+//  Basically, the .dat file points to the correct save folder at root level.
+//
+// Snapshot landing folder is not always derivable from the loaded filename:
+//   - Loaded Jetpac.sna from root     -> dirName = "Jetpac"
+//   - Loaded Jetpac/Snap0005.SNA      -> dirName = "Snap0005"   <- not a folder
+//
+// GAMEINFO.DAT (hidden) stores the mapping "save folder name"
+// so a reloaded snapshot routes back to SD:/<game>/ instead of creating
+// SD:/SnapNNNN/.
+void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers,
+                                         const char* dirName) {
+  while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START,
+                            ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+    Utils::waitForSDCard_Blocking(true);
   }
-
 
   FatFile dir, metaFile;
   GameMeta meta;
-  bool hasMeta = false;
+  SdCardSupport::syncRootToDepth();  // root = current browser folder
 
-  // Look for GAMEINFO.DAT in the currently navigated folder
-  SdCardSupport::syncRootToDepth();
   if (metaFile.open(&SdCardSupport::getRoot(), GAMEINFO_DAT, O_READ)) {
-    hasMeta = true; 
+    // ---- STRICT MODE ------------------------------------------------------
+    // The loaded file was a snapshot; its folder is already tagged. Use the
+    // persisted gameName to resolve the real save folder at SD root.
     metaFile.read(&meta, sizeof(meta));
     metaFile.close();
-  }
-
-  SdCardSupport::reopenRoot();
-
-  if (hasMeta) {
-    // STRICT MODE: We have a known location - attempt to open it
-    if (!dir.open(&SdCardSupport::getRoot(), meta.gameName, O_READ)) {
-      return;  // Abort
+    SdCardSupport::reopenRoot();  // was duplicated on CREATE path
+    if (meta.version != 1 || !dir.open(&SdCardSupport::getRoot(), meta.gameName, O_READ)) {
+      return;
     }
   } else {
-    // CREATE MODE: No .dat file exists yet
-    if (!SdCardSupport::openOrCreateDirectory(dir, dirName)) {
-      return;  // Abort
-    }
+    // ---- CREATE MODE ------------------------------------------------------
+    // Original .sna was loaded from root; dirName is the real folder name.
+    // Helper reopens root and is idempotent: re-opens if the folder exists,
+    // creates it otherwise. So subsequent saves reuse the same folder.
+    if (!SdCardSupport::openOrCreateDirectory(dir, dirName)) return;
 
-    // Write new metadata inside new folder
-    if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {   // O_TRUNC
-      //     meta.head_id = HEAD_ID;
+    // Tag the folder on first save only (O_EXCL makes this a no-op if
+    // GAMEINFO.DAT exists)
+    if (metaFile.open(&dir, GAMEINFO_DAT, O_WRITE | O_CREAT | O_EXCL)) {
       meta.version = 1;
-      strncpy(meta.gameName, dirName, sizeof(meta.gameName));
+      strncpy(meta.gameName, dirName, sizeof(meta.gameName) - 1);
+      meta.gameName[sizeof(meta.gameName) - 1] = '\0';
       metaFile.write(&meta, sizeof(meta));
-
-      // hide dat file
-      int currentAttribs = metaFile.attrib();
-      if (currentAttribs != -1) {
-        metaFile.attrib(currentAttribs | FS_ATTRIB_HIDDEN);
-      }
-
+      int attribs = metaFile.attrib();
+      if (attribs != -1) metaFile.attrib(attribs | FS_ATTRIB_HIDDEN);
       metaFile.close();
     }
   }
 
-  // Find a free slot inside our opened directory and dump the snapshot
-  static char saveName[13] = "Snap0000.SNA";
+  char saveName[13] = "Snap0000.SNA";
   if (SdCardSupport::findFreeFilename(dir, saveName)) {
-    Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+    //    Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+
+    FatFile& file = SdCardSupport::closeFile();
+    if (!file.open(&dir, saveName, O_WRONLY | O_CREAT | O_TRUNC)) {
+      return;
+    }
+    // SNA header
+    file.write(z80Registers, sizeof(SNAHeader));
+    // 1st Screen third
+    constexpr uint16_t SECTION_SIZE = (ZX_SCREEN_WIDTH_BYTES * 64);
+    Utils::streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START, SECTION_SIZE);
+
+    // Top third of screen saved - safe to spoil for progress text
     Utils::clearTopBar();
     Draw::text(0, 0, saveName);
-    Draw::text_P(256-32, 0, FPSTR(SAVED_MSG));
-    Utils::delay16(2000);
+    Draw::text_P(256 - 40, 0, FPSTR(SAVING_MSG));
+
+    Utils::streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START + SECTION_SIZE, ZX_SPECTRUM_48K_TOTAL_MEMORY - SECTION_SIZE);
+
+    // Utils::streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START + SECTION_SIZE,
+    //                         ZX_SCREEN_TOTAL_SIZE - SECTION_SIZE);
+
+    // Utils::streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START + ZX_SCREEN_TOTAL_SIZE,
+    //                        ZX_SPECTRUM_48K_TOTAL_MEMORY - ZX_SCREEN_TOTAL_SIZE);
+
+    file.close();
+    // Utils::clearTopBar();
+    // Draw::text(0, 0, saveName);
+    // Draw::text_P(256 - 32, 0, FPSTR(SAVED_MSG));
+    // Utils::delay16(2000);
   }
-  
-  dir.close();
 }
+
+// void InGamePauseMenu::handleSaveSnapshot(Z80Registers* z80Registers, const char* dirName) {
+ 
+//   while (!Utils::loadMemory(SCRATCH_FILE, ZX_SCREEN_ADDRESS_START, ZX_SCREEN_BITMAP_SIZE + ZX_SCREEN_ATTR_SIZE)) {
+//     Utils::waitForSDCard_Blocking(true); 
+//   }
+
+//   FatFile dir, metaFile;
+//   GameMeta meta;
+//   bool hasMeta = false;
+
+//   SdCardSupport::syncRootToDepth(); // move root to the current browser folder
+
+//   // Look for and read GAMEINFO.DAT in the currently navigated folder
+//   if (metaFile.open(&SdCardSupport::getRoot(), GAMEINFO_DAT, O_READ)) {
+//     hasMeta = true; 
+//     metaFile.read(&meta, sizeof(meta));
+//     metaFile.close();
+//   }
+
+//   // All save folders get created at root level using the games name
+//   SdCardSupport::reopenRoot();  // root = SD:/
+
+//   // GAMEINFO.DAT is just a tiny binary blob saying where that game's snapshot belongs.
+//   // e.g. SD:/<gamesName>/GAMEINFO.DAT
+//   //      SD:/<gamesName>/snap0001.sna
+
+//   if (hasMeta) {
+//     // STRICT MODE: We have a known game's save folder location - attempt to open it
+//     if (!dir.open(&SdCardSupport::getRoot(), meta.gameName, O_READ)) {
+//       return;  // Abort
+//     }
+//   } else {
+//     // CREATE MODE: No folder or .dat file exists yet - create folder
+//     if (!SdCardSupport::openOrCreateDirectory(dir, dirName)) {
+//       return;  // Abort
+//     }
+
+//     // Folder must exist now, tag it - Write metadata
+//     if (metaFile.open(&dir, GAMEINFO_DAT, O_RDWR | O_CREAT)) {   // O_TRUNC
+//       //     meta.head_id = HEAD_ID;
+//       meta.version = 1;
+//       strncpy(meta.gameName, dirName, sizeof(meta.gameName));
+//       metaFile.write(&meta, sizeof(meta));
+
+//       // hide dat file
+//       int currentAttribs = metaFile.attrib();
+//       if (currentAttribs != -1) {
+//         metaFile.attrib(currentAttribs | FS_ATTRIB_HIDDEN);
+//       }
+
+//       metaFile.close();
+//     }
+//   }
+
+//   // Find a free slot inside our opened directory and dump the snapshot
+//   static char saveName[13] = "Snap0000.SNA";
+//   if (SdCardSupport::findFreeFilename(dir, saveName)) {
+//     Utils::dumpMemoryAsSnapshot(z80Registers, saveName, dir);
+//     Utils::clearTopBar();
+//     Draw::text(0, 0, saveName);
+//     Draw::text_P(256-32, 0, FPSTR(SAVED_MSG));
+//     Utils::delay16(2000);
+//   }
+  
+//   dir.close();
+// }

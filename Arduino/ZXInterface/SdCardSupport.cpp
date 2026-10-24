@@ -33,6 +33,7 @@ bool SdCardSupport::init() { //uint8_t csPin) {
   return opened;
 }
 
+// syncRootToDepth moves root to the current browser folder
 void SdCardSupport::syncRootToDepth() {
   reopenRoot(); // Reset to "SD:/" top-level root
   for (uint8_t i = 0; i < menuPathDepth; i++) {

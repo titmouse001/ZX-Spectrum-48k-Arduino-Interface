@@ -111,10 +111,20 @@ void setup() {
     }
   }
 
+
+  
   // Display the version (remove sd card to view version)
   Utils::clearScreen(COL::CYAN_BLACK);
   Draw::text_P(256 - 24, 192 - 8, F(VERSION));
   Utils::waitForSDCard_Blocking();  // When blocking shows - "INSERT SD CARD"
+
+
+  //   Utils::loadBmpToScreen("TEST1.BMP");
+  // Utils::delay16(5000);   // let user see it for 2 seconds
+  // Utils::loadBmpToScreen("TEST2.BMP");
+  // Utils::delay16(5000);   // let user see it for 2 seconds
+
+
 }
 
 void loop() {

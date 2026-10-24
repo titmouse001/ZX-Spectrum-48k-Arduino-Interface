@@ -136,43 +136,43 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   BufferManager::freeToMark(regs->AllocMark);
 }
 
-void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir) {
-  FatFile& file = SdCardSupport::closeFile();
+// void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir) {
+//   FatFile& file = SdCardSupport::closeFile();
   
-  if (!file.open(&dir, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
-    return;
-  }
-  
-  file.write((const uint8_t*)regs, sizeof(SNAHeader));  
-
-  streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START, ZX_SPECTRUM_48K_TOTAL_MEMORY );
-
-//  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
- 
-//   // Alert Z80 to send memory data packets
-//   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
-//   Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
-
-//   // Small delay buffer allowing hardware states to equalize
-//   Utils::delay16(1);  
-
-//   DDRD = 0x00;                    // Set PORTD data pins to inputs
-//   digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
-//   __asm__ __volatile__("nop; nop");
-
-//   // Stream data out of the Z80 bus directly onto the SD file stream
-//   for (uint16_t i = 0; i < size; i++) {
-//     Z80Bus::waitHalt_syncWithZ80();
-//     uint8_t byte = PIND;          // Capture latched data from lines
-//     Z80Bus::triggerZ80NMI();
-//     file.write(byte);
+//   if (!file.open(&dir, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
+//     return;
 //   }
   
-//   file.close();
+//   file.write((const uint8_t*)regs, sizeof(SNAHeader));  
 
-//   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-//   DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
-}
+//   streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START, ZX_SPECTRUM_48K_TOTAL_MEMORY );
+
+// //  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
+ 
+// //   // Alert Z80 to send memory data packets
+// //   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
+// //   Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
+
+// //   // Small delay buffer allowing hardware states to equalize
+// //   Utils::delay16(1);  
+
+// //   DDRD = 0x00;                    // Set PORTD data pins to inputs
+// //   digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
+// //   __asm__ __volatile__("nop; nop");
+
+// //   // Stream data out of the Z80 bus directly onto the SD file stream
+// //   for (uint16_t i = 0; i < size; i++) {
+// //     Z80Bus::waitHalt_syncWithZ80();
+// //     uint8_t byte = PIND;          // Capture latched data from lines
+// //     Z80Bus::triggerZ80NMI();
+// //     file.write(byte);
+// //   }
+  
+// //   file.close();
+
+// //   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
+// //   DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
+// }
 
 void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
 
@@ -187,6 +187,7 @@ void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
   }
 
   streamZ80ToFile(file, address, size );
+  file.close();
 
   // // send header details first (request Z80 to send the memory data)
   // RequestSendDataPacket pkt(size, address);
@@ -357,23 +358,20 @@ void Utils::stockRomBoot_Blocking() {
 }
 
 void Utils::waitForSDCard_Blocking(bool clearScreen) {
-
   if (clearScreen) {
       Utils::clearScreen(COL::BLACK_WHITE); 
   }
-  Draw::text_P(80, 90, F("INSERT SD CARD"));
-
+  boolean doText = true;
   if (!SdCardSupport::init()) { 
-//    if (clearScreen) {
-//      Utils::clearScreen(COL::BLACK_WHITE); 
-//    }
-//    Draw::text_P(80, 90, F("INSERT SD CARD"));
+    if (doText) {
+      doText = false;
+      Draw::text_P(80, 90, F("INSERT SD CARD"));
+    }
     do { 
       Utils::delay16(20);
     } while (!SdCardSupport::init()); 
     Utils::clearScreen(COL::BLACK_WHITE);
-    // Grace period for card to be seated solid in the reader
-    Utils::delay16(650);  
+    Utils::delay16(650);   // Grace period for card to be seated solid in the reader
   }
 }
 
@@ -444,13 +442,278 @@ void Utils::clearTopBar(uint8_t col) {
   }
 }
 
-
 void Utils::streamZ80ToFile(FatFile& f, uint16_t addr, uint16_t size) {
   Z80Bus::beginBulkRead(addr, size);
   while (size--) f.write(Z80Bus::bulkReadByte());
   Z80Bus::endBulkRead();
-  f.close();
 }
+
+
+// bool Utils::loadBmpToScreen(const char* filename) {
+//   FatFile& file = SdCardSupport::closeFile();
+//   SdCardSupport::reopenRoot();
+
+//   if (!file.open(filename, O_READ)) return false;
+
+//   // ---- BITMAPFILEHEADER (14 bytes) ----
+//   uint8_t fh[14];
+//   if (file.read(fh, 14) != 14) { file.close(); return false; }
+//   if (fh[0] != 'B' || fh[1] != 'M') { file.close(); return false; }
+
+//   uint32_t dataOffset = (uint32_t)fh[10] | ((uint32_t)fh[11] << 8) |
+//                         ((uint32_t)fh[12] << 16) | ((uint32_t)fh[13] << 24);
+
+//   // ---- BITMAPINFOHEADER (>= 40 bytes) ----
+//   uint8_t ih[40];
+//   if (file.read(ih, 40) != 40) { file.close(); return false; }
+
+//   uint32_t hdrSize = (uint32_t)ih[0] | ((uint32_t)ih[1] << 8) |
+//                      ((uint32_t)ih[2] << 16) | ((uint32_t)ih[3] << 24);
+//   int32_t  width   = (int32_t)ih[4] | ((int32_t)ih[5] << 8) |
+//                      ((int32_t)ih[6] << 16) | ((int32_t)ih[7] << 24);
+//   int32_t  height  = (int32_t)ih[8] | ((int32_t)ih[9] << 8) |
+//                      ((int32_t)ih[10] << 16) | ((int32_t)ih[11] << 24);
+//   uint16_t bitCnt  = (uint16_t)ih[14] | ((uint16_t)ih[15] << 8);
+
+//   if (hdrSize < 40 || bitCnt != 1 || width != 256 ||
+//       (height != 192 && height != -192)) {
+//     file.close();
+//     return false;
+//   }
+//   bool bottomUp = (height > 0);
+
+//   // Skip any extended-info-header bytes (usually zero for BMP)
+//   for (uint32_t i = 40; i < hdrSize; i++) {
+//     uint8_t d; if (file.read(&d, 1) != 1) { file.close(); return false; }
+//   }
+
+//   // ---- Palette: 2 entries x 4 bytes ----
+//   uint8_t pal[8];
+//   if (file.read(pal, 8) != 8) { file.close(); return false; }
+//   uint16_t lum0 = (uint16_t)pal[0] + pal[1] + pal[2];   // B+G+R
+//   uint16_t lum1 = (uint16_t)pal[4] + pal[5] + pal[6];
+//   bool invert = (lum0 > lum1);   // ZX wants 0=ink(black), 1=paper(white)
+
+//   // Skip anything between header end and pixel data
+//   uint32_t consumed = 14 + hdrSize + 8;
+//   if (dataOffset < consumed) { file.close(); return false; }
+//   for (uint32_t i = consumed; i < dataOffset; i++) {
+//     uint8_t d; if (file.read(&d, 1) != 1) { file.close(); return false; }
+//   }
+
+//   // ---- Set attributes (black ink, white paper) ----
+//   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START,
+//                           ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
+
+//   // ---- Stream rows out ----
+//   constexpr uint16_t ROW_BYTES = 32;
+//   uint8_t rowBuf[ROW_BYTES];
+
+//   for (uint16_t bmpRow = 0; bmpRow < 192; bmpRow++) {
+//     if (file.read(rowBuf, ROW_BYTES) != ROW_BYTES) break;
+//     if (invert) {
+//       for (uint8_t k = 0; k < ROW_BYTES; k++) rowBuf[k] = ~rowBuf[k];
+//     }
+//     uint8_t imgY = bottomUp ? (uint8_t)(191 - bmpRow) : (uint8_t)bmpRow;
+//     uint16_t zxAddr = zx_spectrum_screen_address(0, imgY);
+//     Z80Bus::rleOptimisedTransfer(ROW_BYTES, zxAddr, rowBuf, CMD_Copy);
+//   }
+
+//   file.close();
+//   return true;
+// }
+
+
+// // Convert one source row to a packed 1-bit brightness bitmap.
+// // brightBuf: (srcW + 7) / 8 bytes  |  chunkBuf: 128 bytes scratch
+// static bool readRowAsBrightBits(FatFile& file, uint16_t srcW,
+//                                  uint16_t srcRowBytes, uint16_t rowBytes,
+//                                  uint8_t bitCnt, const uint8_t* brightMap,
+//                                  uint8_t* brightBuf, uint8_t* chunkBuf,
+//                                  uint16_t chunkBufSize) {
+//   memset(brightBuf, 0, (srcW + 7) / 8);
+
+//   uint8_t bytesPerPix = 0, pixPerByte = 0;
+//   switch (bitCnt) {
+//     case 1:  pixPerByte = 8; break;
+//     case 4:  pixPerByte = 2; break;
+//     case 8:  pixPerByte = 1; break;
+//     case 24: bytesPerPix = 3; break;
+//     case 32: bytesPerPix = 4; break;
+//     default: return false;
+//   }
+
+//   uint16_t px = 0, bytesRead = 0;
+//   while (bytesRead < srcRowBytes) {
+//     uint16_t remaining = srcRowBytes - bytesRead;
+//     uint16_t chunkSize;
+//     if (remaining <= chunkBufSize) {
+//       chunkSize = remaining;
+//     } else {
+//       chunkSize = chunkBufSize;
+//       // Align so a pixel never straddles a chunk boundary
+//       if (bitCnt == 24) chunkSize = (chunkSize / 3) * 3;
+//       if (bitCnt == 32) chunkSize = (chunkSize / 4) * 4;
+//     }
+//     if (file.read(chunkBuf, chunkSize) != chunkSize) return false;
+
+//     if (bytesPerPix > 0) {
+//       // 24 / 32-bit: BGRA / BGRX, alpha ignored
+//       uint16_t n = chunkSize / bytesPerPix;
+//       for (uint16_t j = 0; j < n && px < srcW; j++, px++) {
+//         uint16_t idx = j * bytesPerPix;
+//         uint16_t b = chunkBuf[idx + 0];
+//         uint16_t g = chunkBuf[idx + 1];
+//         uint16_t r = chunkBuf[idx + 2];
+//         if (r + g + b > 384) brightBuf[px >> 3] |= (0x80 >> (px & 7));
+//       }
+//     } else {
+//       // 1 / 4 / 8-bit indexed via brightMap
+//       uint16_t n = (uint16_t)chunkSize * pixPerByte;
+//       for (uint16_t j = 0; j < n && px < srcW; j++, px++) {
+//         uint8_t palIdx;
+//         if (bitCnt == 1)      palIdx = (chunkBuf[j >> 3] >> (7 - (j & 7))) & 1;
+//         else if (bitCnt == 4) { uint8_t bb = chunkBuf[j >> 1];
+//                                 palIdx = (j & 1) ? (bb & 0x0F) : (bb >> 4); }
+//         else                  palIdx = chunkBuf[j];
+//         if (brightMap[palIdx >> 3] & (0x80 >> (palIdx & 7)))
+//           brightBuf[px >> 3] |= (0x80 >> (px & 7));
+//       }
+//     }
+//     bytesRead += chunkSize;
+//   }
+//   // Skip BMP row padding to next 4-byte boundary
+//   while (bytesRead < rowBytes) {
+//     uint8_t d; if (file.read(&d, 1) != 1) return false; bytesRead++;
+//   }
+//   return true;
+// }
+
+// // Compact helper to parse 32-bit little-endian values without repeating shift code
+// static inline uint32_t parse32(const uint8_t* p) {
+//   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | 
+//          ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+// }
+
+// bool Utils::loadBmpToScreen(const char* filename) {
+//   FatFile& file = SdCardSupport::closeFile();
+//   SdCardSupport::reopenRoot();
+//   if (!file.open(filename, O_READ)) return false;
+
+//   uint16_t mark = BufferManager::getMark();
+//   uint8_t* brightBuf = nullptr;
+
+//   uint8_t fh[14];
+//   if (file.read(fh, 14) != 14 || fh[0] != 'B' || fh[1] != 'M') goto fail;
+//   uint32_t dataOffset = parse32(&fh[10]);
+
+//   uint8_t ih[40];
+//   if (file.read(ih, 40) != 40) goto fail;
+
+//   uint32_t hdrSize  = parse32(&ih[0]);
+//   int32_t width     = (int32_t)parse32(&ih[4]);
+//   int32_t height    = (int32_t)parse32(&ih[8]);
+//   uint16_t bitCnt   = (uint16_t)ih[14] | ((uint16_t)ih[15] << 8);
+//   uint32_t compress = parse32(&ih[16]);
+//   uint32_t clrUsed  = parse32(&ih[32]);
+
+//   if (hdrSize < 40 || compress != 0 ||
+//       (bitCnt != 1 && bitCnt != 4 && bitCnt != 8 &&
+//        bitCnt != 24 && bitCnt != 32) ||
+//       width <= 0 || width > 4096 ||
+//       height == 0 || height > 4096 || height < -4096) {
+//     goto fail;
+//   }
+
+//   bool bottomUp = (height > 0);
+//   uint16_t srcW = (uint16_t)width;
+//   uint16_t srcH = (uint16_t)(height < 0 ? -height : height);
+
+//   // REPLACEMENT 1: Direct seek past extra header bytes instead of a byte loop
+//   if (!file.seekSet(14 + hdrSize)) goto fail;
+
+//   // Palette (only for indexed depths)
+//   uint8_t brightMap[32] = {0};
+//   uint16_t numPal = 0;
+//   if (bitCnt <= 8) {
+//     numPal = (clrUsed != 0) ? (uint16_t)clrUsed : (1u << bitCnt);
+//     if (numPal > 256) numPal = 256;
+//     for (uint16_t i = 0; i < numPal; i++) {
+//       uint8_t pal[4];
+//       if (file.read(pal, 4) != 4) goto fail;
+//       if ((uint16_t)pal[0] + pal[1] + pal[2] > 384)
+//         brightMap[i >> 3] |= (0x80 >> (i & 7));
+//     }
+//   }
+
+//   // REPLACEMENT 2: Direct absolute seek to pixel data instead of a byte loop
+//   if (!file.seekSet(dataOffset)) goto fail;
+
+//   // Row layout
+//   uint16_t srcRowBytes = 0;
+//   switch (bitCnt) {
+//     case 1:  srcRowBytes = (srcW + 7) / 8; break;
+//     case 4:  srcRowBytes = (srcW + 1) / 2; break;
+//     case 8:  srcRowBytes = srcW;           break;
+//     case 24: srcRowBytes = srcW * 3;       break;
+//     case 32: srcRowBytes = srcW * 4;       break;
+//   }
+//   uint16_t rowBytes    = (srcRowBytes + 3) & ~3;
+//   uint16_t brightBytes = (srcW + 7) / 8;
+
+//   brightBuf = (uint8_t*)BufferManager::allocate(brightBytes);
+//   if (!brightBuf) goto fail;
+
+//   uint8_t chunkBuf[128];
+//   uint8_t rowBuf[32];
+
+//   Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START,
+//                           ZX_SCREEN_ATTR_SIZE, COL::BLACK_WHITE);
+
+//   int16_t lastBuiltFileRow = -1;
+
+//   for (uint8_t i = 0; i < 192; i++) {
+//     uint8_t dstY     = bottomUp ? (uint8_t)(191 - i) : i;
+//     int16_t srcY_img = (int16_t)(((uint32_t)dstY * srcH) / 192);
+//     int16_t fileRow  = bottomUp ? (int16_t)(srcH - 1 - srcY_img) : srcY_img;
+
+//     if (fileRow != lastBuiltFileRow) {
+//       uint32_t rowOffset = dataOffset + (uint32_t)fileRow * rowBytes;
+//       if (!file.seekSet(rowOffset)) goto fail;
+//       if (!readRowAsBrightBits(file, srcW, srcRowBytes, rowBytes, bitCnt,
+//                                brightMap, brightBuf, chunkBuf,
+//                                sizeof(chunkBuf))) {
+//         goto fail;
+//       }
+//       lastBuiltFileRow = fileRow;
+
+//       // Bresenham-map brightness bitmap -> 32-byte ZX row
+//       for (uint8_t dB = 0; dB < 32; dB++) {
+//         uint8_t outByte = 0;
+//         for (uint8_t bit = 0; bit < 8; bit++) {
+//           uint8_t  dstX = (uint8_t)((dB << 3) | bit);
+//           uint16_t srcX = (uint16_t)(((uint32_t)dstX * srcW) / 256);
+//           if (brightBuf[srcX >> 3] & (0x80 >> (srcX & 7)))
+//             outByte |= (0x80 >> bit);
+//         }
+//         rowBuf[dB] = outByte;
+//       }
+//     }
+
+//     Z80Bus::rleOptimisedTransfer(32, zx_spectrum_screen_address(0, dstY),
+//                                  rowBuf, CMD_Copy);
+//   }
+
+//   file.close();
+//   BufferManager::freeToMark(mark);
+//   return true;
+
+// fail:
+//   file.close();
+//   BufferManager::freeToMark(mark);
+//   return false;
+// }
+
 
 
 void Utils::searchAndDisplayGraphics() {

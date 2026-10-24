@@ -2,11 +2,14 @@
 
 #include <stdint.h>
 
-#define VERSION ("0.27")  
-// This Arduino Firmware Requires version 2.5 of the PCB.
+// ----------------------------------------------------------------
+// Arduino Firmware
+#define VERSION ("0.28")  
+// ----------------------------------------------------------------
+
+// This Arduino firmware requires a minimum PCB revision of 2.5.
 // see: ZX-Spectrum-48k-Arduino-Interface\Documents\Gerbers\V2.50\
         Gerber_ZX-Spectrum-48k-Arduino-Interface-Game-Loader-V2_5_PCB_ZX-Spectrum-Interface_2026-08-11.zip
-
 
 // Comment out '_DEBUG_POOL_SIZE_ENABLED_' for release
 //#define _DEBUG_POOL_SIZE_ENABLED_  // adds/removes: vars + limit error + screen logging
@@ -21,9 +24,9 @@ constexpr uint8_t FOLDER_NAV_DEPTH = 5;
 // Saves the current game state when navigating to the in-game pause menu
 static constexpr const char* SCRATCH_FILE = "scratch16384.SCR";
 
-// Screen shots folder -  incrementing "SHOT0000.SCR" files are saved here.
-//static constexpr const char* SHOTS_FOLDER = "SHOTS";
+// Screen shots folder
 static const char* SHOTS_FOLDER = "SHOTS";
+// New folder Metadata
 static constexpr char GAMEINFO_DAT[] = "GameInfo.dat";
 
 /* -------------------------------------------------
@@ -79,6 +82,8 @@ namespace COL {
     constexpr uint8_t BRIGHT_BLACK_WHITE = Attr(BLACK, WHITE, true);
     constexpr uint8_t BRIGHT_BLACK_BLUE = Attr(BLACK, BLUE, true);
     constexpr uint8_t BRIGHT_CYAN_BLACK = Attr(CYAN, BLACK, true);
+    constexpr uint8_t BLACK_CYAN = Attr(BLACK,CYAN);
+    constexpr uint8_t BRIGHT_BLACK_CYAN = Attr(BLACK,CYAN,true);
     constexpr uint8_t BRIGHT_BLUE_BLACK = Attr(BLUE, BLACK, true);
     constexpr uint8_t BRIGHT_MAGENTA_BLACK = Attr(MAGENTA, BLACK, true);
     constexpr uint8_t BRIGHT_YELLOW_RED = Attr(YELLOW, RED, true);
