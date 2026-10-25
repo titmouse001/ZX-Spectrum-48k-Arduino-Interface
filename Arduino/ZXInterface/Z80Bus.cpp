@@ -47,6 +47,17 @@ void Z80Bus::sendByte(uint8_t* byte) {
 }
 
 
+__attribute__((optimize("-Ofast")))
+void Z80Bus::sendBytes(uint8_t* data, uint16_t size) {
+  for (uint16_t i=0; i < size; i++) {
+    waitHalt_syncWithZ80();
+    PORTD = data[i]; 
+    triggerZ80NMI();
+  }
+}
+
+
+
 // Supports snapshot header loading (called just before game start)
 void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   SNAHeader* snaHeader = &regs->header;
@@ -54,40 +65,6 @@ void Z80Bus::sendSnaHeader(Z80Registers* regs) {
   if (!regs->Z80Snapshot) {
     // PC is in the game's stack - grab it
     // Z80 is little-endian, the stack holds the Low Byte first, followed by the High Byte.
-  //  uint16_t sp_addr = ((uint16_t)snaHeader->sp_hi << 8) | snaHeader->sp_lo;
- //   uint8_t data[2];
-
-    // RequestSendDataPacket reqpkt(2, sp_addr);
-    // Z80Bus::sendBytes8((uint8_t*)&reqpkt, sizeof(RequestSendDataPacket));
-
-    // // RequestSendDataPacket = Z80 command_SendData:  
-    // // At this point Z80 side is past reading amount and start address.
-    // // It will only need to ld a,(hl), OUT ($1f), A , halt before it's in a good place.
-    // Utils::delay16(1);
-
-    // DDRD = 0x00;  // Set PORTD data pins to inputs
-    // digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
-    // __asm__ __volatile__("nop; nop");
-
-    // // Stream data out of the Z80 bus directly onto the SD file stream
-    // for (uint16_t i = 0; i < 2; i++) {
-    //   Z80Bus::waitHalt_syncWithZ80();
-    //   data[i] = (uint8_t)PIND;  // Capture sent data from Z80
-    //   Z80Bus::triggerZ80NMI();
-    // }
-    // digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-    // DDRD = 0xFF; 
-
-
-    // beginBulkRead(sp_addr,2);  // send 2 bytes
-    // data[0] = bulkReadByte();
-    // data[1] = bulkReadByte();
-    // endBulkRead();
-
-    // regs->pc_lo = data[0];
-    // regs->pc_hi = data[1];
-
-    // Get back value of PC by providing address of games stack location.
     uint16_t sp_addr = ((uint16_t)snaHeader->sp_hi << 8) | snaHeader->sp_lo;
     beginBulkRead(sp_addr,2);  // send 2 bytes
     regs->pc_lo  = bulkReadByte();

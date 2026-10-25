@@ -12,8 +12,9 @@ namespace Z80Bus {
 void setupPins();
 
 //extern void sendBytes(uint8_t* data, uint16_t size);
-extern void sendBytes8(uint8_t* data, uint8_t size);
+extern void sendBytes8(uint8_t* data, uint8_t amount);
 extern void sendByte(uint8_t* byte);
+extern void sendBytes(uint8_t* byte,  uint16_t amount );
 
 extern void sendSnaHeader(Z80Registers* regs);
 extern void sendFillCommand(uint16_t address, uint16_t amount, uint8_t color);

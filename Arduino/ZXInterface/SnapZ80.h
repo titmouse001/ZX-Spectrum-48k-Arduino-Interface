@@ -6,8 +6,50 @@
 #include "src/fatlib/SdFat.h"
 #include "utils.h"
 
-namespace SnapZ80 {
+//-----------------------------------------
+// .Z80 FILE FORMAT - EXTENDED HEADERS ver2/3
+//-----------------------------------------
+constexpr uint8_t Z80_EXT_PC_LOW = 0;
+constexpr uint8_t Z80_EXT_PC_HIGH = 1;
+constexpr uint8_t Z80_EXT_HW_MODE = 2;
+constexpr uint8_t Z80_EXT_7FFD_PORT = 3; // Last OUT to 0x7FFD (128K machine) or SamRam (48K)
+constexpr uint8_t Z80_EXT_IF1_PAGE_STATUS = 4; // 0xFF if IF1 ROM is paged, 0x00 if not
+constexpr uint8_t Z80_EXT_FLAGS3 = 5; // Bit 0: R bit 7 (different from V1); Bit 1: LDIR active; Bit 2: AY-3-8912 active (48K)
+constexpr uint8_t Z80_EXT_FFFD_PORT = 6; // Last OUT to 0xFFFD
+constexpr uint8_t Z80_EXT_AY_REGS_START = 7; // AY-3-8912 registers (16 bytes)
 
+constexpr uint8_t Z80_V2_HEADERLENGTH = 23; // Length of the extended header for V2
+constexpr uint8_t Z80_V3_HEADERLENGTH = 54; // Length of the extended header for V3
+constexpr uint8_t Z80_V3X_HEADERLENGTH = 55; //
+
+
+//-----------------------------------------
+// Z80 FILE FORMAT
+//-----------------------------------------
+
+enum BlockReadResult : uint8_t {
+    BLOCK_SUCCESS = 0,
+    BLOCK_END_OF_FILE = 1,
+    BLOCK_UNSUPPORTED_PAGE = 2,
+    BLOCK_ERROR = 13
+};
+
+enum MachineType : uint8_t{
+    MACHINE_48K,
+    MACHINE_128K,
+    MACHINE_UNKNOWN
+};
+
+enum Z80HeaderVersion : uint8_t {
+    Z80_VERSION_UNKNOWN = 0,
+    Z80_VERSION_1 = 1,
+    Z80_VERSION_2 = 2,
+    Z80_VERSION_3 = 3
+};
+
+
+namespace SnapZ80 {
+    
 	// 30-byte .Z80 Version 1 Header
 struct __attribute__((packed)) Z80V1Header {
     uint8_t a, f;             // Bytes 0-1

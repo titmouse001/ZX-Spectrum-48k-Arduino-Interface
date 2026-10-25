@@ -44,6 +44,8 @@
 //Sketch uses 28042 bytes (91%) of program storage space. Maximum is 30720 bytes.
 //Global variables use 1388 bytes (67%) of dynamic memory, leaving 660 bytes for local variables. Maximum is 2048 bytes.
 
+// -mcall-prologues
+
 #include <Arduino.h>
 //#include <avr/wdt.h>
 //#include <EEPROM.h>
@@ -57,6 +59,7 @@
 #include "Z80Bus.h"
 #include "SnapZ80.h"
 #include "PacketTypes.h"
+
 
 void setup() {
   // *************************************************************************************
@@ -136,6 +139,7 @@ void loop() {
   if (amount==3) {
     if (strcasecmp(extension, "scr") == 0) {
       handleScrFile(pFile);
+      Menu::currentFileIndex++;   // after viewing - move to next screenshot file (menu clamps)
     } else if (strcasecmp(extension, "sna") == 0) {
       handleSnaFile(pFile);
     } else if (strcasecmp(extension, "z80") == 0) {

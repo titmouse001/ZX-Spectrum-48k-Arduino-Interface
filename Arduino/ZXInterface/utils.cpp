@@ -13,7 +13,7 @@
 
 void Utils::playClick() {
   PlayClick playClick;
-  Z80Bus::sendBytes8((uint8_t*)&playClick, sizeof(ClearScreenBitmap));
+  Z80Bus::sendBytes8((uint8_t*)&playClick, sizeof(PlayClick));
 }
 
 void Utils::clearScreen(uint8_t col) {

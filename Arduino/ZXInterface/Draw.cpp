@@ -21,26 +21,45 @@ constexpr uint16_t screen_width_offset = ZX_SCREEN_WIDTH_BYTES - (7 * PIX_INC);
  * NOTE: ypos must be a multiple of 8 (8 pixel Y-grid aligned)
  * This avoids worrying about text going over "Screen Third" screen sections.
  */
+// __attribute__((optimize("-Ofast"))) 
+// void Draw::textLine(uint8_t ypos, const char *message) {
+//     uint16_t mark = BufferManager::getMark();
+//     uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
+//     RenderFont::prepareTextGraphics(fontData, message);
+//     uint16_t destAddr = Utils::zx_spectrum_screen_address(0, ypos);
+//     uint8_t addr_high = static_cast<uint8_t>(destAddr >> 8);
+//     uint8_t addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
+
+//     Copy32Packet pkt;
+//     pkt.dest_addr_low = addr_low;
+
+//     for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
+//         pkt.dest_addr_high = addr_high++;
+//         Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
+//         Z80Bus::sendBytes8(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
+//         fontData += SmallFont::FNT_BUFFER_SIZE;
+//     }
+//     BufferManager::freeToMark(mark);
+// }
+
 __attribute__((optimize("-Ofast"))) 
 void Draw::textLine(uint8_t ypos, const char *message) {
     uint16_t mark = BufferManager::getMark();
-    uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7+4
+    uint8_t *fontData = BufferManager::allocate(RENDER_SIZE);     // 32*7
     RenderFont::prepareTextGraphics(fontData, message);
     uint16_t destAddr = Utils::zx_spectrum_screen_address(0, ypos);
+    Copy32x7WithFixedStride pkt(destAddr);
+
     uint8_t addr_high = static_cast<uint8_t>(destAddr >> 8);
     uint8_t addr_low  = static_cast<uint8_t>(destAddr & 0xFF);
+       pkt.start_addr_low = addr_low;
+        pkt.start_addr_high = addr_high;
 
-    Copy32Packet pkt;
-    pkt.dest_addr_low = addr_low;
-
-    for (uint8_t y = 0; y < SmallFont::FNT_HEIGHT; ++y) {
-        pkt.dest_addr_high = addr_high++;
-        Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32Packet));  // header
-        Z80Bus::sendBytes8(fontData, SmallFont::FNT_BUFFER_SIZE);                    // body
-        fontData += SmallFont::FNT_BUFFER_SIZE;
-    }
+    Z80Bus::sendBytes8(reinterpret_cast<uint8_t*>(&pkt), sizeof(Copy32x7WithFixedStride));  // header
+    Z80Bus::sendBytes(fontData, SmallFont::FNT_BUFFER_SIZE * 7);  // data 32x7 (+internal stride)
     BufferManager::freeToMark(mark);
 }
+
 
 void Draw::textCore(uint8_t xpos, uint8_t ypos, const void *str, bool isFlash) {
     uint16_t mark = BufferManager::getMark();

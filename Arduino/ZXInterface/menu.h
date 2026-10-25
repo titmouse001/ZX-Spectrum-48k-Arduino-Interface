@@ -33,11 +33,12 @@ enum Button_t {
 
   //static void resetToRoot();
   static bool inSubFolder;
+  static uint16_t currentFileIndex;
 private:
   static uint32_t lastButtonPressTime;
   static uint32_t lastButtonHoldTime;
   static uint16_t buttonDelay;
-  static uint16_t currentFileIndex;
+  //static uint16_t currentFileIndex;
   static uint16_t startFileIndex;
   static bool buttonHeld;
 

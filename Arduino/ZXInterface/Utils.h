@@ -34,6 +34,9 @@ struct __attribute__ ((packed)) SNAHeader {
 
 static_assert(sizeof(SNAHeader) == 27, "SNAHeader must be 27 bytes");
 
+constexpr uint16_t SNAPSHOT_FILE_SIZE = ZX_SPECTRUM_48K_TOTAL_MEMORY + sizeof(SNAHeader) ;  // total: 49179 for all .sna files
+
+
 // Full runtime struct wrapping the header + extra fields
 struct __attribute__ ((packed)) Z80Registers {
     SNAHeader header;       // 27 bytes

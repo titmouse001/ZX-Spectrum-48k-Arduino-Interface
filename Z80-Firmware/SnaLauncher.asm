@@ -212,7 +212,7 @@ ORG $00D0
 	jp Command_ClearScreenAttributes	; 14
 	jp Command_ClearBitmapScreen		; 15
     jp Command_PlayClick	            ; 16
-
+    jp command_Copy32x7WithFixedStride  ;17
 ;------------------------------------------------------
 ;	IF $ > $00D0+(15*3)
 ;		.ERROR "TABLE GROWN!"
@@ -1034,6 +1034,24 @@ L04B0:
     jp mainloop         
 
 ;------------------------------------------------------------------------
+
+
+; Receive Data Transfer from Arduino (32x7 bytes with 256 stride)
+; Used to draw a full line of text
+command_Copy32x7WithFixedStride: 
+;  ini: [HL]:=port[BC], HL:=HL+1, B:=B-1, Z is set if BC == 0
+;------------------------------------------------------
+	READ_PAIR_WITH_HALT h,l	; HL = Destination address
+    LD DE, 256-32           ; 32*8bytes (screen third) - 32bytes (line to draw)
+    REPT 7                  ; font chars are 7pixels
+    REPT 32					; transfer x32 bytes [total:640 t-states]
+	halt					; [4]
+	ini						; [16] 
+	ENDM
+    ADD HL, DE              ; ypos+=1 (interlaced display per third)
+	ENDM
+  JP mainloop 			; done - back for next transfer command
+
 
 
 ;-----------------------------------------------------------------------

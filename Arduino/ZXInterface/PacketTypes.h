@@ -10,24 +10,23 @@ constexpr uint16_t CMD_BASE = 0x00D0;
 // 3xn, each part of the jump table is 3 bytes e.g. 00D0:C34E01	-> JP 014E
 constexpr uint16_t cmd_addr(uint8_t n) { return CMD_BASE + (3 * n); }
 
-constexpr uint16_t CMD_SetBorderColour=0;
-constexpr uint16_t CMD_TransmitKey=1;
-constexpr uint16_t CMD_Fill=2;
-constexpr uint16_t CMD_Transfer=3;
-constexpr uint16_t CMD_Copy=4;
-constexpr uint16_t CMD_Copy32=5;
-constexpr uint16_t CMD_VBL_Wait=6;
-constexpr uint16_t CMD_Stack=7;
-constexpr uint16_t CMD_Execute=8;
-constexpr uint16_t CMD_Fill8=9;
-constexpr uint16_t CMD_SendData=10;
-constexpr uint16_t CMD_Poke=11;
-constexpr uint16_t CMD_ClearAllRam=12;
-constexpr uint16_t CMD_ClearScreenAttributes=13;
-constexpr uint16_t CMD_ClearScreenBitmap=14;
-
-constexpr uint16_t CMD_PlayClick=15;
-
+constexpr uint8_t  CMD_SetBorderColour=0;
+constexpr uint8_t  CMD_TransmitKey=1;
+constexpr uint8_t  CMD_Fill=2;
+constexpr uint8_t  CMD_Transfer=3;
+constexpr uint8_t  CMD_Copy=4;
+constexpr uint8_t  CMD_Copy32=5;
+constexpr uint8_t  CMD_VBL_Wait=6;
+constexpr uint8_t  CMD_Stack=7;
+constexpr uint8_t  CMD_Execute=8;
+constexpr uint8_t  CMD_Fill8=9;
+constexpr uint8_t  CMD_SendData=10;
+constexpr uint8_t  CMD_Poke=11;
+constexpr uint8_t  CMD_ClearAllRam=12;
+constexpr uint8_t  CMD_ClearScreenAttributes=13;
+constexpr uint8_t  CMD_ClearScreenBitmap=14;
+constexpr uint8_t  CMD_PlayClick=15;
+constexpr uint8_t  CMD_Copy32x7WithFixedStride=16;
 
 #define ASSERT_Z80_PACKET_SIZE(size,packet_type) \
     static_assert(sizeof(packet_type) == size, "Wrong packet size for Z80 assembly code")
@@ -283,6 +282,20 @@ struct __attribute__ ((packed))  PlayClick {
 };
 ASSERT_Z80_PACKET_SIZE(2,PlayClick);
 
+
+struct  __attribute__ ((packed))  Copy32x7WithFixedStride {
+    uint8_t cmd_high;
+    uint8_t cmd_low;
+    uint8_t start_addr_high;
+    uint8_t start_addr_low;
+    
+    Copy32x7WithFixedStride(uint16_t address) : 
+                cmd_high(cmd_addr(CMD_Copy32x7WithFixedStride) >> 8), 
+                cmd_low(cmd_addr(CMD_Copy32x7WithFixedStride) & 0xff),
+                start_addr_high(static_cast<uint8_t>(address >> 8)),
+                start_addr_low(static_cast<uint8_t>(address & 0xFF))  {}
+};
+ASSERT_Z80_PACKET_SIZE(4,Copy32x7WithFixedStride);
 
 
 #endif
