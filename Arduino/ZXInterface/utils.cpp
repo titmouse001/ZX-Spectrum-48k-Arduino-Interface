@@ -136,44 +136,6 @@ void Utils::restoreZ80States(Z80Registers* regs) {
   BufferManager::freeToMark(regs->AllocMark);
 }
 
-// void Utils::dumpMemoryAsSnapshot(Z80Registers* regs, char* fileName, FatFile& dir) {
-//   FatFile& file = SdCardSupport::closeFile();
-  
-//   if (!file.open(&dir, fileName, O_WRONLY | O_CREAT | O_TRUNC)) {
-//     return;
-//   }
-  
-//   file.write((const uint8_t*)regs, sizeof(SNAHeader));  
-
-//   streamZ80ToFile(file, ZX_SCREEN_ADDRESS_START, ZX_SPECTRUM_48K_TOTAL_MEMORY );
-
-// //  constexpr uint16_t size = 1024U * 48; // 48K Spectrum RAM size
- 
-// //   // Alert Z80 to send memory data packets
-// //   RequestSendDataPacket pkt(size, ZX_SCREEN_ADDRESS_START);
-// //   Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
-
-// //   // Small delay buffer allowing hardware states to equalize
-// //   Utils::delay16(1);  
-
-// //   DDRD = 0x00;                    // Set PORTD data pins to inputs
-// //   digitalWriteFast(PIN_A5, LOW);  // Enable output latch for reading bus data
-// //   __asm__ __volatile__("nop; nop");
-
-// //   // Stream data out of the Z80 bus directly onto the SD file stream
-// //   for (uint16_t i = 0; i < size; i++) {
-// //     Z80Bus::waitHalt_syncWithZ80();
-// //     uint8_t byte = PIND;          // Capture latched data from lines
-// //     Z80Bus::triggerZ80NMI();
-// //     file.write(byte);
-// //   }
-  
-// //   file.close();
-
-// //   digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE line
-// //   DDRD = 0xFF;                     // Return PORTD pins safely back to output modes
-// }
-
 void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
 
   FatFile& file = SdCardSupport::closeFile();
@@ -188,29 +150,6 @@ void Utils::saveMemory(const char* filename, uint16_t address, uint16_t size) {
 
   streamZ80ToFile(file, address, size );
   file.close();
-
-  // // send header details first (request Z80 to send the memory data)
-  // RequestSendDataPacket pkt(size, address);
-  // Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
-
-  // // Above will be doing a final NMI to unhalt Z80
-  // // We need to give it time to catch up before we slam the lines to input!
-  // Utils::delay16(1);  // todo - will do for now, but this is way too much time!
-
-  // DDRD = 0x00;                    // make them inputs
-  // digitalWriteFast(PIN_A5, LOW);  // Enable Latch for reading
-  // __asm__ __volatile__("nop; nop");
-
-  // for (uint16_t i = 0; i < size; i++) {
-  //   Z80Bus::waitHalt_syncWithZ80();
-  //   uint8_t byte = PIND;  // Capture latched data
-  //   Z80Bus::triggerZ80NMI();
-  //   file.write(byte);
-  // }
-  // file.close();
-
-  // digitalWriteFast(PIN_A5, HIGH);  // Disable latch #OE
-  // DDRD = 0xFF;                     // Set all PORTD pins as outputs
 }
 
 bool Utils::loadMemory(const char* filename, uint16_t address, uint16_t size) {
@@ -272,67 +211,126 @@ uint16_t Utils::readLineTxt(FatFile* f, char* buf, uint16_t maxChars) {
 static char getHex(uint8_t n) { n &= 15; return n + (n < 10 ? '0' : 'A' - 10); }
 
 void Utils::viewSpeccyMemory() {
-  constexpr uint8_t MAX_CHARS_PER_LINE = 38; // max 42 chars;  // (256pixels/6)
+  constexpr uint8_t MAX_CHARS_PER_LINE = 38;  // max 42 chars;  // (256pixels/6)
   constexpr uint8_t HEX_TO_SHOW_PER_LINE = 8;
   uint16_t currentBaseAddr = 0x5B00;  // start of program mem
   uint16_t mark = BufferManager::getMark();
-  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1); // 0 to 38
+  char* lineBuffer = (char*)BufferManager::allocate(MAX_CHARS_PER_LINE + 1);  // 0 to 38
 
   // layout: "XXXX: XX XX XX XX XX XX XX XX ........"
-  memset(lineBuffer, ' ', MAX_CHARS_PER_LINE );
+  memset(lineBuffer, ' ', MAX_CHARS_PER_LINE);
   lineBuffer[4] = ':';
   lineBuffer[MAX_CHARS_PER_LINE] = '\0';
 
+  // Packet buffer (4-byte header + font payload)
+  uint8_t* workingArea = BufferManager::allocate(4 + 224);
+  // Send packet header with data
+  const uint16_t commandAddr = cmd_addr(CMD_Copy32x7WithFixedStride);
+  workingArea[0] = (uint8_t)(commandAddr >> 8);
+  workingArea[1] = (uint8_t)(commandAddr);
+
+  // ------------------------------------------------------
+  Menu::Button_t lastBtn = Menu::BUTTON_NONE;
+  bool buttonHeld = false;
+  uint32_t lastPress = 0;
+  uint32_t lastHold = 0;
+  uint32_t repeatDelay = MAX_REPEAT_KEY_DELAY;
+  // ------------------------------------------------------
+
   while (true) {
+    uint8_t hi = 0x40;
+    uint8_t lo = 0x00;
+
+    workingArea[2] = hi;
+    workingArea[3] = lo;
     uint16_t tempBaseAddr = currentBaseAddr;
     for (uint16_t i = 0; i < ZX_SCREEN_HEIGHT_BYTES; i++) {
-
       uint8_t pos = 0;
       // Use 6 chars for formatting address i.e. "AEFF: "
-      lineBuffer[0] = getHex((tempBaseAddr >> 12) & 0x0F );
-      lineBuffer[1] = getHex((tempBaseAddr >> 8)  & 0x0F );
-      lineBuffer[2] = getHex((tempBaseAddr >> 4)  & 0x0F );
-      lineBuffer[3] = getHex((tempBaseAddr & 0x0F) );
-      pos+=2;  // skip pre filled
+      lineBuffer[0] = getHex((tempBaseAddr >> 12) & 0x0F);
+      lineBuffer[1] = getHex((tempBaseAddr >> 8) & 0x0F);
+      lineBuffer[2] = getHex((tempBaseAddr >> 4) & 0x0F);
+      lineBuffer[3] = getHex((tempBaseAddr & 0x0F));
+      pos += 2;  // skip pre filled
 
       // ASK FOR 8 BYTES
-      RequestSendDataPacket pkt (HEX_TO_SHOW_PER_LINE, tempBaseAddr);
-      // START receiving process from z80 (we will render what we get and send it back as graphics)
-      Z80Bus::sendBytes8((uint8_t*) &pkt, sizeof(RequestSendDataPacket));
+      RequestSendDataPacket pkt(HEX_TO_SHOW_PER_LINE, tempBaseAddr);
+      Z80Bus::sendBytes8((uint8_t*)&pkt, sizeof(RequestSendDataPacket));
 
-      uint8_t hexPos = 6;   // start of hex field (after "XXXX: ")
+      uint8_t hexPos = 6;  // start of hex field (after "XXXX: ")
       for (uint8_t k = 0; k < HEX_TO_SHOW_PER_LINE; ++k) {
         uint8_t b = Z80Bus::get_IO_Byte();
         // hex pair + space e.g. ("1B ")
-        lineBuffer[hexPos]     = getHex ((b >> 4) & 0x0f );
-        lineBuffer[hexPos + 1] = getHex ((b & 0x0F) );
+        lineBuffer[hexPos] = getHex((b >> 4) & 0x0f);
+        lineBuffer[hexPos + 1] = getHex((b & 0x0F));
         hexPos += 3;
 
         // ASCII on the far right, "." for unknown
         lineBuffer[6 + (3 * HEX_TO_SHOW_PER_LINE) + k] = (b >= 32 && b <= 126) ? b : '.';
       }
-      Draw::textLine(i * 8, lineBuffer);  // i*8 : ypos pixels
+      Draw::textLine(lineBuffer, workingArea);
+      lo += 0x20;  // overflows back to 0x00
+      if (lo == 0)  hi += 8;  // wrapped past 0xE0 -> next 2 KB block (0x4000->0x4800->0x5000)
+      workingArea[2] = hi;
+      workingArea[3] = lo;
       tempBaseAddr += HEX_TO_SHOW_PER_LINE;
     }
- 
+
     while (true) {
       Menu::Button_t btn = Menu::getButton();
-      if (btn == Menu::BUTTON_ADVANCE) {
-        currentBaseAddr += ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
-        if (currentBaseAddr > 0xFFFF - ZX_SCREEN_HEIGHT_PIXELS) {
-          currentBaseAddr = 0xFFFF - (ZX_SCREEN_HEIGHT_PIXELS - 1);  // = 0xFF40
-        }
-        break;  // Redraw
-      } else if (btn == Menu::BUTTON_BACK) {
-        currentBaseAddr -= ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
-        if (currentBaseAddr < 0) {
-          currentBaseAddr = 0;
-        }
-        break;  // Redraw
-      } else if (btn == Menu::BUTTON_MENU) {
+
+      if (btn == Menu::BUTTON_NONE) {
+        lastBtn = Menu::BUTTON_NONE;
+        buttonHeld = false;
+        repeatDelay = MAX_REPEAT_KEY_DELAY;
+        continue;
+      }
+
+      bool clicked = false;
+      if (btn != lastBtn) {
+        Utils::playClick();
+        clicked = true;
+      }
+      lastBtn = btn;
+
+      if (btn == Menu::BUTTON_MENU) {
         Menu::waitForRelease();
         BufferManager::freeToMark(mark);  // frees both allocs
         return;
+      }
+
+      const uint32_t now = millis();
+      if (buttonHeld && (now - lastHold >= repeatDelay)) {
+        repeatDelay = (repeatDelay > MIN_REPEAT_KEY_DELAY)
+                          ? repeatDelay - ADJUST_REPEAT_KEY_DELAY
+                          : MIN_REPEAT_KEY_DELAY;
+        lastHold = now;
+      }
+      if (!buttonHeld || (now - lastPress >= repeatDelay)) {
+        bool acted = false;
+
+        if (btn == Menu::BUTTON_ADVANCE) {
+          currentBaseAddr += ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
+          if (currentBaseAddr > 0xFFFF - ZX_SCREEN_HEIGHT_PIXELS) {
+            // wrap - but land nicely so we end on 0xFFF8 (start here on 0xFF40)
+            currentBaseAddr = 0xFFFF - (ZX_SCREEN_HEIGHT_PIXELS - 1);
+          }
+          acted = true;
+        } else if (btn == Menu::BUTTON_BACK) {
+          // wraps
+          currentBaseAddr -= ZX_SCREEN_HEIGHT_PIXELS;  // 8 * 24;
+          acted = true;
+        }
+
+        if (acted) {
+          if (!clicked) { 
+            Utils::playClick();  
+          }
+          buttonHeld = true;
+          lastPress  = now;
+          lastHold   = now;
+          break;  // Redraw
+        }
       }
     }
   }
@@ -432,7 +430,17 @@ uint16_t Utils::zx_spectrum_screen_address(uint8_t x, uint8_t y) {
     uint8_t addr_high = 0x40 | ((y >> 3) & 0x18) | (y & 0x07);
     uint8_t addr_low = ((y & 0x38) << 2) | (x >> 3);
     return (static_cast<uint16_t>(addr_high) << 8) | addr_low;
+}
 
+// uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
+//     uint8_t addr_high = 0x40 | ((y >> 3) & 0x18) | (y & 0x07);
+//     uint8_t addr_low = ((y & 0x38) << 2) ;
+//     return (static_cast<uint16_t>(addr_high) << 8) | addr_low;
+// }
+uint16_t Utils::zx_spectrum_screen_address(uint8_t y) {
+    uint8_t hi = 0x40 | ((y & 0xC0) >> 3) | (y & 0x07);
+    uint8_t lo = (y & 0x38) << 2;
+    return (uint16_t)lo | ((uint16_t)hi << 8);
 }
 
 void Utils::clearTopBar(uint8_t col) {

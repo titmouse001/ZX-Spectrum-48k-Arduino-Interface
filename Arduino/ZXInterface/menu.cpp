@@ -6,6 +6,10 @@
 #include "draw.h"
 #include "Z80Bus.h"
 
+#include "PacketTypes.h"
+
+
+
 uint32_t Menu::lastButtonPressTime = 0;
 uint32_t Menu::lastButtonHoldTime = 0;
 uint16_t Menu::buttonDelay = MAX_REPEAT_KEY_DELAY;
@@ -17,8 +21,8 @@ bool     Menu::inSubFolder = false;
 constexpr uint8_t MENU_TEXT_COLOUR = COL::BRIGHT_BLACK_WHITE;
 constexpr uint8_t MENU_DIR_COLOUR = COL::BRIGHT_BLACK_CYAN;
 
-// Cache highlight movement - avoids using the SD card navigating same page
-static uint8_t menuRowBaseColour[SCREEN_TEXT_ROWS];
+// Cache highlight bars without re‑reading SD.
+static uint8_t rowBaseColourCache[SCREEN_TEXT_ROWS]; 
 
 FatFile* Menu::handleMenu() {
   SdCardSupport::syncRootToDepth();    // Re-synchronize the menu
@@ -121,77 +125,121 @@ FatFile* Menu::handleMenu() {
       const uint16_t newRow = currentFileIndex - startFileIndex;
 
       if (oldRow < SCREEN_TEXT_ROWS) {
-        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (oldRow << 5), 32, menuRowBaseColour[oldRow]);
+        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (oldRow << 5), 32, rowBaseColourCache[oldRow]);
       }
       if (newRow < SCREEN_TEXT_ROWS) {
         Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (newRow << 5), 32, COL::CYAN_BLACK);
       }
     }
-    Utils::delay16(MAX_BUTTON_READ_MILLISECONDS);  // aiming for 50 FPS'ish
+  //  Utils::delay16(MAX_BUTTON_READ_MILLISECONDS);  // aiming for 50 FPS'ish
   }
 }
 
-void Menu::drawFileList() { //bool updateText) {
-  FatFile& root = SdCardSupport::getRoot();
-  root.rewind();
 
-  uint16_t mark = BufferManager::getMark();
-  char* nameBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
-  uint8_t linesDrawn = 0;
-  uint16_t filesSkipped = 0;
+void Menu::drawFileList() {
+    FatFile& root = SdCardSupport::getRoot();
+    root.rewind();
 
-  // Parent directory indicator (if needed).
-  if (inSubFolder && startFileIndex == 0) {
-    menuRowBaseColour[0] = COL::BRIGHT_BLACK_GREEN;
-    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START, 32, menuRowBaseColour[0]);
-    Draw::textLine(0, "[/]");
-    linesDrawn = 1;
-  }
+    uint8_t  hi = 0x40;
+    uint8_t  lo = 0x00;
+    uint8_t  row = 0;
 
-  uint16_t actualFilesToSkip = startFileIndex;
-  if (inSubFolder && startFileIndex > 0) {
-    --actualFilesToSkip;
-  }
+    uint16_t mark = BufferManager::getMark();
+    char* textBuffer = (char*)BufferManager::allocate(ZX_FILENAME_MAX_DISPLAY_LEN + 1);
+    uint16_t filesSkipped = 0;
 
-  FatFile& file = SdCardSupport::getFile();
-  while (file.openNext(&root, O_RDONLY)) {
-    if (!file.isHidden()) {
-      if (filesSkipped < actualFilesToSkip) {
-        ++filesSkipped;
-      } else {
-        const bool isDirectory = file.isDir();
-        const uint8_t row = linesDrawn;
-        const uint8_t colour = isDirectory ? MENU_DIR_COLOUR : MENU_TEXT_COLOUR;
-        menuRowBaseColour[row] = colour;
-        uint8_t len = file.getDisplayName7( nameBuffer, ZX_FILENAME_MAX_DISPLAY_LEN + 1);
-        if (isDirectory && len < ZX_FILENAME_MAX_DISPLAY_LEN) {
-          nameBuffer[len++] = '/';
-          nameBuffer[len] = '\0';																		
+    // Packet buffer (4-byte header + font payload)
+    uint8_t *workingArea = BufferManager::allocate(4 + 224);
+
+    // Send packet header with data
+    const uint16_t commandAddr = cmd_addr(CMD_Copy32x7WithFixedStride);
+    workingArea[0] = (uint8_t)(commandAddr >> 8);
+    workingArea[1] = (uint8_t)(commandAddr);
+    workingArea[2] = hi;
+    workingArea[3] = lo;
+
+    // Parent-directory indicator
+    if (inSubFolder && startFileIndex == 0) {
+        rowBaseColourCache[0] = COL::BRIGHT_BLACK_GREEN;
+        Draw::textLine("[/]", workingArea);
+
+        lo += 0x20;
+        if (lo == 0) {
+            hi += 8;
         }
-
-        Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (row << 5), 32, colour);
-        Draw::textLine(row * FONT_HEIGHT_WITH_GAP, nameBuffer);
-        ++linesDrawn;
-      }
+        workingArea[2] = hi;
+        workingArea[3] = lo;
+        ++row;
     }
 
-    file.close();
-    if (linesDrawn >= SCREEN_TEXT_ROWS) {
-      break;
+    uint16_t actualFilesToSkip = startFileIndex;
+    if (inSubFolder && startFileIndex > 0) { 
+        --actualFilesToSkip; 
     }
-  }
-				   
-  // Clear remaining rows
-  while (linesDrawn < SCREEN_TEXT_ROWS) {
-    menuRowBaseColour[linesDrawn] = MENU_TEXT_COLOUR;
-    Z80Bus::sendFillCommand(ZX_SCREEN_ATTR_ADDRESS_START + (linesDrawn << 5), 32, MENU_TEXT_COLOUR);
-    Draw::textLine(linesDrawn * FONT_HEIGHT_WITH_GAP, NULL);
-    ++linesDrawn;
-  }
 
-  BufferManager::freeToMark(mark);
+    FatFile& file = SdCardSupport::getFile();
+
+    while (row < SCREEN_TEXT_ROWS && file.openNext(&root, O_RDONLY)) {
+        if (!file.isHidden()) {
+            if (filesSkipped < actualFilesToSkip) {
+                ++filesSkipped;
+            } else {
+                const bool isDirectory = file.isDir();
+                const uint8_t colour = isDirectory ? MENU_DIR_COLOUR : MENU_TEXT_COLOUR;
+                rowBaseColourCache[row] = colour;
+
+                uint8_t len = file.getDisplayName7(textBuffer, ZX_FILENAME_MAX_DISPLAY_LEN + 1);
+                if (isDirectory && len < ZX_FILENAME_MAX_DISPLAY_LEN) {
+                    textBuffer[len++] = '/';
+                    textBuffer[len] = '\0';
+                }
+
+                Draw::textLine(textBuffer, workingArea);
+                lo += 0x20;
+                if (lo == 0) hi += 8;   // Third boundary check (speccy screen)
+                workingArea[2] = hi;
+                workingArea[3] = lo;
+                ++row;
+            }
+        }
+        file.close();
+    }
+
+    // Clear leftover rows
+    if (row < SCREEN_TEXT_ROWS) {
+        const uint8_t remaining = SCREEN_TEXT_ROWS - row;
+        memset(&rowBaseColourCache[row], MENU_TEXT_COLOUR, remaining);
+        
+        do {
+            Draw::textLine(((uint16_t)hi << 8) | lo, NULL);
+            lo += 0x20;
+            if (lo == 0) hi += 8;
+        } while (++row < SCREEN_TEXT_ROWS);
+
+        // need a fillwithStride
+    }
+
+
+    // Batch-send attribute fills using run-length encoding
+    uint16_t attrAddr = ZX_SCREEN_ATTR_ADDRESS_START;
+    uint8_t runStart = 0;
+    uint8_t runColour = rowBaseColourCache[0];
+    for (uint8_t i = 1; i < SCREEN_TEXT_ROWS; ++i) {
+        if (rowBaseColourCache[i] != runColour) {
+            const uint16_t runLength = (uint16_t)(i - runStart) << 5; 
+            Z80Bus::sendFillCommand(attrAddr, runLength, runColour);
+            attrAddr += runLength; // next starting fill address
+            runStart = i;
+            runColour = rowBaseColourCache[i];
+        }
+    }
+
+    // Flush the final remaining run up to SCREEN_TEXT_ROWS
+    const uint16_t finalRunLength = (uint16_t)(SCREEN_TEXT_ROWS - runStart) << 5;
+    Z80Bus::sendFillCommand(attrAddr, finalRunLength, runColour);
+
+    BufferManager::freeToMark(mark);
 }
-
 
 void Menu::goPage(bool forward, uint8_t row, uint16_t total) {
   if (total == 0) { startFileIndex = 0; currentFileIndex = 0; return; }

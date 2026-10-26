@@ -127,6 +127,50 @@ void setup() {
   // Utils::loadBmpToScreen("TEST2.BMP");
   // Utils::delay16(5000);   // let user see it for 2 seconds
 
+  unsigned long start = micros();
+
+   uint16_t mark = BufferManager::getMark();
+   uint8_t *fontData = BufferManager::allocate(224+2);     // 32*7
+
+  //// fontData[0] = cmd_addr(CMD_Copy32x7WithFixedStride) >> 8;
+  //// fontData[1] = cmd_addr(CMD_Copy32x7WithFixedStride) & 0xff;
+  //// fontData[2] = 16384 >> 8;
+  //// fontData[3] = 16384 & 0xFF;
+  ////  Draw::textLine3("ABCDEFGHIJKLMNOPQSRTUVWXYZ0123456789!()&*%" , fontData);
+  ////   Utils::delay16(2000);
+
+//    fontData[0] = cmd_addr(CMD_Copy32x7WithFixedStride) >> 8;
+//    fontData[1] = cmd_addr(CMD_Copy32x7WithFixedStride) & 0xff;
+//    fontData[2] = 16384 >> 8;
+//    fontData[3] = 16384 & 0xFF;
+//    for (uint8_t i=0; i<50;i ++) {
+//      Draw::textLine3("ABCDEFGHIJKLMNOPQSRTUVWXYZ0123456789!()&*%" , fontData);
+//     }
+//     BufferManager::freeToMark(mark);
+
+//    unsigned long duration = micros() - start;
+
+//     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);
+//     char _c[8];
+//     itoa(duration, _c, 10);
+//     Draw::text(0, 0, _c);
+
+
+//  Utils::delay16(2000);
+
+
+//     start = micros();
+//   for (uint8_t i=0; i<50;i ++) {
+//    Draw::textLineOLD(0, "ABCDEFGHIJKLMNOPQSRTUVWXYZ0123456789!()&*%");
+//   }
+
+//   duration = micros() - start;
+
+//     Utils::clearScreen(COL::BRIGHT_BLACK_WHITE);    
+//     itoa(duration, _c, 10);
+//     Draw::text(0, 0, _c);
+//  Utils::delay16(5000);
+
 
 }
 
@@ -306,145 +350,152 @@ void handleZ80File(FatFile* pFile) {
   }
 }
 
-  // ---------------------
-  // .TXT FILE
-  // ---------------------
-  void handleTxtFile(FatFile * pFile) {
-    constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
-    constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
-    constexpr uint8_t maxChars =
-        ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
+// ---------------------
+// .TXT FILE
+// ---------------------
+void handleTxtFile(FatFile* pFile) {
+  constexpr uint8_t charHeight = SmallFont::FNT_HEIGHT + SmallFont::FNT_GAP;
+  constexpr uint8_t maxLines = ZX_SCREEN_HEIGHT_PIXELS / charHeight;
+  constexpr uint8_t maxChars =
+      ZX_SCREEN_WIDTH_PIXELS / SmallFont::FNT_CHAR_PITCH;
 
-    uint16_t mark = BufferManager::getMark();
-    char* buf = (char*)BufferManager::allocate(maxChars + 1);
+  uint16_t mark = BufferManager::getMark();
+  char* buf = (char*)BufferManager::allocate(maxChars + 1);
 
-    uint16_t currentPage = 0;
-    uint32_t pageStartPos = 0;
+  uint16_t currentPage = 0;
+  uint32_t pageStartPos = 0;
 
-    while (true) {
-      Utils::clearScreen(COL::BLACK_WHITE);
-      pFile->seekSet(pageStartPos);
+  while (true) {
+    Utils::clearScreen(COL::BLACK_WHITE);
+    pFile->seekSet(pageStartPos);
 
-      uint8_t y = 0;
-      for (uint8_t i = 0; i < maxLines; i++) {
-        uint8_t len = 0;
-        if (pFile->available()) {
-          len = Utils::readLineTxt(pFile, buf, maxChars);
-          if (!len) {
-            buf[0] = ' ';
-            len = 1;
-          }
-        }
-        buf[len] = 0;
-        Draw::textLine(y, buf);
-        y += charHeight;  // Faster/smaller than i * charH
-      }
-
-      uint32_t nextPos = pFile->curPosition();
-      bool canFwd = pFile->available();
-
-      Menu::waitForRelease();
-      // Block until button press
-      Menu::Button_t btn;
-      while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);
-
-      if (btn == Menu::BUTTON_MENU) break;
-      if (btn == Menu::BUTTON_ADVANCE && canFwd) {
-        pageStartPos = nextPos;
-        currentPage++;
-      } else if (btn == Menu::BUTTON_BACK && currentPage > 0) {
-        currentPage--;
-        pageStartPos = 0;  // Re-scan logic
-        for (uint16_t p = 0; p < currentPage; p++) {
-          pFile->seekSet(pageStartPos);
-          for (uint8_t l = 0; l < maxLines; l++) {
-            Utils::readLineTxt(pFile, nullptr, maxChars);
-          }
-          pageStartPos = pFile->curPosition();
+    uint8_t hi = 0x40;
+    uint8_t lo = 0x00;
+    for (uint8_t i = 0; i < maxLines; i++) {
+      uint8_t len = 0;
+      if (pFile->available()) {
+        len = Utils::readLineTxt(pFile, buf, maxChars);
+        if (!len) {
+          buf[0] = ' ';
+          len = 1;
         }
       }
+      buf[len] = 0;
 
-      const uint32_t wait = millis() + 350;
-      while (Menu::getButton() != Menu::BUTTON_NONE && millis() < wait);
+      Draw::textLine(((uint16_t)hi << 8) | lo, buf);
+
+      //  ZX Spectrum bitmap - Three 2KB blocks (64 scanlines each)
+      lo += 0x20;  // overflows back to 0x00
+      if (lo == 0)
+        hi += 8;  // wrapped past 0xE0 -> next 2 KB block (0x4000->0x4800->0x5000)
     }
 
-    BufferManager::freeToMark(mark);
+    uint32_t nextPos = pFile->curPosition();
+    bool canFwd = pFile->available();
+
     Menu::waitForRelease();
+    // Block until button press
+    Menu::Button_t btn;
+    while ((btn = Menu::getButton()) == Menu::BUTTON_NONE);
+
+    if (btn == Menu::BUTTON_MENU) break;
+    if (btn == Menu::BUTTON_ADVANCE && canFwd) {
+      pageStartPos = nextPos;
+      currentPage++;
+    } else if (btn == Menu::BUTTON_BACK && currentPage > 0) {
+      currentPage--;
+      pageStartPos = 0;  // Re-scan logic
+      for (uint16_t p = 0; p < currentPage; p++) {
+        pFile->seekSet(pageStartPos);
+        for (uint8_t l = 0; l < maxLines; l++) {
+          Utils::readLineTxt(pFile, nullptr, maxChars);
+        }
+        pageStartPos = pFile->curPosition();
+      }
+    }
+
+    const uint32_t wait = millis() + 350;
+    while (Menu::getButton() != Menu::BUTTON_NONE && millis() < wait);
   }
 
-  // -------------------------------------------------------------------------------------
-  // *** Some Useful Links ***
-  // ZX spectrum: https://mdfs.net/Docs/Comp/Spectrum/SpecIO
-  // Arduino    : https://devboards.info/boards/arduino-nano
-  //              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
-  // -------------------------------------------------------------------------------------
+  BufferManager::freeToMark(mark);
+  Menu::waitForRelease();
+}
 
-  // Generate Map file
-  // >avr-nm -S --size-sort -t d
-  // C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf
-  // >c:\temp\2.txt
 
-  // Temp main code to transpose Adafruit5x7 font data into a 7x5 lookup table
-  //
-  // #include <SPI.h>
-  // #include "src/fatlib/SdFat.h"
-  // #include "FontData.h"
+// -------------------------------------------------------------------------------------
+// *** Some Useful Links ***
+// ZX spectrum: https://mdfs.net/Docs/Comp/Spectrum/SpecIO
+// Arduino    : https://devboards.info/boards/arduino-nano
+//              https://arduino.stackexchange.com/questions/30968/how-do-interrupts-work-on-the-arduino-uno-and-similar-boards
+// -------------------------------------------------------------------------------------
 
-  // SdFat SD;
-  // File file;
+// Generate Map file
+// >avr-nm -S --size-sort -t d
+// C:\Users\Admin\Documents\GitHub\ZX-Spectrum-48k-Arduino-Interface\build.tmp\ZXInterface.ino.elf
+// >c:\temp\2.txt
 
-  // void setup() {
+// Temp main code to transpose Adafruit5x7 font data into a 7x5 lookup table
+//
+// #include <SPI.h>
+// #include "src/fatlib/SdFat.h"
+// #include "FontData.h"
 
-  //   file = SD.open("font_out.txt", O_WRITE | O_CREAT | O_TRUNC);
-  //   if (!file) {
-  //     return;
-  //   }
+// SdFat SD;
+// File file;
 
-  //   file.println("static const uint8_t __attribute__((progmem))
-  //   precalced_font5x7[] = {");
+// void setup() {
 
-  //   // Iterate through all 95 characters (0x20 to 0x7E)
-  //   for (int c = 0; c < 95; c++) {
-  //     // Read the 5 vertical columns for the current character[cite: 1]
-  //     uint8_t d0 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 0]);
-  //     uint8_t d1 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 1]);
-  //     uint8_t d2 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 2]);
-  //     uint8_t d3 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 3]);
-  //     uint8_t d4 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 4]);
+//   file = SD.open("font_out.txt", O_WRITE | O_CREAT | O_TRUNC);
+//   if (!file) {
+//     return;
+//   }
 
-  //     file.print("\t");
+//   file.println("static const uint8_t __attribute__((progmem))
+//   precalced_font5x7[] = {");
 
-  //     // Generate the 7 horizontal rows
-  //     for (int r = 0; r < 7; r++) {
-  //       // The original transposition logic[cite: 1]
-  //       uint8_t transposedRow =
-  //           ((d0 & 1) << 4) |
-  //           ((d1 & 1) << 3) |
-  //           ((d2 & 1) << 2) |
-  //           ((d3 & 1) << 1) |
-  //            (d4 & 1);
+//   // Iterate through all 95 characters (0x20 to 0x7E)
+//   for (int c = 0; c < 95; c++) {
+//     // Read the 5 vertical columns for the current character[cite: 1]
+//     uint8_t d0 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 0]);
+//     uint8_t d1 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 1]);
+//     uint8_t d2 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 2]);
+//     uint8_t d3 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 3]);
+//     uint8_t d4 = pgm_read_byte(&fudged_Adafruit5x7[c * 5 + 4]);
 
-  //       // Write out in zero-padded hex format
-  //       file.print("0x");
-  //       if (transposedRow < 0x10) file.print("0");
-  //       file.print(transposedRow, HEX);
-  //       file.print(", ");
+//     file.print("\t");
 
-  //       // Shift down to prepare for the next row[cite: 1]
-  //       d0 >>= 1; d1 >>= 1; d2 >>= 1; d3 >>= 1; d4 >>= 1;
-  //     }
+//     // Generate the 7 horizontal rows
+//     for (int r = 0; r < 7; r++) {
+//       // The original transposition logic[cite: 1]
+//       uint8_t transposedRow =
+//           ((d0 & 1) << 4) |
+//           ((d1 & 1) << 3) |
+//           ((d2 & 1) << 2) |
+//           ((d3 & 1) << 1) |
+//            (d4 & 1);
 
-  //     // Append a comment identifying the character for easy code reading
-  //     file.print("// '");
-  //     file.print((char)(c + 0x20));
-  //     file.println("'");
-  //   }
+//       // Write out in zero-padded hex format
+//       file.print("0x");
+//       if (transposedRow < 0x10) file.print("0");
+//       file.print(transposedRow, HEX);
+//       file.print(", ");
 
-  //   file.println("};");
-  //   file.close();
-  //   Serial.println("Font successfully dumped to SD card!");
-  // }
+//       // Shift down to prepare for the next row[cite: 1]
+//       d0 >>= 1; d1 >>= 1; d2 >>= 1; d3 >>= 1; d4 >>= 1;
+//     }
 
-  // void loop() {
-  //   // Nothing to do here
-  // }
+//     // Append a comment identifying the character for easy code reading
+//     file.print("// '");
+//     file.print((char)(c + 0x20));
+//     file.println("'");
+//   }
+
+//   file.println("};");
+//   file.close();
+//   Serial.println("Font successfully dumped to SD card!");
+// }
+
+// void loop() {
+//   // Nothing to do here
+// }

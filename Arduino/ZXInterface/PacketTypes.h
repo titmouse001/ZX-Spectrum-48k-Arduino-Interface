@@ -80,6 +80,7 @@ struct __attribute__ ((packed))  RestoreGameAndExecute {
 };
 ASSERT_Z80_PACKET_SIZE(2,RestoreGameAndExecute);
 
+// CopyPacket: Unified with CMD_Transfer, CMD_Copy
 struct  __attribute__ ((packed)) TransferPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
@@ -100,6 +101,7 @@ struct  __attribute__ ((packed)) TransferPacket {
 };
 ASSERT_Z80_PACKET_SIZE(5,TransferPacket);
 
+// CopyPacket: Unified with CMD_Transfer, CMD_Copy
 struct  __attribute__ ((packed)) CopyPacket {
     uint8_t cmd_high;
     uint8_t cmd_low;
@@ -143,6 +145,7 @@ struct  __attribute__ ((packed))  FillPacket {
 };
 ASSERT_Z80_PACKET_SIZE(7,FillPacket);
 
+// !!! fills backwards !!!
 struct  __attribute__ ((packed)) Fill8Packet {
     uint8_t cmd_high;
     uint8_t cmd_low;
@@ -164,10 +167,6 @@ struct  __attribute__ ((packed)) Fill8Packet {
                 addr_low(static_cast<uint8_t>((address) & 0xFF)),
                 amount(amount),
                 fill_value(value) {}
-
-
-  //  Fill8Packet() : cmd_high(cmd_addr(CMD_Fill8) >> 8), 
-    //                cmd_low(cmd_addr(CMD_Fill8) & 0xff) {}
 };
 ASSERT_Z80_PACKET_SIZE(6,Fill8Packet);
 

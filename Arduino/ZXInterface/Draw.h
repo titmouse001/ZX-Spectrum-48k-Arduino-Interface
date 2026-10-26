@@ -13,7 +13,10 @@ namespace Draw {
     inline void text(uint8_t xpos, uint8_t ypos, const char *message) {
         textCore(xpos, ypos, message, false);
     }
-    void textLine(uint8_t ypos, const char *message);
+   // void textLineOLD(uint8_t ypos, const char *message);
+    void textLine(uint16_t addr, const char *message);
+    void textLine(const char *message,  uint8_t *workingData);
+
     void drawTextInternal(uint8_t xpos, uint8_t ypos, uint8_t charCount, uint8_t *outputLine);
 }
 
